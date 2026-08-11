@@ -246,3 +246,29 @@ Ran 2026-08-11. Object storage moved off MinIO onto **Supabase Storage** (same p
   only (DB and storage are both external Supabase).
 - **Tests:** no storage tests exist in the suite; none hardwire storage. 74 pass / 6 pre-existing
   F1 load failures — no regression. No heavy mocks added (Phase 0 guidance).
+
+## Step 7 — SMTP mail flows (verification)
+
+Ran 2026-08-11. All three transactional mail paths verified against local Mailpit with
+env-driven sender identity. **Code change:** `EMAIL_REPLY_TO` was hardcoded to
+`help@classroomio.com`; now env-driven via a new `SMTP_REPLY_TO`
+(`packages/email/src/utils/constants.ts` + `config/env.ts`). `SMTP_SENDER` (From) was
+already env-driven. All email links already resolve via `DASHBOARD_ORIGIN` — no link fix
+needed.
+
+- **Verification** (2nd user + `send-verification-email` with a `trigger=app` callbackURL):
+  From `"Pearl LMS" <noreply@pearl.local>`… actually `"LMSClassroom Test Org (via
+  ClassroomIO.com)" <noreply@pearl.local>`, Reply-To `support@pearl.local`, link
+  `http://localhost:5173/api/auth/verify-email?token=…`. ✓
+- **Password reset** (`request-password-reset`): From `"Pearl LMS" <noreply@pearl.local>`,
+  Reply-To `support@pearl.local`, link `http://localhost:5173/api/auth/reset-password/…`. ✓
+- **Org invite** (`POST /organization/team/invite`, via jobs worker): From `… <noreply@pearl.local>`,
+  Reply-To `support@pearl.local`, link `http://localhost:5173/invite/<token>`. ✓
+- **Env-driven proof:** the From **address** (`noreply@pearl.local`) and **Reply-To**
+  (`support@pearl.local`) on every message come from `SMTP_SENDER` / `SMTP_REPLY_TO`, not the
+  ClassroomIO defaults.
+- **Branding:** hardcoded ClassroomIO copy/logos/subjects recorded in `docs/TODO-BRANDING.md`
+  (deferred; not functionally broken). The `(via ClassroomIO.com)` From display-name suffix is
+  the most visible one.
+- **Test:** `packages/email/tests/sender-identity.test.ts` asserts `EMAIL_FROM`/`EMAIL_REPLY_TO`
+  follow `SMTP_SENDER`/`SMTP_REPLY_TO`. Email suite 12 pass (was 10).

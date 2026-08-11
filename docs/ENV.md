@@ -110,9 +110,19 @@ API sends auth-flow emails itself; everything else goes through the jobs worker 
 |---|---|---|---|---|
 | `SMTP_HOST` / `SMTP_PORT` | SMTP server (465 = implicit TLS, else STARTTLS enforced unless `SMTP_ALLOW_INSECURE`) | blank | local: Mailpit (**`127.0.0.1:1025`** — not `localhost`, which resolves to IPv6 `::1`); prod: real SMTP | |
 | `SMTP_USER` / `SMTP_PASSWORD` | SMTP auth (optional when `SMTP_ALLOW_INSECURE=true`) | blank | empty for Mailpit; per provider in prod | 🔒 |
-| `SMTP_SENDER` | From address | blank | our sender | |
+| `SMTP_SENDER` | **From** identity — full `"Name" <addr>` (env-driven; falls back to a ClassroomIO default only if unset) | blank | local `'"Pearl LMS" <noreply@pearl.local>'`; prod: `'"Pearl LMS" <noreply@yourdomain>'` | |
+| `SMTP_REPLY_TO` | **Reply-To** identity — env-driven (Step 7; was hardcoded to `help@classroomio.com` before) | blank | local `'"Pearl LMS Support" <support@pearl.local>'`; prod: your support address | |
 | `SMTP_ALLOW_INSECURE` | **Dev only.** `true` lets nodemailer use an unauthenticated, non-TLS catcher (Mailpit): auth optional, `requireTLS` dropped. Unset = stock behaviour, zero prod impact. Added on the fork (Step 3). | unset | `true` in local api+jobs; **unset on DigitalOcean** | |
 | `ZOHO_TOKEN` | ZeptoMail switch — **leave unset or SMTP is ignored** | unset | unset | 🔒 |
+
+**Production SMTP (to decide / placeholders).** All mail is env-driven, so real
+credentials slot in unchanged at deploy time — set `SMTP_HOST`, `SMTP_PORT`
+(587 STARTTLS or 465 implicit TLS), `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_SENDER`,
+`SMTP_REPLY_TO` on the DigitalOcean services and leave `SMTP_ALLOW_INSECURE` unset.
+Provider not yet chosen — any SMTP provider works (Zoho ZeptoMail, AWS SES,
+Postmark, Resend SMTP, etc.); `ZOHO_TOKEN` additionally switches `@cio/email` to
+ZeptoMail's HTTP API instead of SMTP. Email branding is still ClassroomIO — see
+`docs/TODO-BRANDING.md` (deferred; not functionally broken).
 
 ## 7. Optional integrations (all off-by-default; keep unset unless we opt in)
 
