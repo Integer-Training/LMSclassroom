@@ -194,3 +194,29 @@ env-flag-gated, not removed outright).
 - Packaging fix: added the missing `./license` subpath export to `@cio/utils`
   `package.json` (imported by 5 source files but undeclared — only resolved under tsx,
   not Node/vitest). Makes the regression test loadable; strict correctness improvement.
+
+## Step 5 — Supabase Postgres repoint (verification)
+
+Ran 2026-08-11. The DB moved off the local Postgres container onto Supabase project
+**LMSCLASSROOM** (`cvtmymxxjgjshrzsjxnj`, eu-west-1, PG17). Runtime → transaction
+pooler (6543, `prepare:false` + SSL); migrations → session pooler (5432, SSL). The
+true direct host (`db.<ref>.supabase.co`) is IPv6-only and unreachable from this
+IPv4 machine, so the **session pooler on 5432** is used as `DIRECT_DATABASE_URL` (it's
+session-mode, so advisory locks / DDL / drizzle-kit migrate all work). Pooler host
+prefix for this project is `aws-1-eu-west-1` (not `aws-0`) — verified empirically.
+
+- **Migrations:** `pnpm --filter @cio/db db:setup` applied cleanly over the direct
+  connection; **101 public tables** created, including Better Auth's `user`, `session`,
+  `account`, `verification`. Essential seed (3 roles, 3 submission statuses, 14 question
+  types) inserted over the **pooled** runtime client — confirming `prepare:false`+SSL work.
+- **Walkthrough (via API + Supabase MCP, Playwright MCP was down):** fresh signup
+  (`founder@lmsclassroom.test`) → user+account+session+profile written to Supabase,
+  `email_verified=true` (self-hosted first-signup auto-verify) → fresh sign-in (2nd
+  session row) → create org (ENTERPRISE plan auto-provisioned) → create course → section
+  → lesson. Final Supabase counts: users 1, sessions 2, orgs 1, courses 1, lessons 1.
+- **Tests:** `@cio/api` vitest **mocks the DB** (`vi.mock` on `@cio/db` queries) — it makes
+  no real connection, so it neither needs nor hardwires a test DB and is unaffected by the
+  repoint. 74 pass / same 6 pre-existing F1 load failures — no regression.
+- **Local Postgres container:** retired. `docker-compose.yaml` carries a prominent comment
+  marking `postgres` unused (kept only because api/jobs `depends_on` it for the image deploy
+  graph, rewritten in the DO step). Local bring-up now omits `postgres` from the `up` list.

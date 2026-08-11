@@ -15,12 +15,18 @@ const globalDatabase = globalThis as typeof globalThis & {
   __cioDb?: DatabaseClient;
 };
 
+// Runtime connects over the Supabase transaction pooler (port 6543), which runs
+// in transaction mode and does NOT support prepared statements — hence
+// `prepare: false`. SSL is required for Supabase; `DATABASE_SSL=disable` is an
+// escape hatch for a plain local Postgres only.
 function createDatabaseClient() {
   return postgres(connectionString, {
     max: Number.parseInt(process.env.DATABASE_POOL_MAX ?? '10', 10) || 5,
     idle_timeout: 20,
     connect_timeout: 10,
-    max_lifetime: 60 * 30
+    max_lifetime: 60 * 30,
+    prepare: false,
+    ssl: process.env.DATABASE_SSL === 'disable' ? false : 'require'
   });
 }
 

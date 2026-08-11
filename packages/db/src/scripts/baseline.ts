@@ -6,6 +6,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postgres, { type Sql } from 'postgres';
 
+import { getDirectConnectionString, getPostgresSsl } from './db-connection';
+
 const scriptPath = fileURLToPath(import.meta.url);
 // .../packages/db/src/scripts/baseline.ts → migrations live at ../migrations
 const migrationsDir = resolve(dirname(scriptPath), '../migrations');
@@ -69,9 +71,7 @@ export async function baselineMigrationsIfNeeded(sql: Sql): Promise<void> {
       `;
       if (hasBaseline[0].count === 0) {
         await sql`INSERT INTO drizzle.__drizzle_migrations ("hash", "created_at") VALUES (${baseline.hash}, ${baseline.when})`;
-        console.log(
-          'Pre-squash migration history detected — baselined consolidated migration as already applied.'
-        );
+        console.log('Pre-squash migration history detected — baselined consolidated migration as already applied.');
       }
       return;
     }
@@ -114,12 +114,13 @@ export async function baselineMigrationsIfNeeded(sql: Sql): Promise<void> {
 // Allow running standalone: `pnpm --filter @cio/db db:baseline`
 const invokedDirectly = Boolean(process.argv[1]) && scriptPath === resolve(process.argv[1]);
 if (invokedDirectly) {
-  const connectionString = process.env.DATABASE_URL ?? process.env.PRIVATE_DATABASE_URL ?? '';
+  // Baseline touches migration history over the DIRECT (5432) connection.
+  const connectionString = getDirectConnectionString();
   if (!connectionString) {
-    console.error('DATABASE_URL or PRIVATE_DATABASE_URL environment variable is required');
+    console.error('DIRECT_DATABASE_URL (or DATABASE_URL/PRIVATE_DATABASE_URL) environment variable is required');
     process.exit(1);
   }
-  const sql = postgres(connectionString);
+  const sql = postgres(connectionString, { ssl: getPostgresSsl() });
   baselineMigrationsIfNeeded(sql)
     .then(() => sql.end())
     .then(() => process.exit(0))

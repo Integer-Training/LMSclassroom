@@ -6,8 +6,12 @@ import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 
 import { baselineMigrationsIfNeeded } from './baseline';
+import { getDirectConnectionString, getPostgresSsl } from './db-connection';
 
-const connectionString = process.env.DATABASE_URL ?? process.env.PRIVATE_DATABASE_URL ?? '';
+// Roles, advisory locks and drizzle-kit migrate must run over the DIRECT (5432)
+// connection — Supabase's transaction pooler (6543) doesn't support them.
+const connectionString = getDirectConnectionString();
+const ssl = getPostgresSsl();
 const shouldSeed = process.argv.includes('--seed') || process.argv.includes('-s');
 const shouldSyncSchema = !process.argv.includes('--skip-schema-sync');
 const scriptPath = fileURLToPath(import.meta.url);
@@ -15,7 +19,7 @@ const packageRoot = resolve(dirname(scriptPath), '../..');
 const pnpmBinary = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 
 if (!connectionString) {
-  console.error('DATABASE_URL or PRIVATE_DATABASE_URL environment variable is required');
+  console.error('DIRECT_DATABASE_URL (or DATABASE_URL/PRIVATE_DATABASE_URL) environment variable is required');
   process.exit(1);
 }
 
@@ -61,7 +65,7 @@ async function runSeed() {
 }
 
 async function dbSetup() {
-  const sql = postgres(connectionString);
+  const sql = postgres(connectionString, { ssl });
 
   try {
     console.log('Setting up database roles...');
@@ -93,7 +97,7 @@ async function dbSetup() {
       // Advisory lock so concurrent startups can't both pass the baseline check and double-insert.
       // Session-scoped, so held on a dedicated connection across baseline+migrate.
       const DB_SETUP_LOCK_KEY = 4242424242;
-      const lock = postgres(connectionString, { max: 1 });
+      const lock = postgres(connectionString, { max: 1, ssl });
       await lock`SELECT pg_advisory_lock(${DB_SETUP_LOCK_KEY}::bigint)`;
       try {
         await baselineMigrationsIfNeeded(sql);

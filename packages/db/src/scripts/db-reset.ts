@@ -5,7 +5,11 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 
-const connectionString = process.env.DATABASE_URL ?? process.env.PRIVATE_DATABASE_URL ?? '';
+import { getDirectConnectionString, getPostgresSsl } from './db-connection';
+
+// Destructive DDL/truncate runs over the DIRECT (5432) connection.
+const connectionString = getDirectConnectionString();
+const ssl = getPostgresSsl();
 const shouldSeed = !process.argv.includes('--skip-seed');
 const shouldSyncSchema = !process.argv.includes('--skip-schema-sync');
 const scriptPath = fileURLToPath(import.meta.url);
@@ -13,7 +17,7 @@ const packageRoot = resolve(dirname(scriptPath), '../..');
 const pnpmBinary = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 
 if (!connectionString) {
-  console.error('DATABASE_URL or PRIVATE_DATABASE_URL environment variable is required');
+  console.error('DIRECT_DATABASE_URL (or DATABASE_URL/PRIVATE_DATABASE_URL) environment variable is required');
   process.exit(1);
 }
 
@@ -44,7 +48,7 @@ async function runPnpmCommand(commandLabel: string, args: string[]) {
 }
 
 async function truncatePublicTables() {
-  const sql = postgres(connectionString);
+  const sql = postgres(connectionString, { ssl });
 
   try {
     console.log('Resetting database tables in public schema...');

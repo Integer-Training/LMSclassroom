@@ -1,4 +1,11 @@
 services:
+  # NOTE (PearlLMS): the database is now external — Supabase Postgres (see docs/ENV.md).
+  # This local Postgres container is NO LONGER USED for app data; local dev points
+  # DATABASE_URL / DIRECT_DATABASE_URL at Supabase and simply omits `postgres` from
+  # the `docker compose up` list (bring up redis + mailpit + minio only). It is kept
+  # here (not removed) only because the api/jobs services still declare
+  # `depends_on: postgres` for the image-based deploy graph, which is rewritten in the
+  # DigitalOcean deploy step. Safe to delete once that graph no longer references it.
   postgres:
     image: postgres:16-alpine
     container_name: cio-postgres

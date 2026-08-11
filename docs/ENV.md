@@ -27,12 +27,32 @@ refuses to start without them.
 
 ## 2. Database (Supabase Postgres for us)
 
-| Var | Purpose | Stock default | Ours | 🔒 |
+Two connection strings, by design (Step 5). **Runtime** services use the Supabase
+**transaction pooler (port 6543)** — the postgres-js client sets `prepare:false`
+(the pooler runs in transaction mode, no prepared statements) and `ssl:'require'`.
+**Migrations / DDL / admin scripts** use the **direct / session connection (port
+5432)** — the transaction pooler can't run advisory locks, DDL, or drizzle-kit
+migrate. Both come from the same Supabase project; only the port (and pooler vs
+direct host) differ.
+
+| Var | Purpose | Where read | Ours | 🔒 |
 |---|---|---|---|---|
-| `DATABASE_URL` | Postgres conn string — read by `packages/db/src/drizzle.ts:9`, drizzle.config, jobs, every db script | `postgresql://postgres:postgres@localhost:5432/classroomio` | **Supabase Postgres** conn string (pooler for app, direct for migrations — decide in the run-local step) | 🔒 |
-| `PRIVATE_DATABASE_URL` | Fallback read alongside DATABASE_URL (api/jobs) | unset | unused by us | 🔒 |
-| `DATABASE_POOL_MAX` | node-postgres pool size | 10 | tune vs Supabase pooler limits | |
-| `POSTGRES_DB/USER/PASSWORD` | docker-compose Postgres container only | classroomio/postgres/postgres | unused (no local PG container — Supabase) | 🔒 |
+| `DATABASE_URL` | **Pooled** runtime conn string (6543) | `packages/db/src/drizzle.ts` (shared client → api, jobs, seed) | Supabase **transaction pooler** URL, port 6543 | 🔒 |
+| `DIRECT_DATABASE_URL` | **Direct** conn string (5432) for migrations/DDL | `drizzle.config.ts`, `scripts/db-setup.ts`, `baseline.ts`, `db-reset.ts` (via `scripts/db-connection.ts`) | Supabase **direct or session pooler** URL, port 5432 | 🔒 |
+| `DATABASE_SSL` | SSL escape hatch — default is SSL **required** | drizzle.ts + admin scripts | unset (SSL on); `disable` only for a plain local PG | |
+| `PRIVATE_DATABASE_URL` | Legacy fallback read after DATABASE_URL | drizzle.ts, jobs, scripts | unused by us | 🔒 |
+| `DATABASE_POOL_MAX` | postgres-js pool size | drizzle.ts | tune vs Supabase pooler client limit | |
+| `POSTGRES_DB/USER/PASSWORD` | docker-compose local Postgres container only | compose | **unused** — the local Postgres container is retired (Supabase is external); see the flag comment atop `docker-compose.yaml` | 🔒 |
+
+**Which Supabase value goes where.** From the project's *Connect* dialog, copy:
+the **Transaction pooler** URI (`...pooler.supabase.com:6543`) → `DATABASE_URL`; the
+**Direct connection** URI (`db.<ref>.supabase.co:5432`) or, on an IPv4-only network,
+the **Session pooler** URI (`...pooler.supabase.com:5432`) → `DIRECT_DATABASE_URL`.
+The DB password is embedded in those URIs. Set both in `apps/api/.env`;
+`apps/jobs/.env` needs only `DATABASE_URL`; `packages/db/.env` needs
+`DIRECT_DATABASE_URL`. **Local now, DigitalOcean later:** on DO set the same two
+vars (plus `DATABASE_SSL` left unset) as service env — nothing else changes; the
+image entrypoint's `db:setup` will migrate over `DIRECT_DATABASE_URL`.
 
 ## 3. Auth
 
