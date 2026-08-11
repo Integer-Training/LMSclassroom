@@ -54,7 +54,10 @@ function runPrettier(filePaths) {
     const chunk = filePaths.slice(index, index + chunkSize);
     const result = spawnSync('prettier', [prettierMode, '--ignore-unknown', ...chunk], {
       cwd: process.cwd(),
-      stdio: 'inherit'
+      stdio: 'inherit',
+      // shell:true so Windows resolves the prettier.CMD shim (no bare prettier.exe);
+      // without it every commit fails the pre-commit hook on Windows.
+      shell: true
     });
 
     if (result.status !== 0) {

@@ -78,9 +78,10 @@ API sends auth-flow emails itself; everything else goes through the jobs worker 
 
 | Var | Purpose | Stock default | Ours | 🔒 |
 |---|---|---|---|---|
-| `SMTP_HOST` / `SMTP_PORT` | SMTP server (465 = implicit TLS, else STARTTLS enforced) | blank | local: Mailpit (`localhost:1025`); prod: real SMTP | |
-| `SMTP_USER` / `SMTP_PASSWORD` | SMTP auth | blank | per provider (Mailpit: any) | 🔒 |
+| `SMTP_HOST` / `SMTP_PORT` | SMTP server (465 = implicit TLS, else STARTTLS enforced unless `SMTP_ALLOW_INSECURE`) | blank | local: Mailpit (**`127.0.0.1:1025`** — not `localhost`, which resolves to IPv6 `::1`); prod: real SMTP | |
+| `SMTP_USER` / `SMTP_PASSWORD` | SMTP auth (optional when `SMTP_ALLOW_INSECURE=true`) | blank | empty for Mailpit; per provider in prod | 🔒 |
 | `SMTP_SENDER` | From address | blank | our sender | |
+| `SMTP_ALLOW_INSECURE` | **Dev only.** `true` lets nodemailer use an unauthenticated, non-TLS catcher (Mailpit): auth optional, `requireTLS` dropped. Unset = stock behaviour, zero prod impact. Added on the fork (Step 3). | unset | `true` in local api+jobs; **unset on DigitalOcean** | |
 | `ZOHO_TOKEN` | ZeptoMail switch — **leave unset or SMTP is ignored** | unset | unset | 🔒 |
 
 ## 7. Optional integrations (all off-by-default; keep unset unless we opt in)

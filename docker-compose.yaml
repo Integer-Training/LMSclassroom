@@ -41,6 +41,16 @@ services:
       retries: 10
       start_period: 5s
 
+  # Local SMTP catcher for dev: SMTP on 1025, web UI on http://localhost:8025.
+  # Point SMTP_HOST/SMTP_PORT at this to capture auth + notification emails locally.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: cio-mailpit
+    ports:
+      - '127.0.0.1:1025:1025'
+      - '127.0.0.1:8025:8025'
+    restart: unless-stopped
+
   minio:
     image: minio/minio:latest
     container_name: cio-minio

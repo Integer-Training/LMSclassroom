@@ -8,7 +8,12 @@ import nodemailer from 'nodemailer';
 let transporter: Transporter | undefined;
 
 const setupTransporter = async () => {
-  if (!env.SMTP_HOST || !env.SMTP_USER || !env.SMTP_PASSWORD) {
+  // Dev catchers (Mailpit/MailHog) accept mail with no auth and no TLS; opt in
+  // with SMTP_ALLOW_INSECURE=true so those creds/TLS aren't required locally.
+  const allowInsecure = env.SMTP_ALLOW_INSECURE === 'true';
+  const hasAuth = !!env.SMTP_USER && !!env.SMTP_PASSWORD;
+
+  if (!env.SMTP_HOST || (!hasAuth && !allowInsecure)) {
     console.error('SMTP configuration missing');
     return undefined;
   }
@@ -21,11 +26,13 @@ const setupTransporter = async () => {
       host: env.SMTP_HOST,
       port: smtpPort,
       secure: useImplicitTls,
-      requireTLS: !useImplicitTls,
-      auth: {
-        user: env.SMTP_USER,
-        pass: env.SMTP_PASSWORD
-      }
+      requireTLS: !useImplicitTls && !allowInsecure,
+      ...(hasAuth && {
+        auth: {
+          user: env.SMTP_USER,
+          pass: env.SMTP_PASSWORD
+        }
+      })
     });
 
     await transporter.verify();
