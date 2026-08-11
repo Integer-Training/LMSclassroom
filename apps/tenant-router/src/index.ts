@@ -54,11 +54,8 @@ interface Env {
   ASSETS_BUCKET: R2Bucket;
 }
 
-// PostHog first-party proxy: requests to /ingest/* are forwarded to PostHog EU.
-// This makes PostHog cookies first-party (set on the org's domain, not eu.i.posthog.com),
-// eliminating the "third-party cookie" Lighthouse Best Practices deduction.
-const POSTHOG_INGEST_PREFIX = '/ingest';
-const POSTHOG_UPSTREAM = 'eu.i.posthog.com';
+// PostHog telemetry removed for privacy (PearlLMS fork) — the /ingest first-party
+// proxy that forwarded to PostHog EU has been deleted (see the request handler).
 
 const PROXY_PREFIX = '/proxy';
 const AUTH_PREFIX = '/api/auth';
@@ -302,19 +299,6 @@ export default {
     }
     if (url.pathname.startsWith(HLS_PREFIX)) {
       return handleHlsRequest(request, env);
-    }
-
-    // PostHog first-party proxy — strip /ingest prefix and forward to PostHog EU.
-    if (url.pathname === POSTHOG_INGEST_PREFIX || url.pathname.startsWith(`${POSTHOG_INGEST_PREFIX}/`)) {
-      const phUrl = new URL(request.url);
-      phUrl.protocol = 'https:';
-      phUrl.host = POSTHOG_UPSTREAM;
-      phUrl.pathname = url.pathname.slice(POSTHOG_INGEST_PREFIX.length) || '/';
-      return fetch(phUrl.toString(), {
-        method: request.method,
-        headers: request.headers,
-        body: request.body
-      });
     }
 
     const isProxiedApiCall = url.pathname === PROXY_PREFIX || url.pathname.startsWith(`${PROXY_PREFIX}/`);

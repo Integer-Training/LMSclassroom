@@ -13,7 +13,6 @@
 
   onMount(() => {
     if (dev) {
-      localStorage.setItem('umami.disabled', '1');
       return;
     }
 

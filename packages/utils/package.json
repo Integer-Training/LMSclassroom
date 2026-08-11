@@ -25,6 +25,14 @@
       "types": "./dist/senja/index.d.ts",
       "default": "./dist/senja/index.js"
     },
+    "./license": {
+      "types": "./dist/license/index.d.ts",
+      "default": "./dist/license/index.js"
+    },
+    "./license/*": {
+      "types": "./dist/license/*.d.ts",
+      "default": "./dist/license/*.js"
+    },
     "./agent-models": {
       "types": "./dist/agent-models/index.d.ts",
       "default": "./dist/agent-models/index.js"

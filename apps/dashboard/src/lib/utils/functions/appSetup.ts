@@ -1,22 +1,15 @@
 import { PUBLIC_IS_SELFHOSTED } from '$env/static/public';
-import { initPosthog, type PosthogBootstrapUser } from '$lib/utils/services/posthog';
-import { initUmami } from '$lib/utils/services/umami';
+import type { PosthogBootstrapUser } from '$lib/utils/services/posthog';
 import { initUserJot } from '$lib/utils/services/userjot';
 import { licenseApi } from '$features/license/api/license.svelte';
 
-let isTrackingInitialized = false;
+// PostHog + umami telemetry removed for privacy (PearlLMS fork) — the tracking
+// init calls are gone. The setup entry points are kept (callers depend on them)
+// and now only drive the UserJot feedback widget, which is itself disabled when
+// self-hosted (see services/userjot). No analytics client is ever constructed.
 
-function setupTracking(user?: PosthogBootstrapUser) {
-  if (isTrackingInitialized) return;
-  isTrackingInitialized = true;
-
-  initPosthog(user);
-  initUmami();
-}
-
-export function setupAnalytics(user?: PosthogBootstrapUser) {
+export function setupAnalytics(_user?: PosthogBootstrapUser) {
   initUserJot();
-  setupTracking(user);
 }
 
 /** Checks if this is cloud deployment and initializes analytics */
@@ -26,12 +19,10 @@ export function setupCloudAnalytics(user?: PosthogBootstrapUser) {
   }
 }
 
-export function setupAnalyticsBasedOnLicense(user?: PosthogBootstrapUser) {
+export function setupAnalyticsBasedOnLicense(_user?: PosthogBootstrapUser) {
   initUserJot();
 
   if (licenseApi.hasAccess('no-tracking')) {
     return;
   }
-
-  setupTracking(user);
 }

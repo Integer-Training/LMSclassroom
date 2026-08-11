@@ -1,16 +1,6 @@
-import { dev } from '$app/environment';
-import { licenseApi } from '$features/license/api/license.svelte';
+// Umami analytics removed for privacy (PearlLMS fork). The vendor build injected a
+// script from umami.hz.oncws.com on every page. This is now an inert no-op so
+// callers keep compiling but no analytics script is ever loaded. Do not
+// reintroduce the remote script.
 
-const UMAMI_WEBSITE_ID = '80a9544a-4dda-4c91-b62f-b6be7a8a3b5c';
-
-export const initUmami = (): void => {
-  if (dev || licenseApi.hasAccess('no-tracking')) return;
-
-  const script = document.createElement('script');
-  script.defer = true;
-  script.src = 'https://umami.hz.oncws.com/script.js';
-  script.dataset.websiteId = UMAMI_WEBSITE_ID;
-  const nonce = document.querySelector('script[nonce]')?.getAttribute('nonce');
-  if (nonce) script.setAttribute('nonce', nonce);
-  document.head.appendChild(script);
-};
+export const initUmami = (): void => {};

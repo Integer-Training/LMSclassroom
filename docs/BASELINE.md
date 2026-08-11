@@ -124,3 +124,73 @@ not fixed (per Step 3 instruction to record, not fix, pre-existing failures).
   affected; API/dashboard/emails/maintenance are fine. Not exercised by the walkthrough.
 - Redis "Connection timeout (reconnecting)" lines appear once at worker startup then
   settle to "ready" — cosmetic reconnect noise, all workers report ready.
+
+## Egress audit (Phase 0, Step 4 — after the privacy patches)
+
+Ran 2026-08-11 after removing PostHog + umami telemetry and the
+`enterprise-api.classroomio.dev` phone-home. Goal: prove no telemetry/usage data
+leaves our infrastructure. Result: **PASS — zero traffic to any swept domain.**
+
+Swept domains: `*.posthog.com`, `eu.i.posthog.com`, `app.posthog.com`,
+`umami.hz.oncws.com`, `enterprise-api.classroomio.dev`.
+
+**Method 1 — server-side runtime probe (API + jobs).** Attached a temporary
+outbound-request probe *outside the repo* (a `--import` preload via `NODE_OPTIONS`
+subscribing to undici's `undici:request:create` diagnostics channel + a global
+`fetch` wrapper), logging every outbound origin+path. It attached to all 24 tsx
+worker processes. Started the full stack, signed in as a real user, and exercised
+the endpoints that used to trigger the phone-home — `GET /account`,
+`GET /license/features`, `GET /session` (all 200) plus workspace/org/course calls.
+**Result:** the probe log recorded ZERO outbound HTTP requests during the exercise
+(only the "probe attached" markers), and zero hits for any swept domain. The probe
+and its logs live only in the scratch dir and were removed afterward — nothing in
+the repo or its runtime config references them.
+
+**Method 2 — built client-bundle scan (dashboard).** The Playwright browser
+network tab was unavailable this session, so instead of proving "no request fired
+once," we proved the stronger "the code isn't shipped at all": grepped the compiled
+browser bundle (`apps/dashboard/build/client` + `.svelte-kit/output/client`,
+executable `.js` only). **Result:** 0 occurrences of `posthog.com`, `i.posthog`,
+`posthog.init`, `posthog.capture`, `hz.oncws.com`, or any posthog-js library code.
+The only `posthog`/`umami` strings remaining are in `.js.map` source maps — the
+retained no-op function names + the removal comments. (One `rrweb` hit in the app
+entry is Sentry's session-replay canvas patch — `__rrweb_original__` — not posthog;
+Sentry stays off unless a DSN is set.)
+
+**Method 3 — phone-home unit test.** `apps/api/src/__tests__/no-phone-home.test.ts`
+spies on global `fetch`, calls `getLicenseStatus()` / `isFeatureLicensed()` /
+`isFeatureLicensedSync()`, and asserts fetch is never called and all features are
+licensed. Passes. This locks in "the phone-home cannot fire" (removed outright, not
+flag-gated).
+
+**Method 4 — repo-wide source grep.** `posthog|umami|enterprise-api.classroomio.dev|
+hz.oncws.com` across `apps/**` + `packages/**` (excl. node_modules/dist/build). Every
+remaining hit is inert: no-op function-name imports (kept for the smallest safe diff),
+removal comments, or the course-app scaffolding CLI's demo template that is literally
+*named* "posthog" (`packages/course-app/templates.json`, marketing content — not
+analytics). No live init, host, or fetch remains.
+
+**Residual egress NOT in this step's scope (documented, dead for our self-hosted
+config; recommended follow-ups):** UserJot (`cdn.userjot.com`, PII-capable) is
+hard-disabled when `PUBLIC_IS_SELFHOSTED=true`; Senja (`widget.senja.io`) is gated on
+the `no-tracking` feature, now always licensed → off; Tinybird needs an unset
+`TINYBIRD_TOKEN`; Sentry needs an unset `SENTRY_DSN`/`PUBLIC_SENTRY_DSN`. **Recommend
+a follow-up to hard-remove UserJot** (it transmits id/email/name/avatar and is only
+env-flag-gated, not removed outright).
+
+## Privacy patch summary (Step 4 changes)
+
+- Dashboard `posthog` + `umami` service modules → inert no-ops (no client ever
+  constructed); analytics init stripped from `appSetup.ts`; `posthog.reset()` and the
+  direct `posthog-js` import removed from `logout.ts`; posthog/umami hosts removed from
+  the CSP allowlist (`csp-domains.js`).
+- API `license.ts` → `fetchLicenseFromApi` (the sole `enterprise-api.classroomio.dev`
+  caller) **deleted**; `getLicenseStatus` returns all features locally with no network
+  call (we own this hard fork — no external license server).
+- Non-deployed apps cleaned so the grep is truly clean: course-app layout posthog init
+  removed; website `posthog-node` client → inert stub + umami `<script>` removed from
+  `app.html`; tenant-router `/ingest` → PostHog proxy route removed.
+- Dependencies removed: `posthog-js` (dashboard, course-app), `posthog-node` (website).
+- Packaging fix: added the missing `./license` subpath export to `@cio/utils`
+  `package.json` (imported by 5 source files but undeclared — only resolved under tsx,
+  not Node/vitest). Makes the regression test loadable; strict correctness improvement.
