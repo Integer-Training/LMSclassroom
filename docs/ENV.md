@@ -63,21 +63,31 @@ image entrypoint's `db:setup` will migrate over `DIRECT_DATABASE_URL`.
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth login (social login disabled when absent) | blank | unset for now | 🔒 |
 | `LICENSE_KEY` | Enterprise license (SSO, token-auth, no-tracking) — sent to enterprise-api.classroomio.dev | blank | unset; the license call itself gets patched in Step 4 | 🔒 |
 
-## 4. Storage (Supabase Storage S3-compatible for us)
+## 4. Storage (Supabase Storage, S3-compatible, for us)
 
-Read by `packages/core/src/config/storage.ts` (API) and `apps/jobs/src/config/storage.ts` (worker).
-Preference: `OBJECT_STORAGE_*` → Cloudflare R2 fallback → throw.
+Read by `packages/core/src/config/storage.ts` (API) and `apps/jobs/src/config/storage.ts`
+(worker) — it's a generic `@aws-sdk/client-s3` client, so this is pure configuration (no
+adapter). Preference: `OBJECT_STORAGE_*` → Cloudflare R2 fallback → throw.
 
-| Var | Purpose | Stock default | Ours | 🔒 |
-|---|---|---|---|---|
-| `OBJECT_STORAGE_ENDPOINT` | S3 endpoint (server-side) | `http://minio:9000` | Supabase Storage S3 endpoint (`https://<ref>.storage.supabase.co/storage/v1/s3`) | |
-| `OBJECT_STORAGE_PUBLIC_ENDPOINT` | Browser-reachable endpoint for presigned URLs | `http://localhost:9000` | same Supabase S3 endpoint (public) | |
-| `OBJECT_STORAGE_ACCESS_KEY_ID` / `OBJECT_STORAGE_SECRET_ACCESS_KEY` | S3 creds | minioadmin | Supabase S3 access keys (project settings → Storage → S3) | 🔒 |
-| `OBJECT_STORAGE_REGION` | S3 region | unset | Supabase project region | |
-| `OBJECT_STORAGE_FORCE_PATH_STYLE` | Path-style addressing | `true` | `true` (Supabase S3 is path-style) | |
-| `OBJECT_STORAGE_BUCKET_VIDEOS/DOCUMENTS/MEDIA` | Bucket names | videos/documents/media | same names, created in Supabase | |
-| `OBJECT_STORAGE_MEDIA_PUBLIC_BASE_URL` | Public base for media bucket | `http://localhost:9000/media` | Supabase public bucket URL | |
-| `MINIO_ROOT_USER/PASSWORD` | MinIO container only | minioadmin | unused (no MinIO) | 🔒 |
+**Bucket privacy (Step 6):** `documents` and `videos` are **private** — every read/write
+goes through the app via S3 **presigned URLs** (`packages/core/src/utils/s3.ts`); an
+unauthenticated direct object URL is denied. `media` is **public-read** (course images,
+avatars, thumbnails, OG images) and served via `OBJECT_STORAGE_MEDIA_PUBLIC_BASE_URL` — this
+mirrors the stock layout (stock MinIO also made only `media` public) and keeps image
+rendering working without a signed-URL refactor. Coursework `.docx` and lesson attachments
+live in the **private `documents`** bucket. *(Follow-up if avatar/image privacy is ever
+required: route media through signed URLs too.)*
+
+| Var | Purpose | Ours | 🔒 |
+|---|---|---|---|
+| `OBJECT_STORAGE_ENDPOINT` | S3 endpoint (server-side) | `https://<ref>.storage.supabase.co/storage/v1/s3` | |
+| `OBJECT_STORAGE_PUBLIC_ENDPOINT` | Endpoint for presigned URLs (browser-reachable) | same Supabase S3 endpoint | |
+| `OBJECT_STORAGE_ACCESS_KEY_ID` / `OBJECT_STORAGE_SECRET_ACCESS_KEY` | S3 creds | Supabase S3 access keys (Project Settings → Storage → S3 Access Keys) | 🔒 |
+| `OBJECT_STORAGE_REGION` | S3 region (SigV4) | project region, e.g. `eu-west-1` | |
+| `OBJECT_STORAGE_FORCE_PATH_STYLE` | Path-style addressing | **`true`** — required for Supabase S3 | |
+| `OBJECT_STORAGE_BUCKET_VIDEOS/DOCUMENTS/MEDIA` | Bucket names | `videos`/`documents`/`media` (created in Supabase; videos+documents private, media public) | |
+| `OBJECT_STORAGE_MEDIA_PUBLIC_BASE_URL` | Public base for the media bucket | `https://<ref>.storage.supabase.co/storage/v1/object/public/media` | |
+| `MINIO_ROOT_USER/PASSWORD` | MinIO container only | unused — MinIO retired (see compose comment) | 🔒 |
 | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ACCESS_KEY`, `CLOUDFLARE_SECRET_ACCESS_KEY`, `CLOUDFLARE_BUCKET_DOMAIN`, `CLOUDFLARE_IMAGE_BUCKET_DOMAIN`, `CLOUDFLARE_BUCKET_ID` | R2 fallback storage | unset | unused | 🔒 |
 | `CLOUDFLARE_RENDERING_API_KEY` | CF browser-rendering (certificate PDFs) | unset | unused (certificates out of scope) | 🔒 |
 | `HLS_SIGNING_SECRET` | Signs `cio_hls` playback cookie (pairs with tenant-router) | blank | unset (HLS disabled when self-hosted anyway) | 🔒 |

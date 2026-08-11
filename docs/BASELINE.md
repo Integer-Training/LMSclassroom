@@ -220,3 +220,29 @@ prefix for this project is `aws-1-eu-west-1` (not `aws-0`) — verified empirica
 - **Local Postgres container:** retired. `docker-compose.yaml` carries a prominent comment
   marking `postgres` unused (kept only because api/jobs `depends_on` it for the image deploy
   graph, rewritten in the DO step). Local bring-up now omits `postgres` from the `up` list.
+
+## Step 6 — Supabase Storage repoint (verification)
+
+Ran 2026-08-11. Object storage moved off MinIO onto **Supabase Storage** (same project
+`cvtmymxxjgjshrzsjxnj`). The storage client is a generic `@aws-sdk/client-s3`, so this was
+**pure configuration — no code/adapter change**; only env + bucket creation + docs.
+
+- **Buckets** created in Supabase, mirroring the stock layout: `documents` (**private**),
+  `videos` (**private**), `media` (**public-read**). Coursework `.docx` + lesson attachments
+  live in the private `documents` bucket, served via presigned URLs. `media` stays public-read
+  for images/avatars/thumbnails (served via `OBJECT_STORAGE_MEDIA_PUBLIC_BASE_URL`) — matches
+  stock (MinIO also made only `media` public) and avoids a signed-URL refactor of image serving.
+- **Config:** endpoint `https://<ref>.storage.supabase.co/storage/v1/s3`, region `eu-west-1`,
+  `OBJECT_STORAGE_FORCE_PATH_STYLE=true`, Supabase S3 access keys. API logs
+  `[storage] Using S3-compatible object storage`.
+- **Walkthrough (through the app):** login → `POST /course/presign/document/upload` issued a
+  Supabase presigned PUT → uploaded a `.docx` → object confirmed in the Supabase `documents`
+  bucket (67 B, correct MIME, via Supabase MCP) → `POST /course/presign/document/download`
+  issued a presigned GET → **served back HTTP 200 with matching content** → the raw
+  unauthenticated public URL returned **HTTP 400 (denied — bucket private)**. A direct S3
+  roundtrip probe (PUT/presigned-GET/unauth-deny/DELETE) corroborated before the app test.
+- **MinIO:** retired. `docker-compose.yaml` comment marks it unused; it was already behind the
+  `minio` compose profile so it never starts by default. Local dev now brings up redis + mailpit
+  only (DB and storage are both external Supabase).
+- **Tests:** no storage tests exist in the suite; none hardwire storage. 74 pass / 6 pre-existing
+  F1 load failures — no regression. No heavy mocks added (Phase 0 guidance).

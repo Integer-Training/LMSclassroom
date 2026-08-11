@@ -58,6 +58,10 @@ services:
       - '127.0.0.1:8025:8025'
     restart: unless-stopped
 
+  # NOTE (PearlLMS): object storage is now external — Supabase Storage (see docs/ENV.md,
+  # §4). MinIO is RETIRED and no longer used for app files; it stays here only behind the
+  # `minio` compose profile (so it never starts unless explicitly requested) for reference.
+  # Local dev points OBJECT_STORAGE_* at Supabase and brings up redis + mailpit only.
   minio:
     image: minio/minio:latest
     container_name: cio-minio
