@@ -2,10 +2,18 @@ import {
   ZChangeUserRole,
   ZChangeUserStatus,
   ZCreateUser,
+  ZLearnerProfile,
   ZListUsersQuery,
   ZUserMemberParam
 } from '@cio/utils/validation/organization';
-import { changeOrgUserRole, changeOrgUserStatus, createOrgUser, listOrgUsers } from '@api/services/organization/users';
+import {
+  changeOrgUserRole,
+  changeOrgUserStatus,
+  createOrgUser,
+  getLearnerProfile,
+  listOrgUsers,
+  updateLearnerProfile
+} from '@api/services/organization/users';
 
 import { Hono } from '@api/utils/hono';
 import type { Actor } from '@cio/db/actor';
@@ -71,6 +79,35 @@ export const usersRouter = new Hono()
         return c.json({ success: true, data }, 200);
       } catch (error) {
         return handleError(c, error, 'Failed to change user status');
+      }
+    }
+  )
+  // Enrolment PII — ADMIN ONLY (Tutor/Manager/Learner denied by requireAdmin, incl. a learner's own).
+  .get('/:memberId/profile', requireAdmin, zValidator('param', ZUserMemberParam), async (c) => {
+    try {
+      const orgId = c.req.header('cio-org-id')!;
+      const { memberId } = c.req.valid('param');
+      const data = await getLearnerProfile(orgId, memberId);
+      return c.json({ success: true, data }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to load learner profile');
+    }
+  })
+  .put(
+    '/:memberId/profile',
+    requireAdmin,
+    zValidator('param', ZUserMemberParam),
+    zValidator('json', ZLearnerProfile),
+    async (c) => {
+      try {
+        const orgId = c.req.header('cio-org-id')!;
+        const actor = c.get('actor') as Actor;
+        const { memberId } = c.req.valid('param');
+        const input = c.req.valid('json');
+        const data = await updateLearnerProfile(orgId, actor, memberId, input);
+        return c.json({ success: true, data }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to update learner profile');
       }
     }
   );

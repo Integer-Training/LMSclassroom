@@ -1,4 +1,5 @@
 export * from './organization';
+export * from './learner-profile';
 export * from './account';
 export * from './query-errors';
 export * from './auth';

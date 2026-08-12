@@ -57,6 +57,13 @@
       "when": 1786539727809,
       "tag": "0007_cute_shocker",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786552011641,
+      "tag": "0008_ambiguous_thundra",
+      "breakpoints": true
     }
   ]
 }

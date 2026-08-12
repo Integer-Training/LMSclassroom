@@ -22,6 +22,11 @@ import {
   getUserOrgRolesMap,
   type GetOrganizationUsersOptions
 } from '@cio/db/queries/organization';
+import {
+  getLearnerProfileByUserId,
+  upsertLearnerProfile,
+  type LearnerProfileFields
+} from '@cio/db/queries/learner-profile';
 import { updateOrganizationMemberById } from '@cio/db/queries/organization/invite';
 import { updateProfile } from '@cio/db/queries/auth';
 import { getProfileById } from '@cio/db/queries/auth';
@@ -195,6 +200,74 @@ async function currentMemberRoleId(orgId: string, profileId: string | null): Pro
   if (!profileId) return null;
   const roles = await getUserOrgRolesMap(profileId);
   return roles[orgId] ?? null;
+}
+
+// ── Enrolment PII (Admin-only) ───────────────────────────────────────────────────────────────
+// The nine PII fields, and their snake_case audit names. PII VALUES are never logged or put in
+// audit metadata — only the NAMES of fields that changed.
+const PII_FIELDS: Array<{ key: keyof LearnerProfileFields; name: string }> = [
+  { key: 'dateOfBirth', name: 'date_of_birth' },
+  { key: 'niNumber', name: 'ni_number' },
+  { key: 'gender', name: 'gender' },
+  { key: 'ethnicity', name: 'ethnicity' },
+  { key: 'disability', name: 'disability' },
+  { key: 'address', name: 'address' },
+  { key: 'aebRegion', name: 'aeb_region' },
+  { key: 'collegeRef', name: 'college_ref' },
+  { key: 'notes', name: 'notes' }
+];
+
+/** Resolve a member to its userId (throws 404 if absent or profile-less). */
+async function resolveMemberUserId(orgId: string, memberId: number): Promise<string> {
+  const member = await resolveMember(orgId, memberId);
+  if (!member.profileId) {
+    throw new AppError('This member has no account yet', ErrorCodes.NOT_FOUND, 404);
+  }
+  return member.profileId;
+}
+
+/** Admin-only: read a learner's PII (all-null shape when no row exists yet). */
+export async function getLearnerProfile(orgId: string, memberId: number): Promise<LearnerProfileFields> {
+  const userId = await resolveMemberUserId(orgId, memberId);
+  const row = await getLearnerProfileByUserId(userId);
+  return {
+    dateOfBirth: row?.dateOfBirth ?? null,
+    niNumber: row?.niNumber ?? null,
+    gender: row?.gender ?? null,
+    ethnicity: row?.ethnicity ?? null,
+    disability: row?.disability ?? null,
+    address: row?.address ?? null,
+    aebRegion: row?.aebRegion ?? null,
+    collegeRef: row?.collegeRef ?? null,
+    notes: row?.notes ?? null
+  };
+}
+
+/**
+ * Admin-only: upsert a learner's PII and audit `profile.updated` with the NAMES of the fields that
+ * actually changed (never the values). PII values are not logged.
+ */
+export async function updateLearnerProfile(orgId: string, actor: Actor, memberId: number, input: LearnerProfileFields) {
+  const userId = await resolveMemberUserId(orgId, memberId);
+  const existing = await getLearnerProfileByUserId(userId);
+
+  const changedFields = PII_FIELDS.filter(({ key }) => (existing?.[key] ?? null) !== (input[key] ?? null)).map(
+    ({ name }) => name
+  );
+
+  await upsertLearnerProfile(userId, input);
+
+  if (changedFields.length > 0) {
+    await recordAudit({
+      actor,
+      action: AUDIT_ACTIONS.PROFILE_UPDATED,
+      entityType: 'profile',
+      entityId: userId,
+      metadata: { fields: changedFields } // field NAMES only — never values
+    });
+  }
+
+  return { userId, changed: changedFields.length };
 }
 
 export const _roleName = roleIdToName; // re-export convenience (kept for callers/tests)

@@ -10,7 +10,7 @@
   import { Search } from '@cio/ui/custom/search';
   import EllipsisVerticalIcon from '@lucide/svelte/icons/ellipsis-vertical';
   import { ROLE, roleIdToName } from '@cio/utils/constants';
-  import { usersApi, type OrgUser } from '$features/users/api/users.svelte';
+  import { usersApi, type OrgUser, type LearnerProfile, EMPTY_LEARNER_PROFILE } from '$features/users/api/users.svelte';
 
   // Admin-only user management (Phase 1 Step 7). The org/[slug] layout enforces requireAdmin
   // server-side, and every API endpoint is requireAdmin — this UI is a courtesy on top.
@@ -44,6 +44,23 @@
   // Deactivate/reactivate confirm modal
   let statusOpen = $state(false);
   let statusTarget = $state<OrgUser | null>(null);
+
+  // Enrolment PII (Admin-only) modal
+  let profileOpen = $state(false);
+  let profileTarget = $state<OrgUser | null>(null);
+  let profileForm = $state<LearnerProfile>({ ...EMPTY_LEARNER_PROFILE });
+  let profileLoading = $state(false);
+  const PII_FIELDS: Array<{ key: keyof LearnerProfile; label: string; type: 'date' | 'text' | 'textarea' }> = [
+    { key: 'dateOfBirth', label: 'Date of birth', type: 'date' },
+    { key: 'niNumber', label: 'NI number', type: 'text' },
+    { key: 'gender', label: 'Gender', type: 'text' },
+    { key: 'ethnicity', label: 'Ethnicity', type: 'text' },
+    { key: 'disability', label: 'Disability', type: 'text' },
+    { key: 'address', label: 'Address', type: 'text' },
+    { key: 'aebRegion', label: 'AEB region', type: 'text' },
+    { key: 'collegeRef', label: 'College ref', type: 'text' },
+    { key: 'notes', label: 'Notes', type: 'textarea' }
+  ];
 
   onMount(() => usersApi.list());
 
@@ -81,6 +98,21 @@
   function openStatus(u: OrgUser) {
     statusTarget = u;
     statusOpen = true;
+  }
+
+  async function openProfile(u: OrgUser) {
+    profileTarget = u;
+    profileForm = { ...EMPTY_LEARNER_PROFILE };
+    profileOpen = true;
+    profileLoading = true;
+    const loaded = await usersApi.getProfile(u.memberId);
+    if (loaded) profileForm = { ...EMPTY_LEARNER_PROFILE, ...loaded };
+    profileLoading = false;
+  }
+  async function submitProfile() {
+    if (!profileTarget) return;
+    const ok = await usersApi.saveProfile(profileTarget.memberId, profileForm);
+    if (ok) profileOpen = false;
   }
   async function submitStatus() {
     if (!statusTarget) return;
@@ -143,6 +175,7 @@
                     <EllipsisVerticalIcon class="ui:size-4 ui:text-muted-foreground" />
                   </DropdownMenu.Trigger>
                   <DropdownMenu.Content align="end">
+                    <DropdownMenu.Item onclick={() => openProfile(u)}>Edit profile (PII)</DropdownMenu.Item>
                     <DropdownMenu.Item onclick={() => openRole(u)}>Change role</DropdownMenu.Item>
                     {#if u.status === 'DEACTIVATED'}
                       <DropdownMenu.Item onclick={() => openStatus(u)}>Reactivate</DropdownMenu.Item>
@@ -272,6 +305,48 @@
       >
         {statusTarget?.status === 'DEACTIVATED' ? 'Reactivate' : 'Deactivate'}
       </Button>
+    </div>
+  </Dialog.Content>
+</Dialog.Root>
+
+<!-- Enrolment PII (Admin-only). Loaded on open via the requireAdmin endpoint; never in any non-admin payload. -->
+<Dialog.Root bind:open={profileOpen}>
+  <Dialog.Content class="max-h-[85vh] w-full max-w-lg overflow-y-auto">
+    <Dialog.Header>
+      <Dialog.Title>Learner profile (PII)</Dialog.Title>
+      <Dialog.Description
+        >{profileTarget?.email ?? ''} — Admin only. Special-category fields included.</Dialog.Description
+      >
+    </Dialog.Header>
+    <div class="space-y-3">
+      {#if profileLoading}
+        <p class="text-muted-foreground text-sm">Loading…</p>
+      {:else}
+        {#each PII_FIELDS as f (f.key)}
+          <div class="space-y-1">
+            <label for={`pii-${f.key}`} class="text-sm font-medium">{f.label}</label>
+            {#if f.type === 'textarea'}
+              <textarea
+                id={`pii-${f.key}`}
+                class="border-input bg-background focus-visible:ring-ring min-h-[72px] w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-1 focus-visible:outline-none"
+                value={profileForm[f.key] ?? ''}
+                oninput={(e) => (profileForm[f.key] = e.currentTarget.value || null)}
+              ></textarea>
+            {:else}
+              <Input
+                id={`pii-${f.key}`}
+                type={f.type === 'date' ? 'date' : 'text'}
+                value={profileForm[f.key] ?? ''}
+                oninput={(e) => (profileForm[f.key] = e.currentTarget.value || null)}
+              />
+            {/if}
+          </div>
+        {/each}
+      {/if}
+      <div class="flex justify-end gap-2 pt-2">
+        <Button variant="outline" onclick={() => (profileOpen = false)} disabled={usersApi.isLoading}>Cancel</Button>
+        <Button onclick={submitProfile} loading={usersApi.isLoading} disabled={profileLoading}>Save profile</Button>
+      </div>
     </div>
   </Dialog.Content>
 </Dialog.Root>

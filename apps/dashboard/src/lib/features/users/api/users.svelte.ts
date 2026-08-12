@@ -12,6 +12,31 @@ export interface OrgUser {
   verified: boolean;
 }
 
+/** Enrolment PII — Admin-only. Loaded/saved only through the requireAdmin endpoints below. */
+export interface LearnerProfile {
+  dateOfBirth: string | null;
+  niNumber: string | null;
+  gender: string | null;
+  ethnicity: string | null;
+  disability: string | null;
+  address: string | null;
+  aebRegion: string | null;
+  collegeRef: string | null;
+  notes: string | null;
+}
+
+export const EMPTY_LEARNER_PROFILE: LearnerProfile = {
+  dateOfBirth: null,
+  niNumber: null,
+  gender: null,
+  ethnicity: null,
+  disability: null,
+  address: null,
+  aebRegion: null,
+  collegeRef: null,
+  notes: null
+};
+
 type ListRequest = typeof classroomio.organization.users.$get;
 type CreateRequest = typeof classroomio.organization.users.$post;
 
@@ -93,6 +118,35 @@ class UsersApi extends BaseApiWithErrors {
         snackbar.success(status === 'DEACTIVATED' ? 'User deactivated' : 'User reactivated');
         this.list();
       },
+      onError: (result) => {
+        if (typeof result === 'string') snackbar.error(result);
+        else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
+      }
+    });
+  }
+
+  // ── Enrolment PII (Admin-only) ──────────────────────────────────────────────
+  async getProfile(memberId: number): Promise<LearnerProfile | undefined> {
+    const res = await this.execute<(typeof classroomio.organization.users)[':memberId']['profile']['$get']>({
+      requestFn: () =>
+        classroomio.organization.users[':memberId'].profile.$get({ param: { memberId: String(memberId) } }),
+      logContext: 'loading learner profile',
+      onError: (result) => {
+        if (typeof result === 'string') snackbar.error(result);
+      }
+    });
+    return res?.data as LearnerProfile | undefined;
+  }
+
+  async saveProfile(memberId: number, profile: LearnerProfile) {
+    return this.execute<(typeof classroomio.organization.users)[':memberId']['profile']['$put']>({
+      requestFn: () =>
+        classroomio.organization.users[':memberId'].profile.$put({
+          param: { memberId: String(memberId) },
+          json: profile
+        }),
+      logContext: 'saving learner profile',
+      onSuccess: () => snackbar.success('Profile saved'),
       onError: (result) => {
         if (typeof result === 'string') snackbar.error(result);
         else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);

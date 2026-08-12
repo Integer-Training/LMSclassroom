@@ -85,6 +85,24 @@ already-provisioned user.
 
 ---
 
+## 1.3 Learner PII — Admin-only (Step 8)
+
+Enrolment PII lives in its own 1:1 table **`learner_profile`** (schema.ts; `user_id` unique FK →
+`profile.id`), deliberately separate from `profile` so it can never be joined into a general
+serializer. Nine nullable fields: `date_of_birth`, `ni_number`, `gender`, `ethnicity`, `disability`,
+`address`, `aeb_region`, `college_ref`, `notes`. **`ethnicity` and `disability` are special-category
+data.**
+
+**Decision (Phase 1): Admin read/write ONLY. Tutor, Manager and Learner get nothing — including a
+learner's own record.** Least-privilege: this data exists so staff can administer learners and feeds
+nothing else in the platform. The owner may widen access later per feature need (e.g. a tutor seeing
+an allocated learner's basic details in Phase 3) — that is a future, explicit decision.
+
+Enforcement: the only readers/writers are `GET`/`PUT /organization/users/:memberId/profile`
+(both `requireAdmin`); there is no self-service endpoint. Edits are audited as **`profile.updated`**
+with the **changed field NAMES only** (`metadata: { fields: [...] }`), never the values. PII never
+appears in logs, audit metadata, non-admin responses, or non-admin client bundles.
+
 ## 2. Current authz model (how it works today)
 
 **Session → user.**

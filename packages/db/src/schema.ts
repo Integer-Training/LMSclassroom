@@ -3852,3 +3852,34 @@ export const auditEvent = pgTable(
     index('idx_audit_event_occurred_at').on(table.occurredAt)
   ]
 );
+
+// PearlLMS Phase 1: enrolment PII, isolated in its OWN 1:1 table so it can never be joined into a
+// general serializer. Admin read/write only (Tutor/Manager/Learner get nothing — least privilege;
+// ethnicity + disability are special-category data). Edits audited as `profile.updated` (field
+// names only). This data feeds nothing else in the platform.
+export const learnerProfile = pgTable(
+  'learner_profile',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    userId: uuid('user_id').notNull(),
+    dateOfBirth: date('date_of_birth', { mode: 'string' }),
+    niNumber: text('ni_number'),
+    gender: text(),
+    ethnicity: text(),
+    disability: text(),
+    address: text(),
+    aebRegion: text('aeb_region'),
+    collegeRef: text('college_ref'),
+    notes: text(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [profile.id],
+      name: 'learner_profile_user_id_fkey'
+    }).onDelete('cascade'),
+    unique('learner_profile_user_id_key').on(table.userId)
+  ]
+);

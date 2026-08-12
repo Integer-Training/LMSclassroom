@@ -54,4 +54,26 @@ describe('user-management audit metadata is id/enum-only (no PII)', () => {
     expect(stripped.sort()).toEqual(['email', 'name']);
     expect(clean).toEqual({ role: 3 });
   });
+
+  it('profile.updated — changed-field NAMES only, no PII values', () => {
+    const { clean, stripped } = sanitizeAuditMetadata({ fields: ['ni_number', 'address', 'ethnicity'] });
+    expect(stripped).toEqual([]); // a field-name array is kept
+    const row = buildAuditRow({
+      actor: admin,
+      action: AUDIT_ACTIONS.PROFILE_UPDATED,
+      entityType: 'profile',
+      entityId: 'u-9',
+      metadata: { fields: ['ni_number', 'address', 'ethnicity'] }
+    });
+    expect(row.action).toBe('profile.updated');
+    expect(row.entityType).toBe('profile');
+    expect(row.metadata).toEqual({ fields: ['ni_number', 'address', 'ethnicity'] });
+    expect(clean).toEqual({ fields: ['ni_number', 'address', 'ethnicity'] });
+  });
+
+  it('a raw NI number as a metadata VALUE is stripped (belt-and-suspenders)', () => {
+    const { clean, stripped } = sanitizeAuditMetadata({ fields: ['ni_number'], ni_number: 'QQ123456C' });
+    expect(stripped).toEqual(['ni_number']);
+    expect(clean).toEqual({ fields: ['ni_number'] });
+  });
 });

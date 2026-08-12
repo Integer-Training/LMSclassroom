@@ -36,3 +36,33 @@ export const ZChangeUserStatus = z.object({
   status: ZUserStatus
 });
 export type TChangeUserStatus = z.infer<typeof ZChangeUserStatus>;
+
+// Enrolment PII (Admin-only). Light validation only: trim strings, empty → null, DOB is a date.
+// No format rules on NI number etc. (deliberately not over-engineered).
+const nullableText = z
+  .string()
+  .trim()
+  .optional()
+  .nullable()
+  .transform((v) => (v && v.length > 0 ? v : null));
+
+const nullableDate = z
+  .string()
+  .trim()
+  .optional()
+  .nullable()
+  .transform((v) => (v && v.length > 0 ? v : null))
+  .refine((v) => v === null || /^\d{4}-\d{2}-\d{2}$/.test(v), 'Date of birth must be YYYY-MM-DD');
+
+export const ZLearnerProfile = z.object({
+  dateOfBirth: nullableDate,
+  niNumber: nullableText,
+  gender: nullableText,
+  ethnicity: nullableText,
+  disability: nullableText,
+  address: nullableText,
+  aebRegion: nullableText,
+  collegeRef: nullableText,
+  notes: nullableText
+});
+export type TLearnerProfileInput = z.infer<typeof ZLearnerProfile>;
