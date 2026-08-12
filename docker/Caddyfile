@@ -1,0 +1,9 @@
+# PearlLMS reverse proxy (Shape A). Caddy terminates TLS (auto Let's Encrypt for
+# {$APP_DOMAIN}) and forwards all traffic to the dashboard container. The dashboard's
+# SvelteKit server proxies /proxy/* and /api/auth/* to the api over the internal Docker
+# network (PRIVATE_SERVER_URL), so only the dashboard is exposed here.
+
+{$APP_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy dashboard:3082
+}

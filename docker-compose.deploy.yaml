@@ -1,0 +1,163 @@
+# PearlLMS production deploy (Shape A: DigitalOcean droplet + docker compose + Caddy).
+#
+# Runs dashboard + api + jobs + Redis on one droplet, fronted by Caddy for automatic
+# HTTPS (Let's Encrypt). Postgres and object storage are EXTERNAL (Supabase) — there is
+# no local postgres/minio here. All values come from a droplet-side `.env` (gitignored);
+# see .env.deploy.example and docs/DEPLOY.md. Build is from source so the deployed code
+# equals the pushed source (AGPL sync rule).
+#
+#   docker compose -f docker-compose.deploy.yaml up -d --build
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: pearl-redis
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: pearl-api
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3081/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    environment:
+      NODE_ENV: production
+      PORT: 3081
+      PUBLIC_IS_SELFHOSTED: 'true'
+      # Public app URL (https). Used for auth baseURL, email links, trusted origins.
+      PUBLIC_SERVER_URL: ${PUBLIC_APP_URL:?set PUBLIC_APP_URL to your https app URL}
+      DASHBOARD_ORIGIN: ${PUBLIC_APP_URL:?set PUBLIC_APP_URL}
+      TRUSTED_ORIGINS: ${PUBLIC_APP_URL:?set PUBLIC_APP_URL}
+      # Supabase Postgres: runtime over the TRANSACTION POOLER (6543); the api entrypoint
+      # runs db:setup migrations over the DIRECT/session connection (5432) — both required.
+      DATABASE_URL: ${DATABASE_URL:?set the Supabase transaction-pooler URL (6543)}
+      DIRECT_DATABASE_URL: ${DIRECT_DATABASE_URL:?set the Supabase direct/session URL (5432) for migrations}
+      REDIS_URL: redis://redis:6379
+      # Supabase Storage (S3-compatible)
+      OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT:?}
+      OBJECT_STORAGE_PUBLIC_ENDPOINT: ${OBJECT_STORAGE_PUBLIC_ENDPOINT:?}
+      OBJECT_STORAGE_REGION: ${OBJECT_STORAGE_REGION:?}
+      OBJECT_STORAGE_ACCESS_KEY_ID: ${OBJECT_STORAGE_ACCESS_KEY_ID:?}
+      OBJECT_STORAGE_SECRET_ACCESS_KEY: ${OBJECT_STORAGE_SECRET_ACCESS_KEY:?}
+      OBJECT_STORAGE_FORCE_PATH_STYLE: 'true'
+      OBJECT_STORAGE_BUCKET_VIDEOS: ${OBJECT_STORAGE_BUCKET_VIDEOS:-videos}
+      OBJECT_STORAGE_BUCKET_DOCUMENTS: ${OBJECT_STORAGE_BUCKET_DOCUMENTS:-documents}
+      OBJECT_STORAGE_BUCKET_MEDIA: ${OBJECT_STORAGE_BUCKET_MEDIA:-media}
+      OBJECT_STORAGE_MEDIA_PUBLIC_BASE_URL: ${OBJECT_STORAGE_MEDIA_PUBLIC_BASE_URL:?}
+      # Real SMTP (production)
+      SMTP_HOST: ${SMTP_HOST:?}
+      SMTP_PORT: ${SMTP_PORT:?}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_SENDER: ${SMTP_SENDER:?}
+      SMTP_REPLY_TO: ${SMTP_REPLY_TO:-}
+      # Auth secrets — generate strong random values (openssl rand -hex 32); see docs/DEPLOY.md
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?generate a strong BETTER_AUTH_SECRET}
+      PRIVATE_SERVER_KEY: ${PRIVATE_SERVER_KEY:?generate a strong PRIVATE_SERVER_KEY}
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dashboard
+      args:
+        # PUBLIC_IS_SELFHOSTED is baked into the client bundle at build time.
+        PUBLIC_IS_SELFHOSTED: 'true'
+    container_name: pearl-dashboard
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3082
+      PUBLIC_IS_SELFHOSTED: 'true'
+      # SvelteKit CSRF origin = the public https URL.
+      ORIGIN: ${PUBLIC_APP_URL:?set PUBLIC_APP_URL}
+      # SSR proxy target for /proxy/* and /api/auth/* — the api over the internal network.
+      PRIVATE_SERVER_URL: http://api:3081
+      PRIVATE_SERVER_KEY: ${PRIVATE_SERVER_KEY:?}
+      # AGPL "Source code" link target (runtime).
+      PUBLIC_SOURCE_REPO_URL: ${PUBLIC_SOURCE_REPO_URL:-https://github.com/Integer-Training/LMSclassroom}
+      # CSP: self-hosted starts from 'self' only. Allow the Supabase Storage host so browser
+      # presigned uploads/downloads (connect-src) and public media images (img/media-src) work.
+      CSP_CONNECT_SRC_DOMAINS: ${CSP_CONNECT_SRC_DOMAINS:-}
+      CSP_MEDIA_SRC_DOMAINS: ${CSP_MEDIA_SRC_DOMAINS:-}
+    restart: unless-stopped
+
+  jobs:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.jobs
+    container_name: pearl-jobs
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: ${DATABASE_URL:?}
+      # Supabase Storage (mirrors api)
+      OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT:?}
+      OBJECT_STORAGE_PUBLIC_ENDPOINT: ${OBJECT_STORAGE_PUBLIC_ENDPOINT:?}
+      OBJECT_STORAGE_REGION: ${OBJECT_STORAGE_REGION:?}
+      OBJECT_STORAGE_ACCESS_KEY_ID: ${OBJECT_STORAGE_ACCESS_KEY_ID:?}
+      OBJECT_STORAGE_SECRET_ACCESS_KEY: ${OBJECT_STORAGE_SECRET_ACCESS_KEY:?}
+      OBJECT_STORAGE_FORCE_PATH_STYLE: 'true'
+      OBJECT_STORAGE_BUCKET_VIDEOS: ${OBJECT_STORAGE_BUCKET_VIDEOS:-videos}
+      OBJECT_STORAGE_BUCKET_DOCUMENTS: ${OBJECT_STORAGE_BUCKET_DOCUMENTS:-documents}
+      OBJECT_STORAGE_BUCKET_MEDIA: ${OBJECT_STORAGE_BUCKET_MEDIA:-media}
+      OBJECT_STORAGE_MEDIA_PUBLIC_BASE_URL: ${OBJECT_STORAGE_MEDIA_PUBLIC_BASE_URL:?}
+      # Real SMTP
+      SMTP_HOST: ${SMTP_HOST:?}
+      SMTP_PORT: ${SMTP_PORT:?}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_SENDER: ${SMTP_SENDER:?}
+      SMTP_REPLY_TO: ${SMTP_REPLY_TO:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: pearl-caddy
+    depends_on:
+      - dashboard
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      # Caddy issues/renews a Let's Encrypt cert for this domain automatically.
+      APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN to your domain, e.g. lms.example.com}
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  caddy-data:
+  caddy-config:
