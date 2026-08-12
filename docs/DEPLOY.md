@@ -107,6 +107,24 @@ every change on `main` first, then pull + rebuild.
 
 ---
 
-**Deployed commit:** record `git rev-parse HEAD` from step 2/6 here after each deploy; it
-must equal `origin/main`. (The deploy artifacts were added in the Phase 0 Step 9 commit —
-`git log --oneline -1` on the droplet shows the exact deployed commit.)
+## Deployment record
+
+| | |
+|---|---|
+| **Environment** | Production |
+| **URL** | https://learn.epearlacademy.com (Caddy + Let's Encrypt TLS) |
+| **Droplet** | DigitalOcean `pearllms`, Ubuntu 24.04, 2 vCPU / 4 GB (lon1), `165.232.97.8` |
+| **First deployed** | 2026-08-12 |
+| **Deployed commit** | `0bed259a9` (== `origin/main` HEAD at deploy). After any doc/code push, `git pull` on the droplet so its HEAD stays equal to `origin/main` — verify with `git rev-parse HEAD`. |
+| **DB / storage** | Supabase `cvtmymxxjgjshrzsjxnj` (Postgres pooled 6543 runtime / direct 5432 migrations; Storage documents+videos private, media public) |
+
+**Smoke test (2026-08-12):** HTTPS 200 with valid cert; HTTP→HTTPS 308; "Source code
+(AGPL-3.0)" link present; login + authed API through the `/proxy` path; course + section +
+lesson created; document upload → Supabase → presigned download served back; raw
+unauthenticated object URL denied (400, private bucket). Telemetry log audit across all
+containers: **0** hits for posthog/umami/classroomio.dev. **Deferred until SMTP is
+configured:** the email-dependent paths (fresh signup → verification, password reset,
+invite) — SMTP is intentionally set up last; re-run those three once real SMTP is in `.env`.
+
+**Deployed == pushed:** the running app is built from source at the commit above; keep the
+droplet checkout equal to `origin/main` (pull + `up -d --build` on every change).
