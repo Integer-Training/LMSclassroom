@@ -17,6 +17,7 @@ import { ErrorCodes } from '@api/utils/errors';
 import { accountRouter } from '@api/routes/account';
 import { agentRouter } from '@api/routes/agent';
 import { auth } from '@cio/db/auth';
+import { resolveActor, ANONYMOUS_ACTOR } from '@cio/db/actor';
 import { communityRouter } from '@api/routes/community';
 import { courseRouter } from '@api/routes/course';
 import { dashAnalyticsRouter } from '@api/routes/dash';
@@ -69,6 +70,7 @@ export const app = new Hono()
       c.set('user', null);
       c.set('session', null);
       c.set('orgRoles', {});
+      c.set('actor', ANONYMOUS_ACTOR);
 
       return next();
     }
@@ -85,6 +87,7 @@ export const app = new Hono()
       c.set('user', null);
       c.set('session', null);
       c.set('orgRoles', {});
+      c.set('actor', ANONYMOUS_ACTOR);
       await next();
 
       return;
@@ -93,6 +96,10 @@ export const app = new Hono()
     c.set('user', session.user);
     c.set('session', session.session);
     c.set('orgRoles', (session as { orgRoles?: Record<string, number> }).orgRoles ?? {});
+    // Single authorization identity — resolved FRESH (role + status) from the DB so
+    // role changes and deactivations take effect on the next request. Route guards
+    // consult c.get('actor') (Steps 4–5).
+    c.set('actor', await resolveActor(session.user.id, c.req.header('cio-org-id') ?? null));
 
     Sentry.setUser({
       id: session.user.id,

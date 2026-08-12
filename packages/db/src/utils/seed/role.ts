@@ -19,6 +19,13 @@ export async function seedRoles() {
       id: 3,
       type: 'STUDENT',
       description: 'A student role, can interact with application but cant make changes'
+    },
+    {
+      // PearlLMS Phase 1: Manager — provider-wide read (reports/allocation/approvals arrive in
+      // later phases); never system config or user management.
+      id: 4,
+      type: 'MANAGER',
+      description: 'Provider-wide oversight; never config or user management'
     }
   ].filter((r) => !existingRoleIds.includes(r.id));
 

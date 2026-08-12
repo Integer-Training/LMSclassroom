@@ -3,6 +3,7 @@ import { authServerClient } from './server';
 import { classroomio } from '$lib/utils/services/api';
 import { getCioCookieString } from '$lib/utils/functions/cookies';
 import { getRequestBaseUrl } from '$lib/utils/services/api';
+import { getActor } from './actor';
 
 export const getSessionData = async (cookies: Cookies): Promise<App.Locals | null> => {
   try {
@@ -17,6 +18,8 @@ export const getSessionData = async (cookies: Cookies): Promise<App.Locals | nul
 
     // This will always be true because if we don't have classroomio cookies, we won't be able to this line of code.
     locals.fromSessions = true;
+    // Single session → Actor path (role + status). Deny-by-default consumers read locals.actor.
+    locals.actor = getActor(locals as unknown as Parameters<typeof getActor>[0]);
 
     return locals;
   } catch (error) {

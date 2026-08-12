@@ -8,6 +8,7 @@ import { betterAuth } from 'better-auth/minimal';
 import { createProfileHook } from './auth/hooks/create-profile';
 import { customSession } from 'better-auth/plugins/custom-session';
 import { db } from '@db/drizzle';
+import { eq } from 'drizzle-orm';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { config as emailAndPassword } from './auth/email-password';
 import { getUserOrgRolesMap } from './queries/organization/organization';
@@ -139,14 +140,24 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
     // Refreshes when the session cookie cache expires (see session.cookieCache.maxAge).
     customSession(async ({ user, session }) => {
       let orgRoles: Record<string, number> = {};
+      // Account status (PearlLMS Phase 1) — carried on the session so the dashboard's
+      // getActor can deny a deactivated user without a DB hop. The API resolver
+      // (resolveActor) re-reads status fresh, so it is the authoritative enforcement point.
+      let status: string = 'ACTIVE';
       try {
         if (user?.id) {
           orgRoles = await getUserOrgRolesMap(user.id);
+          const [row] = await db
+            .select({ status: schema.profile.status })
+            .from(schema.profile)
+            .where(eq(schema.profile.id, user.id))
+            .limit(1);
+          if (row?.status) status = row.status;
         }
       } catch (error) {
-        console.error('customSession: failed to load orgRoles', error);
+        console.error('customSession: failed to load orgRoles/status', error);
       }
-      return { user, session, orgRoles };
+      return { user, session, orgRoles, status };
     })
   ]
 });

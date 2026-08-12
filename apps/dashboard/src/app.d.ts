@@ -1,4 +1,5 @@
 import type { TUser, TSession, TProfile, TOrganization, TOrganizationmember, TOrganizationPlan } from '@cio/db/types';
+import type { Actor } from '@cio/utils/auth';
 
 type AccountOrganization = TOrganization & {
   member: TOrganizationmember | null;
@@ -16,6 +17,11 @@ declare global {
       profile: TProfile | null;
       organizations: AccountOrganization[];
       fromSessions?: boolean;
+      // Single resolved authorization identity (role + status) — set in getSessionData
+      // via getActor(). Deny-by-default: check actor.authenticated.
+      actor?: Actor;
+      orgRoles?: Record<string, number>;
+      status?: string;
       // getAccount: () =>
     }
     // interface PageData {}

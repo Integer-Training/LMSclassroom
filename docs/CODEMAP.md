@@ -126,13 +126,26 @@ dashboard:3082, jobs) and `docker-compose.images.yaml` (same topology from Docke
 - **Dashboard client**: `apps/dashboard/src/lib/utils/services/auth/client.ts`
   (`better-auth/svelte`; self-hosted baseURL = `<origin>/api/auth`); SSR client in `auth/server.ts`;
   session read in `auth/session.ts`.
-- **RBAC**: integer role IDs in the `role` table — `ADMIN:1, TUTOR:2, STUDENT:3`
-  (`packages/utils/src/constants/roles.ts`); membership in `organizationmember.roleId`.
-  Roles ride the session via `customSession` → `getUserOrgRolesMap` → `{[orgId]: roleId}` (no
-  per-request DB query; refreshes with the 1h cookie cache). Org-scoped middlewares read the
-  `cio-org-id` header: `apps/api/src/middlewares/org-member.ts` (403 UNAUTHORIZED),
-  `org-team-member.ts` (ADMIN|TUTOR), `org-admin.ts` (ADMIN), `license.ts`
-  (FEATURE_REQUIRES_LICENSE, skipped when not self-hosted), `signup-guard.ts` (org signup rules).
+- **RBAC**: integer role IDs in the `role` table — `ADMIN:1, TUTOR:2, LEARNER:3` (== legacy
+  STUDENT id), `MANAGER:4` (PearlLMS Phase 1) — defined in **one place**,
+  `packages/utils/src/constants/roles.ts`. Membership in `organizationmember.roleId`. Account
+  status in `profile.status` (`member_status` enum: `ACTIVE`/`DEACTIVATED`).
+- **Single actor resolver (Phase 1).** `resolveActor(userId, orgId?)`
+  (`packages/db/src/actor.ts`) is the one server-side path from a session to an authorization
+  identity: it reads role + status **fresh** (not from the cookie cache) and returns an
+  `Actor` (`@cio/utils/auth` — pure `buildActor`): `{authenticated, userId, role, status, orgId}`
+  or `{authenticated:false, reason:'anonymous'|'deactivated'|'no-membership'|'unknown-role'}`.
+  **Deny-by-default**, and a **deactivated** user is denied here so a live session fails
+  everywhere at once. Wired at the entry points: the API global middleware sets
+  `c.get('actor')` (`apps/api/src/app.ts`); the dashboard sets `locals.actor` via `getActor`
+  (`services/auth/session.ts`, reading role from `orgRoles` + status from `customSession`,
+  which now returns `profile.status`). The API resolver is the authoritative boundary; the
+  dashboard actor drives UI. Per-route guards migrate onto `actor` in Phase 1 Steps 4–5.
+- Roles still also ride the session via `customSession` → `getUserOrgRolesMap` →
+  `{[orgId]: roleId}` (cookie-cached, 1h) for the existing org-scoped middlewares
+  (`org-member.ts`/`org-team-member.ts`/`org-admin.ts`, read the `cio-org-id` header) until
+  Steps 4–5 migrate them; `license.ts`/`signup-guard.ts` unchanged. **Dev fixtures:** one user
+  per role via `pnpm --filter @cio/db seed:fixtures` (`{admin,manager,tutor,learner}@pearl.fixture`).
 
 ## 7. Storage read/write paths
 

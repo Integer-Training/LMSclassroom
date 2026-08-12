@@ -27,6 +27,8 @@ import { sql } from 'drizzle-orm';
 export const courseType = pgEnum('COURSE_TYPE', [...COURSE_TYPE_VALUES]);
 export const locale = pgEnum('LOCALE', ['en', 'hi', 'fr', 'pt', 'de', 'vi', 'ru', 'es', 'pl', 'da']);
 export const plan = pgEnum('PLAN', ['EARLY_ADOPTER', 'ENTERPRISE', 'BASIC']);
+// PearlLMS Phase 1: account status. Deactivated users are denied at the actor resolver.
+export const memberStatus = pgEnum('member_status', ['ACTIVE', 'DEACTIVATED']);
 export const courseImportSourceType = pgEnum('COURSE_IMPORT_SOURCE_TYPE', ['prompt', 'pdf', 'course']);
 export const courseImportDraftStatus = pgEnum('COURSE_IMPORT_DRAFT_STATUS', ['DRAFT', 'PUBLISHED', 'ARCHIVED']);
 export const organizationApiKeyType = pgEnum('ORGANIZATION_API_KEY_TYPE', ['mcp', 'api', 'zapier']);
@@ -410,6 +412,8 @@ export const profile = pgTable(
     verifiedAt: timestamp('verified_at', { withTimezone: true, mode: 'string' }),
     locale: locale().default('en'),
     isRestricted: boolean('is_restricted').default(false).notNull(),
+    // PearlLMS Phase 1: account status. DEACTIVATED is denied at the actor resolver.
+    status: memberStatus('status').default('ACTIVE').notNull(),
     settings: jsonb().default({}).$type<Record<string, unknown>>()
   },
   (table) => [
