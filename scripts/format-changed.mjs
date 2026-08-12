@@ -47,11 +47,24 @@ function getChangedFiles() {
   });
 }
 
+// We run prettier with shell:true (so Windows resolves the prettier.CMD shim), which means the
+// args are re-parsed by the shell. SvelteKit route paths contain shell metacharacters — `(app)`,
+// `[id]`, `[slug]` — so they must be quoted or the shell misparses them (cmd.exe: "( was
+// unexpected at this time"; bash: subshell/glob errors). Quote every path for the target shell.
+function shellQuote(arg) {
+  if (process.platform === 'win32') {
+    // cmd.exe: wrap in double quotes; that neutralises ()[]+ and spaces.
+    return `"${arg}"`;
+  }
+  // POSIX: single-quote and escape any embedded single quotes.
+  return `'${arg.replace(/'/g, `'\\''`)}'`;
+}
+
 function runPrettier(filePaths) {
   const chunkSize = 200;
 
   for (let index = 0; index < filePaths.length; index += chunkSize) {
-    const chunk = filePaths.slice(index, index + chunkSize);
+    const chunk = filePaths.slice(index, index + chunkSize).map(shellQuote);
     const result = spawnSync('prettier', [prettierMode, '--ignore-unknown', ...chunk], {
       cwd: process.cwd(),
       stdio: 'inherit',

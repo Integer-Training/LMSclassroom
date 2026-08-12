@@ -213,10 +213,7 @@ class AppInitApi extends BaseApi {
 
   private async autoJoinOnTenantSite(orgId: string): Promise<boolean> {
     try {
-      const response = await classroomio.organization['auto-join'].$post(
-        {},
-        { headers: { 'cio-org-id': orgId } }
-      );
+      const response = await classroomio.organization['auto-join'].$post({}, { headers: { 'cio-org-id': orgId } });
 
       if (!response.ok) {
         // 403 is expected for invite-only / disabled-signup orgs — the user
@@ -416,6 +413,15 @@ class AppInitApi extends BaseApi {
     // Students with existing org memberships who open /onboarding may intend to create their own academy.
     if (path.includes('/onboarding') && isStudent && userHasOrganizations) {
       return;
+    }
+
+    // Tutor and Manager have no dedicated home in Phase 1 (caseload/reports arrive in later phases)
+    // and the org admin area is now ADMIN-only server-side — routing them to /org would 403. Land
+    // them on the interim /welcome page instead. Learner -> /lms, Admin -> /org (unchanged).
+    const currentRoleId = get(currentOrg).roleId;
+    if (!isOrgSite && (currentRoleId === ROLE.TUTOR || currentRoleId === ROLE.MANAGER)) {
+      console.log('redirecting tutor/manager to interim /welcome');
+      return goto(resolve('/welcome', {}));
     }
 
     const shouldGoToLMS = isCloud ? isOrgSite || !!isStudent : !!isStudent;

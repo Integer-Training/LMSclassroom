@@ -20,21 +20,25 @@ export const ROUTE = {
   VERIFY_EMAIL_ERROR: '/verify-email-error'
 };
 
+// Entries are matched as regexes against the request PATHNAME. They are anchored (^…$ or ^…/.*) so
+// a path merely *containing* a public segment (e.g. `/org/x/reset-progress`) is NOT treated as
+// public — an unanchored bare string like `/reset` used to match anywhere and silently skip the
+// auth gate. Server-side layout guards (Step 5) are the real authority; anchoring removes the footgun.
 export const PUBLIC_ROUTES = [
   `^${ROUTE.HOME}$`,
-  ROUTE.LOGIN,
-  ROUTE.LOGOUT,
-  ROUTE.SIGN_UP,
+  `^${ROUTE.LOGIN}$`,
+  `^${ROUTE.LOGOUT}$`,
+  `^${ROUTE.SIGN_UP}$`,
   `^${ROUTE.INVITE}/.*`,
-  ROUTE.FORGOT,
-  ROUTE.RESET,
+  `^${ROUTE.FORGOT}$`,
+  `^${ROUTE.RESET}$`,
   `^${ROUTE.PAGES}/.*`,
   `^${ROUTE.COURSE}/[^/]+(/enroll)?/?$`,
   `^${ROUTE.COURSE}/[^/]+/lesson/.*`,
   `^${ROUTE.COURSES}/?$`,
-  '/404',
+  '^/404$',
   `^${ROUTE.VERIFY_EMAIL_ERROR}$`,
-  ROUTE.AUTH_FAILED,
+  `^${ROUTE.AUTH_FAILED}$`,
   '^/csp-report$'
 ];
 
