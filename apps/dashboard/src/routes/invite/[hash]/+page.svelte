@@ -69,8 +69,9 @@
     }
 
     if (!$profile.id || !$profile.email) {
+      // Closed system: invitees are provisioned accounts — send them to log in, not sign up.
       const qs = buildInviteAuthParams(page.url?.pathname || '', data.invite?.invite?.email || '');
-      return goto(resolve(`/signup?${qs}`, {}));
+      return goto(resolve(`/login?${qs}`, {}));
     }
 
     if (isInviteEmailMismatch) {

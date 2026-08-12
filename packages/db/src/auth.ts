@@ -1,7 +1,7 @@
 import * as CONSTANTS from './constants';
 import * as schema from '@db/schema';
 
-import { admin, anonymous } from 'better-auth/plugins';
+import { admin } from 'better-auth/plugins';
 import { sendChangeEmailConfirmation, sendVerificationEmail } from './auth/email-verification';
 
 import { betterAuth } from 'better-auth/minimal';
@@ -56,14 +56,9 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
     enabled: true,
     sendVerificationEmail
   },
-  socialProviders: {
-    google: {
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      accessType: 'offline',
-      prompt: 'select_account consent'
-    }
-  },
+  // Closed system: no social providers. Google OAuth auto-creates an account on first login, which
+  // disableSignUp does NOT prevent — so the provider is removed entirely. (SSO/token-auth plugins
+  // below remain for the enterprise route groups but are inert: no provider/secret is configured.)
   trustedOrigins: (request) => {
     const origins = [...CONSTANTS.TRUSTED_ORIGINS];
     const originHeader = request?.headers.get('origin');
@@ -127,7 +122,8 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
   },
   plugins: [
     admin(),
-    anonymous(),
+    // `anonymous()` removed — it exposed POST /api/auth/sign-in/anonymous which creates accounts
+    // (a public account-creation vector, unused by the client). Closed system: no anonymous users.
     sso({
       // OIDC providers are registered dynamically per organization
       // via the admin API (auth.api.registerSSOProvider)

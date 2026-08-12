@@ -183,7 +183,9 @@
     const redirectUrl = `${redirectPath}${redirectSearch}`;
 
     const inviteEmail = data.inviteEmail ?? '';
-    const target = data.inviteEmailExists ? '/login' : '/signup';
+    // Closed system: no public sign-up. Provisioned users log in; there is no self-registration
+    // path (enrolment is staff-provisioned), so always route to login.
+    const target = '/login';
     const params = new URLSearchParams({ redirect: redirectUrl });
     if (inviteEmail) params.set('email', inviteEmail);
 

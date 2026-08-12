@@ -11,6 +11,11 @@ import { sendEmail } from '@cio/email';
  */
 export const config: BetterAuthOptions['emailAndPassword'] = {
   enabled: true,
+  // PearlLMS is a closed system — accounts are created ONLY by staff provisioning (Better Auth
+  // admin.createUser, which is unaffected by this flag). disableSignUp kills the public
+  // POST /api/auth/sign-up/email endpoint while leaving sign-in, forgot/reset-password, email
+  // verification and change-email fully working for already-provisioned users.
+  disableSignUp: true,
   password: {
     hash: async (password) => {
       return await bcrypt.hash(password, 10);

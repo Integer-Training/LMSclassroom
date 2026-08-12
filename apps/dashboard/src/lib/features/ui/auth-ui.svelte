@@ -1,19 +1,15 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import { page } from '$app/state';
   import * as Avatar from '@cio/ui/base/avatar';
   import { t } from '$lib/utils/functions/translations';
   import { currentOrg } from '$lib/utils/store/org';
-  import { GoogleIconColored } from '$features/ui/icons';
-  import { authClient } from '$lib/utils/services/auth/client';
-  import { snackbar } from '$features/ui/snackbar/store';
   import * as Card from '@cio/ui/base/card';
-  import { Button } from '@cio/ui/base/button';
-  import { Separator } from '@cio/ui/base/separator';
   import { preventDefault } from '$lib/utils/functions/svelte';
-  import { ROUTE } from '$lib/utils/constants/routes';
   import { DotPattern } from '@cio/ui/custom/animation/dot-pattern';
   import SourceCodeLink from '$features/ui/source-code-link.svelte';
+
+  // Closed system: public sign-up and Google social sign-in are removed (no public account
+  // creation). This card now serves the login / forgot / reset flows for provisioned users only.
 
   interface Props {
     isLogin?: boolean;
@@ -38,35 +34,6 @@
     children,
     getPasswordAuthAlternative
   }: Props = $props();
-
-  async function signInWithGoogle() {
-    if (isLoading) {
-      return;
-    }
-
-    const params = new URLSearchParams(window.location.search);
-    console.log({ params });
-    // const redirectTo = `https://app.classroomio.com?forwardTo=${
-    //   window.location.origin + params.get('redirect')
-    // }`;
-    const pathname = redirectPathname || params.get('redirect') || '';
-    const redirectTo = `${window.location.origin + pathname}`;
-    const errorCallbackURL = `${window.location.origin + ROUTE.AUTH_FAILED}`;
-
-    try {
-      const result = await authClient.signIn.social({
-        provider: 'google',
-        callbackURL: redirectTo,
-        errorCallbackURL: errorCallbackURL
-      });
-
-      if (result?.error) {
-        snackbar.error('snackbar.social_auth_not_enabled');
-      }
-    } catch (error) {
-      console.log('catch error', error);
-    }
-  }
 
   const authBackgroundUrl = $derived($currentOrg.customization.auth?.backgroundImage?.trim() ?? '');
 </script>
@@ -108,40 +75,7 @@
       <form onsubmit={preventDefault(handleSubmit)}>
         {@render children?.()}
       </form>
-
-      {#if !showOnlyContent && !hideGoogleAuth}
-        <div class="mt-6 flex flex-col gap-6">
-          <div class="relative flex items-center justify-center">
-            <Separator />
-            <span class="ui:bg-card ui:text-muted-foreground absolute px-2 text-sm"> Or continue With </span>
-          </div>
-
-          {#if getPasswordAuthAlternative}
-            {@render getPasswordAuthAlternative()}
-          {:else}
-            <Button variant="outline" onclick={signInWithGoogle} disabled={isLoading} class="w-full">
-              <GoogleIconColored />
-              <span>
-                {isLogin ? $t('login.login_with_google') : $t('login.signup_with_google')}
-              </span>
-            </Button>
-          {/if}
-        </div>
-      {/if}
     </Card.Content>
-    {#if !showOnlyContent}
-      <Card.Footer class="flex-col gap-2 border-t pt-6">
-        <p class="text-muted-foreground text-center text-sm">
-          {#if isLogin}
-            {$t('login.not_registered_yet')}
-            <a class="text-primary hover:underline" href="/signup{page.url.search}">{$t('login.signup')}</a>
-          {:else}
-            {$t('login.already_have_account')}
-            <a class="text-primary hover:underline" href="/login{page.url.search}">{$t('login.login')}</a>
-          {/if}
-        </p>
-      </Card.Footer>
-    {/if}
   </Card.Root>
 
   <!-- AGPL-3.0: source-code link, visible on all logged-out auth pages -->

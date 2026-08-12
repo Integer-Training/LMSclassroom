@@ -45,6 +45,46 @@ registration approval (Phase 7), reports (Phase 5), authoring (Phase 2), assessm
 
 ---
 
+## 1.2 Registration model — CLOSED / provision-only (Step 6)
+
+**PearlLMS is a closed system: there is no public self-registration or org self-onboarding
+anywhere.** An account comes into existence ONLY through staff provisioning (Step 7 — Better Auth
+`admin.createUser` and/or a staff-created roster row linked on first sign-in). Provisioned users
+sign in, sign out, and reset their passwords normally. Verified live (unauthenticated sign-up →
+`EMAIL_AND_PASSWORD_SIGN_UP_IS_NOT_ENABLED`; anonymous → 404; social → `SOCIAL_AUTH_NOT_ENABLED`;
+learner sign-in → 200; password-reset request → 200; org create → 403; DB unchanged).
+
+**DISABLED (was a public creation path):**
+- `POST /api/auth/sign-up/email` — Better Auth `emailAndPassword.disableSignUp: true`
+  (`packages/db/src/auth/email-password.ts`).
+- Google OAuth auto-create — `socialProviders.google` removed (`packages/db/src/auth.ts`);
+  `/api/auth/sign-in/social` → not enabled. Google button removed from `auth-ui.svelte`.
+- `POST /api/auth/sign-in/anonymous` — `anonymous()` plugin removed (`auth.ts`) → 404.
+- Org self-onboarding — `POST /onboarding/create-org` and `POST /organization` both funnel through
+  `createOrganizationWithOwner`, which throws 403 on self-hosted once the singleton org exists.
+  Dashboard `(auth)/onboarding` redirects to home for anyone who already has an org.
+- Net-new membership self-join — `POST /organization/auto-join` refuses on self-hosted for a
+  non-member (`services/organization/auto-join.ts`); the staff-provisioning link path (an
+  email-only roster row linked on first sign-in) is preserved, and existing members get a no-op.
+- Sign-up UI — `/signup` redirects (308) to `/login`; "Sign up" links removed from `auth-ui.svelte`,
+  `Navigation/AuthButtons.svelte`, the org-site enroll page, and the two invite pages (invitees are
+  provisioned → they log in).
+
+**KEPT (provisioned users):** `sign-in/email`, `sign-out`, `request-password-reset` /
+`reset-password`, `verify-email`, `change-email`, `login-link` (session for an existing user), and
+Better Auth `admin.createUser` (the Step-7 provisioning door — unaffected by `disableSignUp`).
+
+**Inert vectors (documented, not removed):** the `sso()` and `tokenExchange()` plugins remain
+(the `/organization/sso` + `/organization/token-auth` routes import them) but cannot create
+accounts — no provider or token-auth secret is configured (`organization_sso_config`,
+`sso_provider`, `organization_token_auth` all empty). If those enterprise integrations are ever
+enabled, their JIT account creation must be reviewed. The reusable `link-invite` self-accept
+(`invite.ts`) still lets any authenticated user with the link self-join at its role — left for the
+Phase-7 approval queue (ACCESS.md §4); it cannot create an account, only a membership for an
+already-provisioned user.
+
+---
+
 ## 2. Current authz model (how it works today)
 
 **Session → user.**

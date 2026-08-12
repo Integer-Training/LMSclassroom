@@ -13,6 +13,7 @@ import {
 import { ROLE } from '@cio/utils/constants';
 import { getProfileById } from '@cio/db/queries/auth';
 import { db } from '@cio/db/drizzle';
+import { env } from '@cio/core/config/env';
 import { assertStudentCapacityOrThrow } from './student-limit';
 
 interface OrgSignupSettings {
@@ -96,6 +97,18 @@ export async function autoJoinOrg(userId: string, orgId: string): Promise<AutoJo
   const linked = await linkExistingMemberByEmail(userId, orgId, normalizedEmail);
   if (linked) {
     return linked;
+  }
+
+  // Closed system (self-hosted, provision-only): a user with no pre-existing roster row and no
+  // pending invite cannot self-join. The two provisioning paths above (an already-linked membership,
+  // or a staff-created email-only roster row linked on first sign-in) are preserved; only net-new
+  // self-service STUDENT creation is refused. Cloud multi-tenant keeps the original self-join.
+  if (env.PUBLIC_IS_SELFHOSTED === 'true') {
+    throw new AppError(
+      'This is a closed system — accounts and access are provisioned by staff',
+      ErrorCodes.FORBIDDEN,
+      403
+    );
   }
 
   const organization = await getOrganizationById(orgId);

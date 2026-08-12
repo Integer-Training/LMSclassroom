@@ -21,13 +21,5 @@
     </div>
   </li>
 
-  {#if !disableSignup}
-    <li class={isMobile ? '' : 'block'}>
-      <div class="flex">
-        <Button variant="link" size="sm" href={'/signup' + redirect} onclick={onMobileClick}>
-          {$t('navigation.signup')}
-        </Button>
-      </div>
-    </li>
-  {/if}
+  <!-- Closed system: no public "Sign up" — accounts are provisioned by staff. Login only. -->
 </div>
