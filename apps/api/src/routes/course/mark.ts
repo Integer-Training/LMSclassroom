@@ -1,12 +1,15 @@
 import { Hono } from '@api/utils/hono';
-import { authMiddleware } from '@api/middlewares/auth';
-import { courseMemberMiddleware } from '@api/middlewares/course-member';
+import { requireMarkingAccess } from '@api/middlewares/guards';
 import { getGradebook } from '@api/services/mark/gradebook';
 import { getMarks } from '@api/services/mark';
 import { handleError } from '@api/utils/errors';
 
+// Marking surfaces expose every learner's grades for the whole course, so they are gated by
+// requireMarkingAccess (ADMIN; an allocated TUTOR once Phase 3 lands — denied until then). This
+// closes the ACCESS.md "gradebook allows students" gap: courseMemberMiddleware let any enrolled
+// learner pull the entire class's marks.
 export const markRouter = new Hono()
-  .get('/gradebook', authMiddleware, courseMemberMiddleware, async (c) => {
+  .get('/gradebook', requireMarkingAccess(), async (c) => {
     try {
       const courseId = c.req.param('courseId')!;
       const gradebook = await getGradebook(courseId);
@@ -15,7 +18,7 @@ export const markRouter = new Hono()
       return handleError(c, error, 'Failed to get gradebook');
     }
   })
-  .get('/', authMiddleware, courseMemberMiddleware, async (c) => {
+  .get('/', requireMarkingAccess(), async (c) => {
     try {
       const courseId = c.req.param('courseId')!;
       const marks = await getMarks(courseId);

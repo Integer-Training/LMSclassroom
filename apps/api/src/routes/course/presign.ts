@@ -12,7 +12,7 @@ import {
 } from '@cio/core/utils/s3';
 
 import { Hono } from '@api/utils/hono';
-import { authMiddleware } from '@api/middlewares/auth';
+import { requireActor } from '@api/middlewares/guards';
 import { generateFileKey } from '@cio/core/utils/upload';
 import { AppError } from '@api/utils/errors';
 import { MAX_DOCUMENT_SIZE, MAX_FILE_SIZE } from '@api/constants/upload';
@@ -56,7 +56,7 @@ const PresignDownloadResponse = {
 export const presignRouter = new Hono()
   .post(
     '/video/upload',
-    authMiddleware,
+    requireActor(),
     describeRoute({
       description: 'Generate a pre-signed URL for video upload',
       responses: {
@@ -99,7 +99,7 @@ export const presignRouter = new Hono()
   )
   .post(
     '/document/upload',
-    authMiddleware,
+    requireActor(),
     describeRoute({
       description: 'Generate a pre-signed URL for document upload',
       responses: {
@@ -142,7 +142,7 @@ export const presignRouter = new Hono()
   )
   .post(
     '/video/download',
-    authMiddleware,
+    requireActor(),
     describeRoute({
       description: 'Generate pre-signed URLs for video download',
       responses: {
@@ -180,7 +180,7 @@ export const presignRouter = new Hono()
   )
   .post(
     '/document/download',
-    authMiddleware,
+    requireActor(),
     describeRoute({
       description: 'Generate pre-signed URLs for document download',
       responses: {

@@ -47,6 +47,7 @@ import { authMiddleware } from '@api/middlewares/auth';
 import { handleError } from '@api/utils/errors';
 import { orgAdminMiddleware } from '@api/middlewares/org-admin';
 import { orgMemberMiddleware } from '@api/middlewares/org-member';
+import { requireAdmin } from '@api/middlewares/guards';
 import { zValidator } from '@hono/zod-validator';
 import { setCookie } from 'hono/cookie';
 
@@ -82,7 +83,7 @@ export const assetsRouter = new Hono()
    * POST /organization/assets
    * Create or reuse an organization asset
    */
-  .post('/', authMiddleware, orgMemberMiddleware, zValidator('json', ZAssetCreateUpload), async (c) => {
+  .post('/', requireAdmin, zValidator('json', ZAssetCreateUpload), async (c) => {
     try {
       const orgId = c.req.header('cio-org-id')!;
       const user = c.get('user')!;
@@ -420,39 +421,31 @@ export const assetsRouter = new Hono()
    * PUT /organization/assets/:assetId
    * Update asset metadata
    */
-  .put(
-    '/:assetId',
-    authMiddleware,
-    orgMemberMiddleware,
-    zValidator('param', ZAssetGetParam),
-    zValidator('json', ZAssetUpdate),
-    async (c) => {
-      try {
-        const orgId = c.req.header('cio-org-id')!;
-        const { assetId } = c.req.valid('param');
-        const data = c.req.valid('json');
-        const updated = await updateAssetService(orgId, assetId, data);
+  .put('/:assetId', requireAdmin, zValidator('param', ZAssetGetParam), zValidator('json', ZAssetUpdate), async (c) => {
+    try {
+      const orgId = c.req.header('cio-org-id')!;
+      const { assetId } = c.req.valid('param');
+      const data = c.req.valid('json');
+      const updated = await updateAssetService(orgId, assetId, data);
 
-        return c.json(
-          {
-            success: true,
-            data: updated
-          },
-          200
-        );
-      } catch (error) {
-        return handleError(c, error, 'Failed to update asset');
-      }
+      return c.json(
+        {
+          success: true,
+          data: updated
+        },
+        200
+      );
+    } catch (error) {
+      return handleError(c, error, 'Failed to update asset');
     }
-  )
+  })
   /**
    * PUT /organization/assets/:assetId/thumbnail
    * Choose a thumbnail for an asset (from generated candidates or a fresh upload).
    */
   .put(
     '/:assetId/thumbnail',
-    authMiddleware,
-    orgMemberMiddleware,
+    requireAdmin,
     zValidator('param', ZAssetGetParam),
     zValidator('json', ZAssetThumbnailSelect),
     async (c) => {
@@ -522,8 +515,7 @@ export const assetsRouter = new Hono()
    */
   .post(
     '/:assetId/attach',
-    authMiddleware,
-    orgMemberMiddleware,
+    requireAdmin,
     zValidator('param', ZAssetUsageParams),
     zValidator('json', ZAssetAttach),
     async (c) => {
@@ -552,8 +544,7 @@ export const assetsRouter = new Hono()
    */
   .post(
     '/:assetId/detach',
-    authMiddleware,
-    orgMemberMiddleware,
+    requireAdmin,
     zValidator('param', ZAssetUsageParams),
     zValidator('json', ZAssetDetach),
     async (c) => {

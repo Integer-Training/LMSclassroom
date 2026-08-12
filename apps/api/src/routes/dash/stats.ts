@@ -11,8 +11,7 @@ import { authMiddleware } from '@api/middlewares/auth';
 import { getCurrentUserLoginStreak, getOrganisationAnalytics, getStudentLoginActivity } from '@api/services/dash';
 import { getOrgComplianceOverview } from '@api/services/course/compliance';
 import { handleError } from '@api/utils/errors';
-import { orgAdminMiddleware } from '@api/middlewares/org-admin';
-import { orgMemberMiddleware } from '@api/middlewares/org-member';
+import { requireManagerOrAdmin, requireSameOrg } from '@api/middlewares/guards';
 import { zValidator } from '@hono/zod-validator';
 import {
   getCountryBreakdown,
@@ -39,28 +38,42 @@ export const dashAnalyticsRouter = new Hono()
       return handleError(c, error, 'Failed to ingest analytics events');
     }
   })
-  .get('/stats', authMiddleware, orgMemberMiddleware, zValidator('query', ZDashStats), async (c) => {
-    try {
-      const { orgId, siteName } = c.req.valid('query');
+  .get(
+    '/stats',
+    authMiddleware,
+    requireManagerOrAdmin,
+    requireSameOrg(),
+    zValidator('query', ZDashStats),
+    async (c) => {
+      try {
+        const { orgId, siteName } = c.req.valid('query');
 
-      const result = await getOrganisationAnalytics(orgId, siteName);
+        const result = await getOrganisationAnalytics(orgId, siteName);
 
-      return c.json({ success: true, data: result }, 200);
-    } catch (error) {
-      return handleError(c, error, 'Failed to load organisation analytics');
+        return c.json({ success: true, data: result }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to load organisation analytics');
+      }
     }
-  })
-  .get('/login-activity', authMiddleware, orgAdminMiddleware, zValidator('query', ZLoginActivity), async (c) => {
-    try {
-      const { orgId, days } = c.req.valid('query');
+  )
+  .get(
+    '/login-activity',
+    authMiddleware,
+    requireManagerOrAdmin,
+    requireSameOrg(),
+    zValidator('query', ZLoginActivity),
+    async (c) => {
+      try {
+        const { orgId, days } = c.req.valid('query');
 
-      const result = await getStudentLoginActivity(orgId!, days);
+        const result = await getStudentLoginActivity(orgId!, days);
 
-      return c.json({ success: true, data: result }, 200);
-    } catch (error) {
-      return handleError(c, error, 'Failed to load login activity');
+        return c.json({ success: true, data: result }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to load login activity');
+      }
     }
-  })
+  )
   .get('/login-streak', authMiddleware, async (c) => {
     try {
       const user = c.get('user')!;
@@ -71,21 +84,29 @@ export const dashAnalyticsRouter = new Hono()
       return handleError(c, error, 'Failed to load login streak');
     }
   })
-  .get('/landing-stats', authMiddleware, orgMemberMiddleware, zValidator('query', ZDashAnalyticsRange), async (c) => {
-    try {
-      const { orgId, days } = c.req.valid('query');
-      const bust = c.req.query('bust') === '1';
-      const result = await getLandingStats(orgId, days, bust);
+  .get(
+    '/landing-stats',
+    authMiddleware,
+    requireManagerOrAdmin,
+    requireSameOrg(),
+    zValidator('query', ZDashAnalyticsRange),
+    async (c) => {
+      try {
+        const { orgId, days } = c.req.valid('query');
+        const bust = c.req.query('bust') === '1';
+        const result = await getLandingStats(orgId, days, bust);
 
-      return c.json({ success: true, data: result }, 200);
-    } catch (error) {
-      return handleError(c, error, 'Failed to load landing stats');
+        return c.json({ success: true, data: result }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to load landing stats');
+      }
     }
-  })
+  )
   .get(
     '/country-breakdown',
     authMiddleware,
-    orgMemberMiddleware,
+    requireManagerOrAdmin,
+    requireSameOrg(),
     zValidator('query', ZDashAnalyticsRange),
     async (c) => {
       try {
@@ -99,32 +120,47 @@ export const dashAnalyticsRouter = new Hono()
       }
     }
   )
-  .get('/course-funnel', authMiddleware, orgMemberMiddleware, zValidator('query', ZDashCourseFunnel), async (c) => {
-    try {
-      const { orgId, days, courseId } = c.req.valid('query');
-      const bust = c.req.query('bust') === '1';
-      const result = await getCourseFunnel(orgId, days, courseId, bust);
+  .get(
+    '/course-funnel',
+    authMiddleware,
+    requireManagerOrAdmin,
+    requireSameOrg(),
+    zValidator('query', ZDashCourseFunnel),
+    async (c) => {
+      try {
+        const { orgId, days, courseId } = c.req.valid('query');
+        const bust = c.req.query('bust') === '1';
+        const result = await getCourseFunnel(orgId, days, courseId, bust);
 
-      return c.json({ success: true, data: result }, 200);
-    } catch (error) {
-      return handleError(c, error, 'Failed to load course funnel');
+        return c.json({ success: true, data: result }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to load course funnel');
+      }
     }
-  })
-  .get('/popular-types', authMiddleware, orgMemberMiddleware, zValidator('query', ZDashAnalyticsRange), async (c) => {
-    try {
-      const { orgId, days } = c.req.valid('query');
-      const bust = c.req.query('bust') === '1';
-      const result = await getPopularTypes(orgId, days, bust);
+  )
+  .get(
+    '/popular-types',
+    authMiddleware,
+    requireManagerOrAdmin,
+    requireSameOrg(),
+    zValidator('query', ZDashAnalyticsRange),
+    async (c) => {
+      try {
+        const { orgId, days } = c.req.valid('query');
+        const bust = c.req.query('bust') === '1';
+        const result = await getPopularTypes(orgId, days, bust);
 
-      return c.json({ success: true, data: result }, 200);
-    } catch (error) {
-      return handleError(c, error, 'Failed to load popular course types');
+        return c.json({ success: true, data: result }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to load popular course types');
+      }
     }
-  })
+  )
   .get(
     '/compliance-overview',
     authMiddleware,
-    orgAdminMiddleware,
+    requireManagerOrAdmin,
+    requireSameOrg(),
     zValidator('query', ZDashComplianceOverview),
     async (c) => {
       try {

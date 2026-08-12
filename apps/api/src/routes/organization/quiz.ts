@@ -5,9 +5,14 @@ import { Hono } from '@api/utils/hono';
 import { authMiddleware } from '@api/middlewares/auth';
 import { handleError } from '@api/utils/errors';
 import { orgMemberMiddleware } from '@api/middlewares/org-member';
+import { requireSameOrg } from '@api/middlewares/guards';
 import { zValidator } from '@hono/zod-validator';
 
+// Every quiz route is scoped by the path :orgId, but the guard used to validate only the HEADER
+// org — a member of org A could read/mutate org B's quizzes by pairing their header with B's path
+// (ACCESS.md gap E). requireSameOrg binds the path :orgId to the caller's resolved org.
 export const quizRouter = new Hono()
+  .use('*', requireSameOrg({ param: 'orgId' }))
   /**
    * GET /organization/:orgId/quiz
    * Gets all quizzes for an organization

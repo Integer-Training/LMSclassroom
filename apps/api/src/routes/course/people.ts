@@ -15,10 +15,14 @@ import {
 
 import { Hono } from '@api/utils/hono';
 import { ZCourseUserAnalyticsParam, ZCourseUserAnalyticsQuery } from '@cio/utils/validation/course';
-import { courseTeamMemberMiddleware } from '@api/middlewares/course-team-member';
+import { requireAdmin } from '@api/middlewares/guards';
 import { getUserCourseAnalytics } from '@cio/core/services/course/course';
 import { handleError } from '@api/utils/errors';
 import { zValidator } from '@hono/zod-validator';
+
+// The course roster (add/remove/promote members, reset progress, per-learner analytics) is
+// ADMIN-only. courseTeamMemberMiddleware let a course TUTOR add or promote anyone — including
+// themselves — to course-ADMIN with an unconstrained roleId (ACCESS.md privilege-escalation gap).
 
 export const membersRouter = new Hono()
   /**
@@ -26,7 +30,7 @@ export const membersRouter = new Hono()
    * Gets all course members for a course
    * Requires authentication and course team membership (admin/tutor role)
    */
-  .get('/', courseTeamMemberMiddleware, zValidator('param', ZCourseMembersParam), async (c) => {
+  .get('/', requireAdmin, zValidator('param', ZCourseMembersParam), async (c) => {
     try {
       const { courseId } = c.req.valid('param');
       const members = await listCourseMembers(courseId);
@@ -50,7 +54,7 @@ export const membersRouter = new Hono()
    */
   .post(
     '/',
-    courseTeamMemberMiddleware,
+    requireAdmin,
     zValidator('param', ZCourseMembersParam),
     zValidator('json', ZAddCourseMembers),
     async (c) => {
@@ -79,7 +83,7 @@ export const membersRouter = new Hono()
    */
   .put(
     '/:memberId',
-    courseTeamMemberMiddleware,
+    requireAdmin,
     zValidator('param', ZCourseMembersMemberParam),
     zValidator('json', ZUpdateCourseMember),
     async (c) => {
@@ -106,7 +110,7 @@ export const membersRouter = new Hono()
    * Deletes a course member
    * Requires authentication and course team membership (admin/tutor role)
    */
-  .delete('/:memberId', courseTeamMemberMiddleware, zValidator('param', ZCourseMembersMemberParam), async (c) => {
+  .delete('/:memberId', requireAdmin, zValidator('param', ZCourseMembersMemberParam), async (c) => {
     try {
       const { courseId, memberId } = c.req.valid('param');
       const member = await deleteMember(courseId, memberId);
@@ -127,28 +131,23 @@ export const membersRouter = new Hono()
    * Clears all learner progress for a course member while keeping them enrolled.
    * Requires authentication and course team membership (admin/tutor role)
    */
-  .post(
-    '/:memberId/reset-progress',
-    courseTeamMemberMiddleware,
-    zValidator('param', ZResetCourseMemberProgressParam),
-    async (c) => {
-      try {
-        const user = c.get('user')!;
-        const { courseId, memberId } = c.req.valid('param');
-        const summary = await resetMemberCourseProgress(courseId, memberId, user.id);
+  .post('/:memberId/reset-progress', requireAdmin, zValidator('param', ZResetCourseMemberProgressParam), async (c) => {
+    try {
+      const user = c.get('user')!;
+      const { courseId, memberId } = c.req.valid('param');
+      const summary = await resetMemberCourseProgress(courseId, memberId, user.id);
 
-        return c.json(
-          {
-            success: true,
-            data: summary
-          },
-          200
-        );
-      } catch (error) {
-        return handleError(c, error, 'Failed to reset course member progress');
-      }
+      return c.json(
+        {
+          success: true,
+          data: summary
+        },
+        200
+      );
+    } catch (error) {
+      return handleError(c, error, 'Failed to reset course member progress');
     }
-  )
+  })
   /**
    * GET /course/:courseId/members/:userId/analytics
    * Gets user course analytics for a specific course
@@ -156,7 +155,7 @@ export const membersRouter = new Hono()
    */
   .get(
     '/:userId/analytics',
-    courseTeamMemberMiddleware,
+    requireAdmin,
     zValidator('param', ZCourseUserAnalyticsParam),
     zValidator('query', ZCourseUserAnalyticsQuery),
     async (c) => {

@@ -255,6 +255,43 @@ Every item below is code-traced. These are the ClassroomIO permission gaps Phase
 
 ---
 
+## 4.1 Step 4 — gap closure status (the central guard layer)
+
+Step 4 added a central, deny-by-default guard layer built on the resolved `actor`
+(`apps/api/src/middlewares/guards/` + pure predicates in `@cio/utils/auth` `ownership.ts`):
+`requireActor / requireRole / requireAdmin / requireStaff / requireManagerOrAdmin /
+requireAdminOrApiKey`, and ownership guards `requireSameOrg / requireSelfParam /
+requireMarkingAccess / bindSubmissionToCourse`. Predicates: `isSelf`, `isAllocatedTutor`
+(**denies until Phase 3** — the allocation seam), `canManageUsers`, `canAccessConfig`,
+`isProviderWideReader`, `sameOrg`. Tests: `apps/api/src/__tests__/authz/` (guard-layer matrix +
+ownership predicates + real-router wiring, written test-first — the mark wiring test was RED against
+the pre-Step-4 guard and GREEN after).
+
+| §4 gap | Status | Closing guard |
+|---|---|---|
+| **A** submission cross-course IDOR | **CLOSED** | `requireMarkingAccess` + `bindSubmissionToCourse` on every `/course/:courseId/submission/*` (loads the submission, 404 on course mismatch) |
+| gradebook allows students | **CLOSED** | `/course/:courseId/mark`,`/mark/gradebook` → `requireMarkingAccess` (STUDENT removed; TUTOR allocation-denied → ADMIN-only in P1) |
+| roster `audience/import`+`assign-courses` mis-gated | **CLOSED** | `requireAdmin` (was orgTeamMember) |
+| **course/people** privilege escalation | **CLOSED** | all `/course/:courseId/members` ops → `requireAdmin` (a tutor can no longer add/promote to course-ADMIN) |
+| **D** cohort list/create unguarded | **CLOSED** | `GET/POST /cohort` → `requireAdmin` (+`requireSameOrg` on the query) |
+| **E** quiz cross-org IDOR | **CLOSED (org scope)** | `quizRouter.use(requireSameOrg({param:'orgId'}))` binds the path org to the actor. *Residual:* per-`quizId`→org bind is part of the deferred child-id binding (low risk; quizzes are not PII) |
+| **F** cross-org via `?orgId` | **CLOSED** | `/dash/*` → `requireManagerOrAdmin`+`requireSameOrg`; `/community?orgId` → `requireSameOrg` (authz reads `actor.orgId`, not the query) |
+| **G** community body spoofing | **CLOSED** | `POST /community` + comment now take author/org from the session (`user.id`, `orgId`), ignore body `authorProfileId`/`organizationId`/`votes` |
+| **I** billing without admin | **CLOSED** | `/organization/plan*` + `/agent/credits/purchase` → `requireAdminOrApiKey()` (machine key path kept; any-authed-session path removed) |
+| PII admin-only | **CLOSED** | `/organization/team`,`/audience`,`/audience/:userId/analytics`,resend/revoke-invite → `requireAdmin` (was orgTeamMember → PII reached TUTORs) |
+| **J** attendance | **CLOSED** | `POST /course/:courseId/attendance` → `requireStaff` (students can no longer upsert) |
+| **J** asset writes | **PARTIAL** | asset-authoring mutations (`POST /assets`, `PUT /:assetId`, `/thumbnail`, attach/detach) → `requireAdmin`. *Deferred to the Phase-2 authoring pass:* the HLS transcoding-pipeline endpoints + playback-cookie stay `orgMember` (part of the upload/playback flow; not safely unit-testable here) |
+| **H** presign object-key access | **HARDENED, full bind DEFERRED** | presign → `requireActor()` (now deactivation-aware). A full per-key ownership bind is **not** cleanly possible today: keys are flat `nanoid()` capability tokens with no course scope, stored in submission-answer JSON (no indexed column), and the same endpoint serves both private coursework and shared lesson materials. Closing it properly needs course context threaded into the presign contract (a client-contract change) — tracked for a follow-up |
+| **B/C** child-object IDOR (lesson/section/newsfeed/lesson-language/exercise/cohort-newsfeed child ids; lesson-comment author) | **DEFERRED (Phase-2 authoring)** | These live on Phase-2 authoring surfaces and are already guarded at the **path** course/cohort scope (team-member). The residual — re-binding a child id to its path parent — uses the pattern established by `bindSubmissionToCourse` and is scheduled with the Phase-2 authoring hardening |
+| link-invite / auto-join loose join | **DEFERRED (Phase 7)** | approval queue is Phase 7 (noted in §4); the loose join is a Phase-7 authz item |
+| Dashboard-layer gaps (no server authz, unanchored regexes, slug-trust, silent-empty) | **DEFERRED (dashboard pass)** | Step 4 is API enforcement (the true boundary). Dashboard-native server guards are a separate follow-up |
+
+**Net:** every Phase-1-critical authz gap (cross-learner / cross-course / cross-org data exposure,
+privilege escalation, PII leakage, billing) is closed by construction. The remaining items are
+either lower-risk Phase-2 authoring integrity (child-id binding, asset pipeline), an architecturally
+harder capability-URL problem (presign H, hardened), or explicitly later-phase (auto-join P7,
+dashboard pass) — each documented above rather than silently dropped.
+
 ## 5. Decision log & Phase-1 delta
 
 **Decisions (owner to confirm/adjust):**

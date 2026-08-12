@@ -54,6 +54,7 @@ import {
 
 import { Hono } from '@api/utils/hono';
 import { authMiddleware } from '@api/middlewares/auth';
+import { requireAdmin, requireSameOrg } from '@api/middlewares/guards';
 import { orgTeamMemberMiddleware } from '@api/middlewares/org-team-member';
 import { cohortMemberMiddleware } from '@api/middlewares/cohort-member';
 import { cohortTeamMemberMiddleware } from '@api/middlewares/cohort-team-member';
@@ -100,7 +101,10 @@ export const cohortRouter = new Hono()
    * GET /cohort?organizationId=...
    * List all cohorts for an org
    */
-  .get('/', authMiddleware, zValidator('query', ZOrgQuery), async (c) => {
+  // Cohort list/create were auth-only with the org taken from the query/body — any authenticated
+  // user could list or create cohorts in ANY org (ACCESS.md gap D). Now ADMIN-only, and the org
+  // claim must match the caller's resolved org (requireSameOrg).
+  .get('/', requireAdmin, requireSameOrg(), zValidator('query', ZOrgQuery), async (c) => {
     try {
       const { organizationId } = c.req.valid('query');
       const cohorts = await listOrgCohorts(organizationId);
@@ -116,7 +120,7 @@ export const cohortRouter = new Hono()
    */
   .post(
     '/',
-    authMiddleware,
+    requireAdmin,
     zValidator('json', ZCreateCohort.extend({ organizationId: z.string().uuid() })),
     async (c) => {
       try {

@@ -69,7 +69,7 @@ import {
 import { orgAdminMiddleware } from '@api/middlewares/org-admin';
 import { orgMemberMiddleware } from '@api/middlewares/org-member';
 import { orgMemberOrAutomationKeyMiddleware } from '@api/middlewares/org-member-or-automation-key';
-import { orgTeamMemberMiddleware } from '@api/middlewares/org-team-member';
+import { requireAdmin, requireAdminOrApiKey } from '@api/middlewares/guards';
 import { quizRouter } from '@api/routes/organization/quiz';
 import { searchRouter } from '@api/routes/organization/search';
 import { tagsRouter } from '@api/routes/organization/tags';
@@ -147,7 +147,7 @@ export const organizationRouter = new Hono()
       return handleError(c, error, 'Failed to auto-join organization');
     }
   })
-  .get('/team', authMiddleware, orgTeamMemberMiddleware, async (c) => {
+  .get('/team', authMiddleware, requireAdmin, async (c) => {
     try {
       const orgId = c.req.header('cio-org-id')!;
       const team = await getOrgTeam(orgId);
@@ -258,7 +258,7 @@ export const organizationRouter = new Hono()
    * Gets organization audience (students)
    * Requires authentication
    */
-  .get('/audience', authMiddleware, orgTeamMemberMiddleware, zValidator('query', ZGetAudienceQuery), async (c) => {
+  .get('/audience', authMiddleware, requireAdmin, zValidator('query', ZGetAudienceQuery), async (c) => {
     try {
       const orgId = c.req.header('cio-org-id')!;
       const query = c.req.valid('query');
@@ -313,7 +313,7 @@ export const organizationRouter = new Hono()
   .post(
     '/audience/resend-invite',
     authMiddleware,
-    orgTeamMemberMiddleware,
+    requireAdmin,
     zValidator('json', ZAudienceInviteByEmail),
     async (c) => {
       try {
@@ -334,7 +334,7 @@ export const organizationRouter = new Hono()
   .post(
     '/audience/revoke-invite',
     authMiddleware,
-    orgTeamMemberMiddleware,
+    requireAdmin,
     zValidator('json', ZAudienceInviteByEmail),
     async (c) => {
       try {
@@ -356,7 +356,7 @@ export const organizationRouter = new Hono()
   .get(
     '/audience/:userId/analytics',
     authMiddleware,
-    orgTeamMemberMiddleware,
+    requireAdmin,
     zValidator('param', ZGetUserAnalytics),
     async (c) => {
       try {
@@ -559,7 +559,7 @@ export const organizationRouter = new Hono()
    * Creates a new organization plan
    * Requires authentication (user session or API key)
    */
-  .post('/plan', authOrApiKeyMiddleware, zValidator('json', ZCreateOrgPlan), async (c) => {
+  .post('/plan', requireAdminOrApiKey(), zValidator('json', ZCreateOrgPlan), async (c) => {
     try {
       const data = c.req.valid('json');
       const plan = await createOrgPlan(data);
@@ -580,7 +580,7 @@ export const organizationRouter = new Hono()
    * Updates an organization plan by subscription ID
    * Requires authentication (user session or API key)
    */
-  .put('/plan', authOrApiKeyMiddleware, zValidator('json', ZUpdateOrgPlan), async (c) => {
+  .put('/plan', requireAdminOrApiKey(), zValidator('json', ZUpdateOrgPlan), async (c) => {
     try {
       const { subscriptionId, payload } = c.req.valid('json');
       const plan = await updateOrgPlan(subscriptionId, payload);
@@ -601,7 +601,7 @@ export const organizationRouter = new Hono()
    * Cancels an organization plan by subscription ID
    * Requires authentication (user session or API key)
    */
-  .post('/plan/cancel', authOrApiKeyMiddleware, zValidator('json', ZCancelOrgPlan), async (c) => {
+  .post('/plan/cancel', requireAdminOrApiKey(), zValidator('json', ZCancelOrgPlan), async (c) => {
     try {
       const { subscriptionId, payload } = c.req.valid('json');
       const plan = await cancelOrgPlan(subscriptionId, payload);
@@ -708,31 +708,25 @@ export const organizationRouter = new Hono()
    * Imports users into the organization as students with optional course assignment
    * Requires authentication and admin role
    */
-  .post(
-    '/audience/import',
-    authMiddleware,
-    orgTeamMemberMiddleware,
-    zValidator('json', ZImportAudienceMembers),
-    async (c) => {
-      try {
-        const orgId = c.req.header('cio-org-id')!;
-        const user = c.get('user')!;
-        const data = c.req.valid('json');
+  .post('/audience/import', authMiddleware, requireAdmin, zValidator('json', ZImportAudienceMembers), async (c) => {
+    try {
+      const orgId = c.req.header('cio-org-id')!;
+      const user = c.get('user')!;
+      const data = c.req.valid('json');
 
-        const result = await importAudienceMembers(orgId, data, user.id);
+      const result = await importAudienceMembers(orgId, data, user.id);
 
-        return c.json(
-          {
-            success: true,
-            data: result
-          },
-          201
-        );
-      } catch (error) {
-        return handleError(c, error, 'Failed to import audience members');
-      }
+      return c.json(
+        {
+          success: true,
+          data: result
+        },
+        201
+      );
+    } catch (error) {
+      return handleError(c, error, 'Failed to import audience members');
     }
-  )
+  })
   /**
    * POST /organization/audience/assign-courses
    * Assigns existing audience members to one or more courses
@@ -741,7 +735,7 @@ export const organizationRouter = new Hono()
   .post(
     '/audience/assign-courses',
     authMiddleware,
-    orgTeamMemberMiddleware,
+    requireAdmin,
     zValidator('json', ZAssignAudienceCourses),
     async (c) => {
       try {

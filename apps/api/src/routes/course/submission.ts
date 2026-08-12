@@ -13,12 +13,16 @@ import {
 } from '@api/services/submission';
 
 import { Hono } from '@api/utils/hono';
-import { courseTeamMemberMiddleware } from '@api/middlewares/course-team-member';
+import { bindSubmissionToCourse, requireMarkingAccess } from '@api/middlewares/guards';
 import { handleError } from '@api/utils/errors';
 import { zValidator } from '@hono/zod-validator';
 
+// Marking/grading is ADMIN-only in Phase 1 (an allocated TUTOR once Phase 3 lands — denied until
+// then), and every :submissionId route additionally binds the submission to the path :courseId so a
+// staff member of one course cannot grade/read/delete another course's submission (ACCESS.md gap A).
+
 export const submissionRouter = new Hono()
-  .get('/for-grading', courseTeamMemberMiddleware, async (c) => {
+  .get('/for-grading', requireMarkingAccess(), async (c) => {
     try {
       const courseId = c.req.param('courseId')!;
       const data = await listSubmissionsForGrading(courseId);
@@ -30,7 +34,8 @@ export const submissionRouter = new Hono()
   })
   .put(
     '/:submissionId',
-    courseTeamMemberMiddleware,
+    requireMarkingAccess(),
+    bindSubmissionToCourse,
     zValidator('param', ZSubmissionGetParam),
     zValidator('json', ZSubmissionUpdate),
     async (c) => {
@@ -46,19 +51,26 @@ export const submissionRouter = new Hono()
       }
     }
   )
-  .delete('/:submissionId', courseTeamMemberMiddleware, zValidator('param', ZSubmissionGetParam), async (c) => {
-    try {
-      const { submissionId } = c.req.valid('param');
-      const submission = await deleteSubmissionService(submissionId);
+  .delete(
+    '/:submissionId',
+    requireMarkingAccess(),
+    bindSubmissionToCourse,
+    zValidator('param', ZSubmissionGetParam),
+    async (c) => {
+      try {
+        const { submissionId } = c.req.valid('param');
+        const submission = await deleteSubmissionService(submissionId);
 
-      return c.json({ success: true, data: submission }, 200);
-    } catch (error) {
-      return handleError(c, error, 'Failed to delete submission');
+        return c.json({ success: true, data: submission }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to delete submission');
+      }
     }
-  })
+  )
   .put(
     '/:submissionId/answer',
-    courseTeamMemberMiddleware,
+    requireMarkingAccess(),
+    bindSubmissionToCourse,
     zValidator('param', ZSubmissionGetParam),
     zValidator('json', ZSubmissionAnswerUpdate),
     async (c) => {
@@ -76,7 +88,8 @@ export const submissionRouter = new Hono()
   )
   .put(
     '/:submissionId/grades',
-    courseTeamMemberMiddleware,
+    requireMarkingAccess(),
+    bindSubmissionToCourse,
     zValidator('param', ZSubmissionGetParam),
     zValidator('json', ZSubmissionGradesUpdate),
     async (c) => {

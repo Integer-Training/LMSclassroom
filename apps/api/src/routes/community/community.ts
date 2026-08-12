@@ -29,33 +29,43 @@ import { handleError } from '@api/utils/errors';
 import { orgMemberMiddleware } from '@api/middlewares/org-member';
 import { orgTeamMemberMiddleware } from '@api/middlewares/org-team-member';
 import { questionAuthorOrTeamMiddleware } from './middlewares/question-author-or-team';
+import { requireSameOrg } from '@api/middlewares/guards';
 import { zValidator } from '@hono/zod-validator';
 
 export const communityRouter = new Hono()
-  .get('/', authMiddleware, orgMemberMiddleware, zValidator('query', ZCommunityQuestions), async (c) => {
-    try {
-      const { orgId } = c.req.valid('query');
-      const user = c.get('user')!;
-      const userRole = c.get('userRole');
+  // requireSameOrg closes the cross-org read: the `?orgId` was taken from the query while only the
+  // header org was validated, so a member of org A could read org B by pairing them (ACCESS.md F).
+  .get(
+    '/',
+    authMiddleware,
+    orgMemberMiddleware,
+    requireSameOrg(),
+    zValidator('query', ZCommunityQuestions),
+    async (c) => {
+      try {
+        const { orgId } = c.req.valid('query');
+        const user = c.get('user')!;
+        const userRole = c.get('userRole');
 
-      if (userRole === null) {
-        return c.json(
-          {
-            success: false,
-            error: 'Organization context not available',
-            code: 'ORG_CONTEXT_MISSING'
-          },
-          500
-        );
+        if (userRole === null) {
+          return c.json(
+            {
+              success: false,
+              error: 'Organization context not available',
+              code: 'ORG_CONTEXT_MISSING'
+            },
+            500
+          );
+        }
+
+        const result = await fetchCommunityQuestions(orgId, user.id, userRole);
+
+        return c.json({ success: true, data: result }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to load community posts');
       }
-
-      const result = await fetchCommunityQuestions(orgId, user.id, userRole);
-
-      return c.json({ success: true, data: result }, 200);
-    } catch (error) {
-      return handleError(c, error, 'Failed to load community posts');
     }
-  })
+  )
   .get('/:slug', authMiddleware, orgMemberMiddleware, zValidator('param', ZCommunityQuestion), async (c) => {
     try {
       const { slug } = c.req.valid('param');
@@ -69,15 +79,20 @@ export const communityRouter = new Hono()
   })
   .post('/', authMiddleware, orgMemberMiddleware, zValidator('json', ZNewCommunityQuestion), async (c) => {
     try {
-      const { title, body, courseId, organizationId, authorProfileId, votes, slug } = c.req.valid('json');
+      const { title, body, courseId, slug } = c.req.valid('json');
+      // Author and org come from the authenticated session, NOT the request body — the body carried
+      // authorProfileId/organizationId/votes, letting a caller post as another profile / another org
+      // or seed votes (ACCESS.md gap G). The client's values for those fields are ignored.
+      const user = c.get('user')!;
+      const organizationId = c.get('orgId') ?? c.req.header('cio-org-id')!;
 
       const result = await createQuestion({
         title,
         body,
         courseId,
         organizationId,
-        authorProfileId,
-        votes,
+        authorProfileId: user.id,
+        votes: 0,
         slug
       });
 
@@ -126,14 +141,15 @@ export const communityRouter = new Hono()
     async (c) => {
       try {
         const { id } = c.req.valid('param');
-        console.log('question id', id);
-        const { body, authorProfileId, votes } = c.req.valid('json');
+        const { body } = c.req.valid('json');
+        // Author comes from the session, not the body (ACCESS.md gap G — body-spoofed authorProfileId).
+        const user = c.get('user')!;
 
         const result = await createComment({
           body,
           questionId: id,
-          authorProfileId,
-          votes
+          authorProfileId: user.id,
+          votes: 0
         });
 
         return c.json({ success: true, data: result }, 201);
