@@ -115,7 +115,7 @@ every change on `main` first, then pull + rebuild.
 | **URL** | https://learn.epearlacademy.com (Caddy + Let's Encrypt TLS) |
 | **Droplet** | DigitalOcean `pearllms`, Ubuntu 24.04, 2 vCPU / 4 GB (lon1), `165.232.97.8` |
 | **First deployed** | 2026-08-12 |
-| **Deployed commit** | `0bed259a9` (== `origin/main` HEAD at deploy). After any doc/code push, `git pull` on the droplet so its HEAD stays equal to `origin/main` — verify with `git rev-parse HEAD`. |
+| **Deployed commit** | Kept **equal to `origin/main` HEAD** — the droplet is `git pull`ed after every push. Verify live: `ssh … 'cd /opt/pearllms && git rev-parse HEAD'` must equal `git rev-parse origin/main`. (A frozen hash is intentionally NOT recorded here — the commit that records a deploy always lands *after* it, so any literal hash would trail by one. Initial production deploy: 2026-08-12 from `0bed259a9`; kept in sync since.) |
 | **DB / storage** | Supabase `cvtmymxxjgjshrzsjxnj` (Postgres pooled 6543 runtime / direct 5432 migrations; Storage documents+videos private, media public) |
 
 **Smoke test (2026-08-12):** HTTPS 200 with valid cert; HTTP→HTTPS 308; "Source code

@@ -187,3 +187,15 @@ baseURL from `DASHBOARD_ORIGIN`); `auth/hooks/create-profile.ts:16` (first-signu
 **Gotcha (upstream AGENTS.md:667):** setting it only in the dashboard env leaves the API in cloud
 mode (second orgs allowed, no license gating) while the UI renders self-hosted. Set it in BOTH.
 Read at process start — restart after changing. Dashboard value is baked into the built bundle.
+
+## 10. Deploy-only (DigitalOcean droplet — `.env.deploy.example`)
+
+Set on the droplet only (see `docs/DEPLOY.md`); not used in local dev.
+
+| Var | Purpose | Ours |
+|---|---|---|
+| `APP_DOMAIN` | Bare domain Caddy issues the TLS cert for | `learn.epearlacademy.com` |
+| `PUBLIC_APP_URL` | Public `https://` app URL — API `PUBLIC_SERVER_URL`/`DASHBOARD_ORIGIN`/`TRUSTED_ORIGINS` and the dashboard `ORIGIN` all derive from it | `https://learn.epearlacademy.com` |
+
+The Supabase, storage, SMTP, secrets, and `PUBLIC_SOURCE_REPO_URL` values on the droplet
+are the same vars documented in §1–§9 above.
