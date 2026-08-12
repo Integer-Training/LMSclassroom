@@ -3827,3 +3827,28 @@ export const deadLetterJob = pgTable(
     index('idx_dead_letter_job_org_created').on(table.organizationId, table.createdAt)
   ]
 );
+
+// PearlLMS Phase 1: one shared audit trail for sensitive actions (user management, profile
+// edits now; results/allocations/approvals in later phases). NO foreign keys — audit rows
+// must survive deletion of the actor/org/entity. metadata records identifiers + changed-field
+// NAMES only, never PII values (enforced by recordAudit + docs/AUDIT.md).
+export const auditEvent = pgTable(
+  'audit_event',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    actorUserId: uuid('actor_user_id'),
+    organizationId: uuid('organization_id'),
+    action: text().notNull(),
+    entityType: text('entity_type').notNull(),
+    entityId: text('entity_id'),
+    metadata: jsonb().default({}).$type<Record<string, unknown>>().notNull()
+  },
+  (table) => [
+    index('idx_audit_event_actor').on(table.actorUserId),
+    index('idx_audit_event_org').on(table.organizationId),
+    index('idx_audit_event_action').on(table.action),
+    index('idx_audit_event_entity').on(table.entityType, table.entityId),
+    index('idx_audit_event_occurred_at').on(table.occurredAt)
+  ]
+);

@@ -21,6 +21,10 @@
       "types": "./dist/actor.d.ts",
       "default": "./dist/actor.js"
     },
+    "./audit": {
+      "types": "./dist/audit.d.ts",
+      "default": "./dist/audit.js"
+    },
     "./schema": {
       "types": "./dist/schema.d.ts",
       "default": "./dist/schema.js"
