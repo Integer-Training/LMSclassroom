@@ -2,6 +2,7 @@ import * as CONSTANTS from './constants';
 import * as schema from '@db/schema';
 
 import { admin } from 'better-auth/plugins';
+import { APIError } from 'better-auth/api';
 import { sendChangeEmailConfirmation, sendVerificationEmail } from './auth/email-verification';
 
 import { betterAuth } from 'better-auth/minimal';
@@ -107,6 +108,28 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
     },
     session: {
       create: {
+        // Deactivation must block re-login (PearlLMS Phase 1 Step 7). This runs at the
+        // session-creation seam — the same place the admin plugin rejects `banned` users — so a
+        // DEACTIVATED profile cannot sign in. A live session is separately deleted at deactivation
+        // time (deleteSessionsByUserId), so the effect is immediate; resolveActor denies too.
+        before: async (session) => {
+          try {
+            const [row] = await db
+              .select({ status: schema.profile.status })
+              .from(schema.profile)
+              .where(eq(schema.profile.id, session.userId))
+              .limit(1);
+            if (row?.status === 'DEACTIVATED') {
+              throw new APIError('FORBIDDEN', {
+                message: 'Your account has been deactivated. Contact an administrator.'
+              });
+            }
+          } catch (error) {
+            // Re-throw the deliberate deny; never block login on an incidental DB error.
+            if (error instanceof APIError) throw error;
+            console.error('[auth] session.create.before status check failed:', error);
+          }
+        },
         after: async (session) => {
           await trackLoginHook(session);
           await syncProfileEmailVerificationFromAuthUser(session.userId);

@@ -172,6 +172,16 @@ export const baseNavConfig: NavItemConfig[] = [
     matchPattern: '^/org/[^/]+/audience(/.*)?$' // Matches nested routes
   },
   {
+    // Admin-only user management (Phase 1 Step 7): create/role/deactivate. Hidden for non-admins;
+    // the server route is requireAdmin regardless.
+    group: 'people',
+    titleKey: 'org_navigation.users',
+    path: '/users',
+    icon: PeopleIcon,
+    requiresAdmin: true,
+    matchPattern: '^/org/[^/]+/users(/.*)?$'
+  },
+  {
     group: 'automation',
     titleKey: 'automation.tabs.mcp',
     path: '/mcp',

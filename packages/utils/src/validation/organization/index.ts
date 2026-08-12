@@ -1,5 +1,6 @@
 export * from './audience';
 export * from './organization';
+export * from './users';
 export * from './domain';
 export * from './quiz';
 export * from './exercise';

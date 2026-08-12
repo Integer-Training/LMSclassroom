@@ -1,4 +1,5 @@
 export * from './organization';
+export * from './users';
 export * from './quiz';
 export * from './invite';
 export * from './link-invite';
