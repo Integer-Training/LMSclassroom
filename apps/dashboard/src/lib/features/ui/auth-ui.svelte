@@ -13,6 +13,7 @@
   import { preventDefault } from '$lib/utils/functions/svelte';
   import { ROUTE } from '$lib/utils/constants/routes';
   import { DotPattern } from '@cio/ui/custom/animation/dot-pattern';
+  import SourceCodeLink from '$features/ui/source-code-link.svelte';
 
   interface Props {
     isLogin?: boolean;
@@ -142,4 +143,9 @@
       </Card.Footer>
     {/if}
   </Card.Root>
+
+  <!-- AGPL-3.0: source-code link, visible on all logged-out auth pages -->
+  <div class="relative z-10 mt-4 text-center">
+    <SourceCodeLink />
+  </div>
 </div>

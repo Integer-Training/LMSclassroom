@@ -19,6 +19,7 @@
   import { currentOrg } from '$lib/utils/store/org';
   import { showUserJotWidget } from '$lib/utils/services/userjot';
   import { ROLE } from '@cio/utils/constants';
+  import SourceCodeLink from '$features/ui/source-code-link.svelte';
 
   const SUPPORT_EMAIL = 'help@classroomio.com';
   const DOCS_URL = 'https://classroomio.com/docs';
@@ -154,5 +155,11 @@
         </DropdownMenu.Group>
       </DropdownMenu.Content>
     </DropdownMenu.Root>
+  </Sidebar.MenuItem>
+
+  <!-- AGPL-3.0: source-code link, always visible in the logged-in sidebar footer.
+       Hidden when the rail is collapsed to icons. -->
+  <Sidebar.MenuItem class="px-2 py-1 group-data-[collapsible=icon]:hidden">
+    <SourceCodeLink />
   </Sidebar.MenuItem>
 </Sidebar.Menu>

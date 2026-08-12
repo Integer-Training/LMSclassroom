@@ -146,6 +146,7 @@ ZeptoMail's HTTP API instead of SMTP. Email branding is still ClassroomIO — se
 | Var | Purpose | Ours |
 |---|---|---|
 | `PRIVATE_APP_HOST` / `PRIVATE_APP_SUBDOMAINS` | Tenant domain routing (cloud); self-hosted skips subdomain resolution | stock (`localhost`/`app`) — irrelevant when self-hosted |
+| `PUBLIC_SOURCE_REPO_URL` | **AGPL-3.0** — repo shown by the visible "Source code (AGPL-3.0)" link (login page + logged-in sidebar footer). Runtime-config via `$env/dynamic/public`; defaults to the LMSclassroom fork | `https://github.com/Integer-Training/LMSclassroom` |
 | `PUBLIC_APP_TITLE`, `PUBLIC_APP_DESCRIPTION`, `PUBLIC_OG_IMAGE_URL` | Custom branding meta tags | set to Pearl branding later |
 | `PUBLIC_MEDIA_CDN_URL` | Public CDN base for media/OG | unset |
 | `ALLOWED_EXTERNAL_DOMAINS`, `CSP_SCRIPT_SRC_DOMAINS`, `CSP_STYLE_SRC_DOMAINS`, `CSP_CONNECT_SRC_DOMAINS`, `CSP_FRAME_SRC_DOMAINS`, `CSP_FONT_SRC_DOMAINS`, `CSP_MEDIA_SRC_DOMAINS`, `CSP_FRAME_ANCESTORS_DOMAINS` | Runtime CSP allowlists (self-hosted starts from `'self'` only — `csp-domains.js:63-73`) | add Supabase Storage host so media loads |

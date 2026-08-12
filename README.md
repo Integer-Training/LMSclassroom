@@ -1,3 +1,13 @@
+> **Fork notice — LMSclassroom (PearlLMS).** This repository is a hard fork of
+> [ClassroomIO](https://github.com/classroomio/classroomio), maintained by
+> Integer Training. It is licensed under **AGPL-3.0** (see [LICENSE](LICENSE)); the
+> complete source of the deployed app is published here and the running app links
+> back to it. Our modifications — telemetry/phone-home removal, Supabase Postgres +
+> Storage, SMTP, and infra changes — are summarised in
+> [docs/FORK.md](docs/FORK.md) (provenance) and [docs/CODEMAP.md](docs/CODEMAP.md).
+> **Sync rule: the deployed code always equals the code pushed to this repo** — no
+> deploy-only patches (AGPL §13).
+
 <a href="https://classroomio.com/">
   <img alt="ClassroomIO is a no-code tool that allows you build and scale your online bootcamp with ease." src="https://raw.githubusercontent.com/classroomio/classroomio/main/apps/website/static/classroomio-opengraph-image.jpg" />
   <h1 align="center">ClassroomIO.com</h1>
