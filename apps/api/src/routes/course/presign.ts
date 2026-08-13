@@ -15,7 +15,7 @@ import { Hono } from '@api/utils/hono';
 import type { Actor } from '@cio/db/actor';
 import { requireActor, assertCourseMaterialDownloadAccess } from '@api/middlewares/guards';
 import { generateFileKey, generateMaterialFileKey } from '@cio/core/utils/upload';
-import { AppError } from '@api/utils/errors';
+import { AppError, handleError } from '@api/utils/errors';
 import { MAX_DOCUMENT_SIZE, MAX_FILE_SIZE } from '@api/constants/upload';
 
 /**
@@ -80,22 +80,26 @@ export const presignRouter = new Hono()
     }),
     validator('json', ZCoursePresignUrlUpload),
     async (c) => {
-      const body = c.req.valid('json');
+      try {
+        const body = c.req.valid('json');
 
-      const { fileName, fileType, fileSize } = body;
+        const { fileName, fileType, fileSize } = body;
 
-      assertPresignFileSizeWithinLimit(fileSize, MAX_FILE_SIZE);
+        assertPresignFileSizeWithinLimit(fileSize, MAX_FILE_SIZE);
 
-      const fileKey = generateFileKey(fileName);
+        const fileKey = generateFileKey(fileName);
 
-      const presignedUrl = await generateVideoUploadPresignedUrl(fileKey, fileType);
+        const presignedUrl = await generateVideoUploadPresignedUrl(fileKey, fileType);
 
-      return c.json({
-        success: true,
-        url: presignedUrl,
-        fileKey,
-        message: 'Pre-signed URL generated successfully'
-      });
+        return c.json({
+          success: true,
+          url: presignedUrl,
+          fileKey,
+          message: 'Pre-signed URL generated successfully'
+        });
+      } catch (error) {
+        return handleError(c, error, 'Failed to generate video upload URL');
+      }
     }
   )
   .post(
@@ -123,24 +127,28 @@ export const presignRouter = new Hono()
     }),
     validator('json', ZCourseDocumentPresignUrlUpload),
     async (c) => {
-      const body = c.req.valid('json');
+      try {
+        const body = c.req.valid('json');
 
-      const { fileName, fileType, fileSize, courseId } = body;
+        const { fileName, fileType, fileSize, courseId } = body;
 
-      assertPresignFileSizeWithinLimit(fileSize, MAX_DOCUMENT_SIZE);
+        assertPresignFileSizeWithinLimit(fileSize, MAX_DOCUMENT_SIZE);
 
-      // PearlLMS Phase 2 Step 4: material uploads (courseId present) are namespaced under
-      // materials/{courseId}/…; other document uploads (e.g. exercise submissions) keep the flat key.
-      const fileKey = courseId ? generateMaterialFileKey(courseId, fileName) : generateFileKey(fileName);
+        // PearlLMS Phase 2 Step 4: material uploads (courseId present) are namespaced under
+        // materials/{courseId}/…; other document uploads (e.g. exercise submissions) keep the flat key.
+        const fileKey = courseId ? generateMaterialFileKey(courseId, fileName) : generateFileKey(fileName);
 
-      const presignedUrl = await generateDocumentUploadPresignedUrl(fileKey, fileType);
+        const presignedUrl = await generateDocumentUploadPresignedUrl(fileKey, fileType);
 
-      return c.json({
-        success: true,
-        url: presignedUrl,
-        fileKey,
-        message: 'Document pre-signed URL generated successfully'
-      });
+        return c.json({
+          success: true,
+          url: presignedUrl,
+          fileKey,
+          message: 'Document pre-signed URL generated successfully'
+        });
+      } catch (error) {
+        return handleError(c, error, 'Failed to generate document upload URL');
+      }
     }
   )
   .post(
@@ -168,21 +176,25 @@ export const presignRouter = new Hono()
     }),
     validator('json', ZCourseDownloadPresignedUrl),
     async (c) => {
-      const body = c.req.valid('json');
+      try {
+        const body = c.req.valid('json');
 
-      const { keys, courseId } = body;
+        const { keys, courseId } = body;
 
-      // Gap G3: bind the download to the course + content-read rule (staff, or enrolled learner of a
-      // published course; non-staff limited to the course's current material keys).
-      await assertCourseMaterialDownloadAccess(c.get('actor') as Actor, courseId, keys);
+        // Gap G3: bind the download to the course + content-read rule (staff, or enrolled learner of a
+        // published course; non-staff limited to the course's current material keys).
+        await assertCourseMaterialDownloadAccess(c.get('actor') as Actor, courseId, keys);
 
-      const signedUrls = await generateVideoDownloadPresignedUrls(keys);
+        const signedUrls = await generateVideoDownloadPresignedUrls(keys);
 
-      return c.json({
-        success: true,
-        urls: signedUrls,
-        message: 'Video URLs retrieved successfully'
-      });
+        return c.json({
+          success: true,
+          urls: signedUrls,
+          message: 'Video URLs retrieved successfully'
+        });
+      } catch (error) {
+        return handleError(c, error, 'Failed to generate video download URLs');
+      }
     }
   )
   .post(
@@ -210,19 +222,23 @@ export const presignRouter = new Hono()
     }),
     validator('json', ZCourseDownloadPresignedUrl),
     async (c) => {
-      const body = c.req.valid('json');
+      try {
+        const body = c.req.valid('json');
 
-      const { keys, courseId } = body;
+        const { keys, courseId } = body;
 
-      // Gap G3: same course-binding + content-read guard as video download.
-      await assertCourseMaterialDownloadAccess(c.get('actor') as Actor, courseId, keys);
+        // Gap G3: same course-binding + content-read guard as video download.
+        await assertCourseMaterialDownloadAccess(c.get('actor') as Actor, courseId, keys);
 
-      const signedUrls = await generateDocumentDownloadPresignedUrls(keys);
+        const signedUrls = await generateDocumentDownloadPresignedUrls(keys);
 
-      return c.json({
-        success: true,
-        urls: signedUrls,
-        message: 'Document URLs retrieved successfully'
-      });
+        return c.json({
+          success: true,
+          urls: signedUrls,
+          message: 'Document URLs retrieved successfully'
+        });
+      } catch (error) {
+        return handleError(c, error, 'Failed to generate document download URLs');
+      }
     }
   );
