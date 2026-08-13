@@ -32,7 +32,7 @@
     </Page.HeaderContent>
     <Page.Action>
       <div class="flex w-full justify-end gap-2">
-        <RoleBasedSecurity allowedRoles={[1, 2]}>
+        <RoleBasedSecurity allowedRoles={[1]}>
           <Button variant="outline" onclick={() => (reorder = !reorder)} disabled={!!$contentEditingStore}>
             {$t(`course.navItem.lessons.add_lesson.${reorder ? 'end_reorder' : 'start_reorder'}`)}
           </Button>

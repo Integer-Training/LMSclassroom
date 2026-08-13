@@ -23,6 +23,7 @@
   import { contentCreateStoreUtils, contentEditingStore } from '$features/course/components/content/store';
   import { getCourseContent } from '$features/course/utils/content';
   import { ContentType } from '@cio/utils/constants/content';
+  import { reindexOrder } from '@cio/utils/functions/reorder';
   import ContentRow from './content-row.svelte';
   import ContentActions from './content-actions.svelte';
   import SectionHeader from './section-header.svelte';
@@ -136,10 +137,16 @@
       sectionId?: string | null;
     }> = [];
 
-    const updatedSections = sections.map((section, sectionIndex) => {
+    // Canonical 0-based ordering via the shared helper: each phase's units are reindexed to a clean
+    // 0..n-1 permutation independently (so cross-phase moves stay gap/duplicate-free), and the phases
+    // themselves are reindexed over the non-ungrouped set.
+    const updatedSections = sections.map((section) => {
       const normalizedSectionId = normalizeSectionId(section.id);
+      const itemOrderById = new Map(
+        reindexOrder(section.items.map((item) => item.contentId)).map((o) => [o.id, o.order])
+      );
       const updatedItems = section.items.map((item, index) => {
-        const order = index + 1;
+        const order = itemOrderById.get(item.contentId) ?? index;
 
         if (item.type === ContentType.Lesson || item.type === ContentType.Exercise) {
           if (item.order !== order || item.sectionId !== normalizedSectionId) {
@@ -161,17 +168,21 @@
 
       return {
         ...section,
-        order: sectionIndex + 1,
         items: updatedItems
       };
     });
 
-    sections = updatedSections;
-    syncCourseContentSections(updatedSections);
+    const sectionsToReorder = reindexOrder(
+      updatedSections.filter((section) => section.id !== 'ungrouped').map((section) => section.id)
+    );
+    const sectionOrderById = new Map(sectionsToReorder.map((o) => [o.id, o.order]));
+    const finalSections = updatedSections.map((section) => ({
+      ...section,
+      order: sectionOrderById.get(section.id) ?? section.order ?? null
+    }));
 
-    const sectionsToReorder = updatedSections
-      .filter((section) => section.id !== 'ungrouped')
-      .map((section) => ({ id: section.id, order: section.order ?? 0 }));
+    sections = finalSections;
+    syncCourseContentSections(finalSections);
 
     if (sectionsToReorder.length > 0) {
       await lessonApi.reorderSections(courseId, sectionsToReorder);

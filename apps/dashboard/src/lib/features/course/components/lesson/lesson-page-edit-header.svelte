@@ -53,7 +53,7 @@
 <div class="flex w-full items-center justify-between gap-2">
   <div class="min-w-0 flex-1 space-y-2">
     {#if mode === MODES.edit && !$isOrgStudent}
-      <RoleBasedSecurity allowedRoles={[1, 2]}>
+      <RoleBasedSecurity allowedRoles={[1]}>
         <InputField
           className="max-w-xl"
           value={title}
@@ -78,7 +78,7 @@
   </div>
 
   {#if mode === MODES.edit && !$isOrgStudent}
-    <RoleBasedSecurity allowedRoles={[1, 2]}>
+    <RoleBasedSecurity allowedRoles={[1]}>
       <div class="flex flex-wrap items-center justify-end gap-2">
         <IconButton onclick={onToggleLock} aria-label={lockLabel} title={lockLabel}>
           {#if isUnlocked}

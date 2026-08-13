@@ -34,7 +34,7 @@
   }: Props = $props();
 </script>
 
-<RoleBasedSecurity allowedRoles={[1, 2]}>
+<RoleBasedSecurity allowedRoles={[1]}>
   <div class="flex items-center gap-1">
     {#if isEditing}
       <Button variant="outline" onclick={onCancel} disabled={isSaving}>

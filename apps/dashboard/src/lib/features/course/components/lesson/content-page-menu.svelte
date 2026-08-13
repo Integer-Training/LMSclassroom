@@ -80,7 +80,7 @@
   }
 </script>
 
-<RoleBasedSecurity allowedRoles={[1, 2]}>
+<RoleBasedSecurity allowedRoles={[1]}>
   <DropdownMenu.Root>
     <DropdownMenu.Trigger>
       <IconButton

@@ -73,7 +73,7 @@
   {/if}
 
   {#if showActions}
-    <RoleBasedSecurity allowedRoles={[1, 2]}>
+    <RoleBasedSecurity allowedRoles={[1]}>
       <div class="flex items-center gap-1">
         {#if !isEditing && showAddContent}
           <IconButton variant="outline" onclick={onAddContent} {disabled}>

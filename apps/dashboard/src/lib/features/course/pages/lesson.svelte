@@ -251,6 +251,7 @@
         slideUrl: lessonApi.lesson.slideUrl || undefined,
         videos: lessonApi.lesson.videos || [],
         documents: lessonApi.lesson.documents || [],
+        unitType: lessonApi.lesson.unitType ?? null,
         slug: isPublicCourse && lessonApi.lesson.slug ? lessonApi.lesson.slug : undefined
       }),
       saveOrUpdateTranslation(lessonApi.currentLocale, lessonId)
@@ -426,7 +427,7 @@
         <ContentNavigationActions {lessonId} {courseId} />
       {/if}
 
-      <RoleBasedSecurity allowedRoles={[1, 2]}>
+      <RoleBasedSecurity allowedRoles={[1]}>
         <div class="flex flex-row items-center gap-2 lg:flex">
           <!--
           {#if mode === MODES.edit && window.innerWidth >= 1024}

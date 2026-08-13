@@ -39,6 +39,7 @@ import { ZLessonDownloadContent } from '@cio/utils/validation/course';
 import { authMiddleware } from '@api/middlewares/auth';
 import { courseMemberMiddleware } from '@api/middlewares/course-member';
 import { courseTeamMemberMiddleware } from '@api/middlewares/course-team-member';
+import { requireAdmin } from '@api/middlewares/guards';
 import { notifyCourseSessionUpdateService } from '@api/services/course/notify-session';
 import { generateLessonPdf } from '@api/utils/lesson';
 import { getGroupMemberIdByCourseAndProfile } from '@cio/db/queries/group';
@@ -58,7 +59,7 @@ export const lessonRouter = new Hono()
       return handleError(c, error, 'Failed to list lessons');
     }
   })
-  .post('/reorder', authMiddleware, courseMemberMiddleware, zValidator('json', ZLessonReorder), async (c) => {
+  .post('/reorder', requireAdmin, zValidator('json', ZLessonReorder), async (c) => {
     try {
       const { lessons } = c.req.valid('json');
 
@@ -92,7 +93,7 @@ export const lessonRouter = new Hono()
       return handleError(c, error, 'Failed to fetch lesson');
     }
   })
-  .post('/', authMiddleware, courseMemberMiddleware, zValidator('json', ZLessonCreate), async (c) => {
+  .post('/', requireAdmin, zValidator('json', ZLessonCreate), async (c) => {
     try {
       const courseId = c.req.param('courseId')!;
       const data = c.req.valid('json');
@@ -106,8 +107,7 @@ export const lessonRouter = new Hono()
   })
   .put(
     '/:lessonId',
-    authMiddleware,
-    courseMemberMiddleware,
+    requireAdmin,
     zValidator('param', ZLessonGetParam),
     zValidator('json', ZLessonUpdate),
     async (c) => {
@@ -140,7 +140,7 @@ export const lessonRouter = new Hono()
       }
     }
   )
-  .delete('/:lessonId', authMiddleware, courseMemberMiddleware, zValidator('param', ZLessonGetParam), async (c) => {
+  .delete('/:lessonId', requireAdmin, zValidator('param', ZLessonGetParam), async (c) => {
     try {
       const { lessonId } = c.req.valid('param');
       const lesson = await deleteLessonService(lessonId);

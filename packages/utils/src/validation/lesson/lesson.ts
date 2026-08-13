@@ -1,6 +1,7 @@
 import * as z from 'zod';
 
 import { ZSlug } from '../shared/slug';
+import { ZUnitTypeNullable } from '../course/unit-type';
 
 // Lesson Schemas
 export const ZLessonCreate = z.object({
@@ -13,7 +14,9 @@ export const ZLessonCreate = z.object({
   teacherId: z.string().optional(),
   isUnlocked: z.boolean().optional(),
   public: z.boolean().optional(),
-  slug: ZSlug.optional()
+  slug: ZSlug.optional(),
+  // PearlLMS Phase 2: optional unit/session type label (config-driven; null/absent = no type)
+  unitType: ZUnitTypeNullable
 });
 export type TLessonCreate = z.infer<typeof ZLessonCreate>;
 
@@ -57,7 +60,9 @@ export const ZLessonUpdate = z.object({
         assetId: z.string().uuid().optional()
       })
     )
-    .optional()
+    .optional(),
+  // PearlLMS Phase 2: optional unit/session type label (config-driven; null clears it)
+  unitType: ZUnitTypeNullable
 });
 export type TLessonUpdate = z.infer<typeof ZLessonUpdate>;
 

@@ -56,7 +56,7 @@ import { lessonRouter } from '@api/routes/course/lesson';
 import { markRouter } from '@api/routes/course/mark';
 import { membersRouter } from '@api/routes/course/people';
 import { newsfeedRouter } from '@api/routes/course/newsfeed';
-import { orgAdminMiddleware } from '@api/middlewares/org-admin';
+import { requireAdmin } from '@api/middlewares/guards';
 import { orgMemberMiddleware } from '@api/middlewares/org-member';
 import { paymentRequestRouter } from '@api/routes/course/payment-request';
 import { presignRouter } from '@api/routes/course/presign';
@@ -134,7 +134,7 @@ export const courseRouter = new Hono()
    * Creates a new course with group, group member, and default newsfeed
    * Requires authentication and organization membership
    */
-  .post('/', authMiddleware, orgAdminMiddleware, zValidator('json', ZCourseCreate), async (c) => {
+  .post('/', requireAdmin, zValidator('json', ZCourseCreate), async (c) => {
     try {
       const user = c.get('user')!;
       const validatedData = c.req.valid('json');
@@ -221,8 +221,7 @@ export const courseRouter = new Hono()
    */
   .put(
     '/:courseId/tags',
-    authMiddleware,
-    orgAdminMiddleware,
+    requireAdmin,
     zValidator('param', ZCourseTagParam),
     zValidator('json', ZCourseTagAssignment),
     async (c) => {
@@ -320,8 +319,7 @@ export const courseRouter = new Hono()
    */
   .put(
     '/:courseId',
-    authMiddleware,
-    courseTeamMemberMiddleware,
+    requireAdmin,
     zValidator('param', ZCourseUpdateParam),
     zValidator('json', ZCourseUpdate),
     async (c) => {
@@ -384,28 +382,22 @@ export const courseRouter = new Hono()
    * Soft deletes a course by setting status to 'DELETED'
    * Requires authentication and course membership (admin/tutor role)
    */
-  .delete(
-    '/:courseId',
-    authMiddleware,
-    courseTeamMemberMiddleware,
-    zValidator('param', ZCourseDeleteParam),
-    async (c) => {
-      try {
-        const { courseId } = c.req.valid('param');
-        const result = await deleteCourse(courseId);
+  .delete('/:courseId', requireAdmin, zValidator('param', ZCourseDeleteParam), async (c) => {
+    try {
+      const { courseId } = c.req.valid('param');
+      const result = await deleteCourse(courseId);
 
-        return c.json(
-          {
-            success: true,
-            data: result
-          },
-          200
-        );
-      } catch (error) {
-        return handleError(c, error, 'Failed to delete course');
-      }
+      return c.json(
+        {
+          success: true,
+          data: result
+        },
+        200
+      );
+    } catch (error) {
+      return handleError(c, error, 'Failed to delete course');
     }
-  )
+  })
   /**
    * GET /course/:courseId/progress
    * Gets course progress for a profile

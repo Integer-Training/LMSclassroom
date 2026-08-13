@@ -13,6 +13,7 @@
   import { Button } from '@cio/ui/base/button';
   import { Chip } from '@cio/ui/custom/chip';
   import { lessonApi, exerciseApi, courseApi, contentApi } from '$features/course/api';
+  import { reindexOrder } from '@cio/utils/functions/reorder';
   import { isOrgStudent } from '$lib/utils/store/app';
   import formatDate from '$lib/utils/functions/formatDate';
   import { t } from '$lib/utils/functions/translations';
@@ -75,7 +76,7 @@
     const updatedItems = items.map(({ contentId, id: _dndId, ...rest }, index) => ({
       ...rest,
       id: contentId,
-      order: index + 1
+      order: index
     }));
 
     courseApi.course.content = {
@@ -98,8 +99,11 @@
       sectionId?: string | null;
     }> = [];
 
+    // Canonical 0-based ordering via the shared helper — a clean 0..n-1 permutation, no gaps/dupes.
+    const orderById = new Map(reindexOrder(contentItems.map((item) => item.contentId)).map((o) => [o.id, o.order]));
+
     const updatedItems = contentItems.map((item, index) => {
-      const order = index + 1;
+      const order = orderById.get(item.contentId) ?? index;
 
       if (item.type === ContentType.Lesson || item.type === ContentType.Exercise) {
         if (item.order !== order) {

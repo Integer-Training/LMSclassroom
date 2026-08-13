@@ -7,6 +7,7 @@
   import * as Field from '@cio/ui/base/field';
   import * as Select from '@cio/ui/base/select';
   import * as Tooltip from '@cio/ui/base/tooltip';
+  import { UNIT_TYPES, UNIT_TYPE_LABELS, type UnitType } from '@cio/utils/constants';
   import InfoIcon from '@lucide/svelte/icons/info';
   import { toast } from '@cio/ui/base/sonner';
   import { classroomio } from '$lib/utils/services/api';
@@ -118,6 +119,20 @@
     await notifySessionUpdate();
   }
 
+  // ── Unit/session type label (PearlLMS Phase 2; optional, config-driven) ──────
+  // A sentinel value stands in for "no type" because the Select needs a concrete string;
+  // it maps back to null on save (the lesson.unit_type column is nullable).
+  const NO_UNIT_TYPE = '__none__';
+  const unitType = $derived(lessonApi.lesson?.unitType ?? null);
+
+  function unitTypeTriggerLabel(value: string | null): string {
+    return value && value in UNIT_TYPE_LABELS ? UNIT_TYPE_LABELS[value as UnitType] : 'No type';
+  }
+
+  function handleUnitTypeChange(value: string) {
+    lessonApi.updateLessonState('unitType', value === NO_UNIT_TYPE ? null : (value as UnitType));
+  }
+
   const completionPolicy = $derived(lessonApi.lesson?.completionPolicy ?? 'manual');
   const videoWatchThreshold = $derived(lessonApi.lesson?.videoWatchThreshold ?? 95);
   const videos = $derived(lessonApi.lesson?.videos ?? []);
@@ -224,6 +239,27 @@
 
       <Field.Separator />
     {/if}
+
+    <Field.Set>
+      <Field.Legend>Unit type</Field.Legend>
+      <Field.Description>Optional label classifying this unit (e.g. induction, ID check, session).</Field.Description>
+      <Field.Field>
+        <Field.Label for="lesson-unit-type">Type</Field.Label>
+        <Select.Root type="single" value={unitType ?? NO_UNIT_TYPE} onValueChange={handleUnitTypeChange}>
+          <Select.Trigger id="lesson-unit-type" class="w-full max-w-xs">
+            {unitTypeTriggerLabel(unitType)}
+          </Select.Trigger>
+          <Select.Content class="max-w-sm">
+            <Select.Item value={NO_UNIT_TYPE}>No type</Select.Item>
+            {#each UNIT_TYPES as ut (ut)}
+              <Select.Item value={ut}>{UNIT_TYPE_LABELS[ut]}</Select.Item>
+            {/each}
+          </Select.Content>
+        </Select.Root>
+      </Field.Field>
+    </Field.Set>
+
+    <Field.Separator />
 
     <Field.Set>
       <Field.Legend>{$t('course.navItem.lessons.settings.progression.heading')}</Field.Legend>

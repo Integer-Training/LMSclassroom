@@ -1,6 +1,5 @@
 import { Hono } from '@api/utils/hono';
-import { authMiddleware } from '@api/middlewares/auth';
-import { courseMemberMiddleware } from '@api/middlewares/course-member';
+import { requireAdmin } from '@api/middlewares/guards';
 import { handleError } from '@api/utils/errors';
 import {
   createCourseSection,
@@ -15,11 +14,11 @@ import {
   ZCourseSectionPromoteUngrouped,
   ZCourseSectionReorder,
   ZCourseSectionUpdate
-} from '@cio/utils/validation/course/section';
+} from '@cio/utils/validation/course';
 import { zValidator } from '@hono/zod-validator';
 
 export const sectionRouter = new Hono()
-  .post('/', authMiddleware, courseMemberMiddleware, zValidator('json', ZCourseSectionCreate), async (c) => {
+  .post('/', requireAdmin, zValidator('json', ZCourseSectionCreate), async (c) => {
     try {
       const courseId = c.req.param('courseId')!;
       const data = c.req.valid('json');
@@ -31,28 +30,21 @@ export const sectionRouter = new Hono()
       return handleError(c, error, 'Failed to create course section');
     }
   })
-  .post(
-    '/promote-ungrouped',
-    authMiddleware,
-    courseMemberMiddleware,
-    zValidator('json', ZCourseSectionPromoteUngrouped),
-    async (c) => {
-      try {
-        const courseId = c.req.param('courseId')!;
-        const data = c.req.valid('json');
+  .post('/promote-ungrouped', requireAdmin, zValidator('json', ZCourseSectionPromoteUngrouped), async (c) => {
+    try {
+      const courseId = c.req.param('courseId')!;
+      const data = c.req.valid('json');
 
-        const result = await promoteUngroupedSection(courseId, data);
+      const result = await promoteUngroupedSection(courseId, data);
 
-        return c.json({ success: true, data: result }, 201);
-      } catch (error) {
-        return handleError(c, error, 'Failed to promote ungrouped section');
-      }
+      return c.json({ success: true, data: result }, 201);
+    } catch (error) {
+      return handleError(c, error, 'Failed to promote ungrouped section');
     }
-  )
+  })
   .put(
     '/:sectionId',
-    authMiddleware,
-    courseMemberMiddleware,
+    requireAdmin,
     zValidator('param', ZCourseSectionGetParam),
     zValidator('json', ZCourseSectionUpdate),
     async (c) => {
@@ -68,23 +60,17 @@ export const sectionRouter = new Hono()
       }
     }
   )
-  .delete(
-    '/:sectionId',
-    authMiddleware,
-    courseMemberMiddleware,
-    zValidator('param', ZCourseSectionGetParam),
-    async (c) => {
-      try {
-        const { sectionId } = c.req.valid('param');
-        const section = await deleteCourseSectionService(sectionId);
+  .delete('/:sectionId', requireAdmin, zValidator('param', ZCourseSectionGetParam), async (c) => {
+    try {
+      const { sectionId } = c.req.valid('param');
+      const section = await deleteCourseSectionService(sectionId);
 
-        return c.json({ success: true, data: section }, 200);
-      } catch (error) {
-        return handleError(c, error, 'Failed to delete course section');
-      }
+      return c.json({ success: true, data: section }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to delete course section');
     }
-  )
-  .post('/reorder', authMiddleware, courseMemberMiddleware, zValidator('json', ZCourseSectionReorder), async (c) => {
+  })
+  .post('/reorder', requireAdmin, zValidator('json', ZCourseSectionReorder), async (c) => {
     try {
       const { sections } = c.req.valid('json');
 

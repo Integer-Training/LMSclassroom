@@ -3,9 +3,8 @@ import { deleteCourseContent, reorderCourseContent, updateCourseContent } from '
 
 import { Hono } from '@api/utils/hono';
 import { authOrAutomationKeyMiddleware } from '@api/middlewares/auth-or-automation-key';
-import { authMiddleware } from '@api/middlewares/auth';
 import { courseTeamMemberOrAutomationKeyMiddleware } from '@api/middlewares/course-team-member-or-automation-key';
-import { courseTeamMemberMiddleware } from '@api/middlewares/course-team-member';
+import { requireAdmin } from '@api/middlewares/guards';
 import { assertMcpAutomationUsageAllowed, recordMcpAutomationUsage } from '@api/services/organization/automation-usage';
 import { handleError } from '@api/utils/errors';
 import { zValidator } from '@hono/zod-validator';
@@ -42,7 +41,7 @@ export const contentRouter = new Hono()
       }
     }
   )
-  .put('/', authMiddleware, courseTeamMemberMiddleware, zValidator('json', ZCourseContentUpdate), async (c) => {
+  .put('/', requireAdmin, zValidator('json', ZCourseContentUpdate), async (c) => {
     try {
       const courseId = c.req.param('courseId')!;
       const { items } = c.req.valid('json');
@@ -54,7 +53,7 @@ export const contentRouter = new Hono()
       return handleError(c, error, 'Failed to update course content');
     }
   })
-  .delete('/', authMiddleware, courseTeamMemberMiddleware, zValidator('json', ZCourseContentDelete), async (c) => {
+  .delete('/', requireAdmin, zValidator('json', ZCourseContentDelete), async (c) => {
     try {
       const courseId = c.req.param('courseId')!;
       const payload = c.req.valid('json');

@@ -357,8 +357,8 @@ layer. The target access for these surfaces (see `docs/COURSE-MODEL.md` §5 for 
 
 | Surface | Endpoints | Target access | Status |
 |---|---|---|---|
-| **Course authoring** (write) | `POST /course`; `PUT`/`DELETE /course/:courseId`; lesson + section + content CRUD/reorder; `PUT …/lesson/:id/language` | **Admin only.** Tutor/Manager/Learner denied. | predicate ready; **write guards swap to `requireAdmin` in Step 3** (gap G1) |
-| **Course publish** | `PUT /course/:courseId` (`is_published`) | **Admin only** | with authoring (Step 3) |
+| **Course authoring** (write) | `POST /course`; `PUT`/`DELETE /course/:courseId`; `PUT …/tags`; lesson + section + content CRUD/reorder; `POST`/`PUT …/lesson/:id/language` | **Admin only.** Tutor/Manager/Learner denied. | **CLOSED (Step 3)** — all writes → `requireAdmin`; gap G1 closed |
+| **Course publish** | `PUT /course/:courseId` (`is_published`) | **Admin only** | **CLOSED (Step 3)** — `requireAdmin` |
 | **Lesson/session content read** | `GET /course/:courseId/lesson/:lessonId` | **Enrolled learner OR any staff**; for a learner, **published courses only** (no draft leakage) | predicate **landed** (`canReadCourseContent`); **wired onto the read path in Step 4** (gap G2) |
 | **Material download** | lesson-GET embedded presigned URLs; `POST /course/presign/*/download` | Enrolled-in-that-course learner **OR staff**, key bound to the course | delivery path is enrolment-gated today; standalone download **bound in Step 4** (gap G3 / Phase-1 gap H) |
 
@@ -373,11 +373,27 @@ layer. The target access for these surfaces (see `docs/COURSE-MODEL.md` §5 for 
   validator, and the nullable `lesson.unit_type` column (migration `0009`). No hardcoded type literals
   outside the config.
 
-**Still open (the three authoring/content gaps, closed in Steps 3–4 — see COURSE-MODEL.md §4):**
-G1 lesson/section CRUD is still `courseMemberMiddleware` (any enrolled member, incl. a student, can
-edit) → move writes to `requireAdmin`. G2 the learner content read does no publish check yet → wire
-`canReadCourseContent`. G3 the standalone presign download is `requireActor()`-only (Phase-1 gap H) →
-bind each key to a course the caller may read.
+**Closed in Step 3 (authoring):**
+- **G1 CLOSED** — every course/unit/phase authoring **write** now uses bare `requireAdmin`
+  (`course.ts` create/update/delete/tags; `section.ts` all 5; `lesson.ts` create/update/delete/reorder;
+  `content.ts` update/delete; `lesson-language.ts` upsert/update). Learner GET/read + learner writes
+  (comments, completion, watch-progress) stay enrolment-gated. The two automation-key routes
+  (`content /reorder`, course `/landing-page`) keep their `…OrAutomationKey(['course:write'])` guard —
+  machine-integration paths, learner-excluded, not used by the authoring UI (documented residual).
+- Config-driven `unit_type` label is wired end-to-end: `ZUnitType`/`ZUnitTypeNullable` on
+  `ZLessonCreate`/`ZLessonUpdate`, a Type select on the lesson Settings tab, persisted via `updateLesson`.
+- Canonical **0-based** ordering routed through the shared `reindexOrder` helper
+  (`@cio/utils/functions/reorder`) in the dashboard reorder handlers — a clean `0..n-1` permutation
+  (no gaps/duplicates) after arbitrary within-/cross-phase moves. Tested in
+  `apps/api/src/__tests__/reorder-reindex.test.ts` + behavioral/static wiring in
+  `authz/authoring-admin-only.test.ts`.
+
+**Still open (closed in Step 4 — see COURSE-MODEL.md §4):** G2 the learner content read does no publish
+check yet → wire `canReadCourseContent` onto `GET …/lesson/:lessonId`. G3 the standalone presign
+download is `requireActor()`-only (Phase-1 gap H) → bind each key to a course the caller may read.
+(Draft courses are already invisible in learner course lists / direct fetch — `public-course.ts`
+returns `null` for unpublished — so the realistic learner never sees a draft; G2 closes the
+enrolled-learner-of-a-draft content-read edge.)
 
 ## 5. Decision log & Phase-1 delta
 
