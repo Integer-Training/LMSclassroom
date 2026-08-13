@@ -350,6 +350,35 @@ either lower-risk Phase-2 authoring integrity (child-id binding, asset pipeline)
 harder capability-URL problem (presign H, hardened), or explicitly later-phase (auto-join P7,
 dashboard pass) — each documented above rather than silently dropped.
 
+## 4.2 Phase 2 — Courses, authoring & content access (live from Phase 2)
+
+Phase 2 builds course/unit authoring and the enrolment-bound content path on top of the Phase-1 guard
+layer. The target access for these surfaces (see `docs/COURSE-MODEL.md` §5 for the entity mapping):
+
+| Surface | Endpoints | Target access | Status |
+|---|---|---|---|
+| **Course authoring** (write) | `POST /course`; `PUT`/`DELETE /course/:courseId`; lesson + section + content CRUD/reorder; `PUT …/lesson/:id/language` | **Admin only.** Tutor/Manager/Learner denied. | predicate ready; **write guards swap to `requireAdmin` in Step 3** (gap G1) |
+| **Course publish** | `PUT /course/:courseId` (`is_published`) | **Admin only** | with authoring (Step 3) |
+| **Lesson/session content read** | `GET /course/:courseId/lesson/:lessonId` | **Enrolled learner OR any staff**; for a learner, **published courses only** (no draft leakage) | predicate **landed** (`canReadCourseContent`); **wired onto the read path in Step 4** (gap G2) |
+| **Material download** | lesson-GET embedded presigned URLs; `POST /course/presign/*/download` | Enrolled-in-that-course learner **OR staff**, key bound to the course | delivery path is enrolment-gated today; standalone download **bound in Step 4** (gap G3 / Phase-1 gap H) |
+
+**Landed in Step 2 (the predicate + config, not yet the route wiring):**
+- `isEnrolledLearner(actor, courseId)` and `canReadCourseContent(actor, courseId)` in the shared
+  ownership module (`apps/api/src/middlewares/guards/ownership.ts`), backed by the safe
+  `isCourseGroupMember` enrolment query (`@cio/db/queries/group`) + `getCourseById` publish state.
+  Rule: **staff (Admin/Tutor/Manager) bypass; a learner needs enrolment AND `is_published` + `status='ACTIVE'`.**
+  Deny-by-default: anonymous/deactivated → false with no DB call. Tested in
+  `apps/api/src/__tests__/authz/enrolment-content-access.test.ts`.
+- Config-driven unit **type labels** (`UNIT_TYPES` in `@cio/utils/constants/unit-type`), the `ZUnitType`
+  validator, and the nullable `lesson.unit_type` column (migration `0009`). No hardcoded type literals
+  outside the config.
+
+**Still open (the three authoring/content gaps, closed in Steps 3–4 — see COURSE-MODEL.md §4):**
+G1 lesson/section CRUD is still `courseMemberMiddleware` (any enrolled member, incl. a student, can
+edit) → move writes to `requireAdmin`. G2 the learner content read does no publish check yet → wire
+`canReadCourseContent`. G3 the standalone presign download is `requireActor()`-only (Phase-1 gap H) →
+bind each key to a course the caller may read.
+
 ## 5. Decision log & Phase-1 delta
 
 **Decisions (owner to confirm/adjust):**

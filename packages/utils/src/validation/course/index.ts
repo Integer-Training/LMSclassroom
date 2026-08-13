@@ -7,6 +7,7 @@
 
 export * from './course';
 export * from './course-type';
+export * from './unit-type';
 export * from './callout';
 export * from './compliance';
 export * from './public-course';

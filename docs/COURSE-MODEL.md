@@ -59,6 +59,11 @@ the phase order = `course_section.order`. The global 25-session sequence is the 
 one source of truth per level. Phase 2 will ensure `lesson.order` is populated as the iCQ sessions
 are entered.
 
+**Step 2 verification (order coherence):** the only pre-existing rows were 3 Phase-0 test lessons with
+null `order`; they were backfilled to a contiguous 0-based sequence per `(course_id, section_id)` via
+`row_number()`. Post-backfill there are **0 null `lesson.order` values**, so the
+`(course_section.order, lesson.order)` tuple is well-defined for every existing unit.
+
 ## 3. Type label — new nullable column, allowed values from config
 
 - **Column:** `lesson.unit_type` — a nullable `varchar` (a session may carry no special type). Added in Step 2.

@@ -1026,7 +1026,11 @@ export const lesson = pgTable(
       onDelete: 'cascade',
       onUpdate: 'cascade'
     }),
-    slug: varchar()
+    slug: varchar(),
+    // PearlLMS Phase 2: optional unit/session type label. Plain nullable varchar — allowed values
+    // come from the UNIT_TYPES config (@cio/utils/constants), enforced at the validation layer, not
+    // a Postgres enum. Phase 4 reads exemptions against these; Phase 2 only stores the label.
+    unitType: varchar('unit_type')
   },
   (table) => [
     foreignKey({

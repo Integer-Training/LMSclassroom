@@ -133,6 +133,21 @@ export const isUserCourseMember = async (
 };
 
 /**
+ * Safe boolean: is the profile a member of the course's group (i.e. enrolled in the course)?
+ * Unlike isUserCourseMember (which dereferences result[0] and throws for non-members), this returns
+ * false cleanly. Used by the Phase-2 isEnrolledLearner content-access predicate.
+ */
+export const isCourseGroupMember = async (courseId: string, profileId: string): Promise<boolean> => {
+  const result = await db
+    .select({ id: schema.groupmember.id })
+    .from(schema.groupmember)
+    .innerJoin(schema.course, eq(schema.course.groupId, schema.groupmember.groupId))
+    .where(and(eq(schema.course.id, courseId), eq(schema.groupmember.profileId, profileId)))
+    .limit(1);
+  return result.length > 0;
+};
+
+/**
  * Checks if a user is either:
  * - a member of the course's group (any role), OR
  * - an ADMIN of the organization that owns the course's group.

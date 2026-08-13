@@ -2,6 +2,7 @@ export * from './roles';
 export * from './org';
 export * from './content';
 export * from './course-type';
+export * from './unit-type';
 export * from './domains';
 export * from './embeds';
 export * from './error-codes';

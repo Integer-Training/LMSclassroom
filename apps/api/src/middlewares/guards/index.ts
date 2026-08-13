@@ -13,6 +13,14 @@ export {
   forbidden
 } from './require-role';
 
-export { requireSameOrg, requireSelfParam, requireMarkingAccess, bindSubmissionToCourse, notFound } from './ownership';
+export {
+  requireSameOrg,
+  requireSelfParam,
+  requireMarkingAccess,
+  bindSubmissionToCourse,
+  notFound,
+  isEnrolledLearner,
+  canReadCourseContent
+} from './ownership';
 
 export { publicRoute } from './public';
