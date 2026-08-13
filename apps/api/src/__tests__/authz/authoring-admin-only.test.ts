@@ -107,15 +107,15 @@ describe('authoring routes are wired to requireAdmin (static sweep)', () => {
     expect(src).toMatch(/\.post\('\/', requireAdmin/);
     expect(src).toMatch(/\.delete\('\/:lessonId', requireAdmin/);
     expect(src).toMatch(/'\/:lessonId',\s*requireAdmin,/); // the PUT block
-    // learner content read stays enrolment-gated (not admin-only)
-    expect(src).toMatch(/\.get\('\/:lessonId', authMiddleware, courseMemberMiddleware/);
+    // learner content read stays enrolment-gated (courseMemberMiddleware), not admin-only
+    expect(src).toMatch(/'\/:lessonId',\s*authMiddleware,\s*courseMemberMiddleware/);
   });
 
   it('lesson-language.ts — content writes admin-only, GETs still enrolment-gated', () => {
     const src = routeSrc('lesson-language.ts');
     expect(src).toMatch(/'\/',\s*requireAdmin,\s*zValidator\('param', ZLessonLanguageGetParam\)/);
     expect(src).toMatch(/'\/:locale',\s*requireAdmin,/);
-    expect(src).toMatch(/\.get\('\/', authMiddleware, courseMemberMiddleware/);
+    expect(src).toMatch(/'\/',\s*authMiddleware,\s*courseMemberMiddleware/);
   });
 
   it('course.ts — create/update/delete/tags admin-only', () => {

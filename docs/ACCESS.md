@@ -359,8 +359,8 @@ layer. The target access for these surfaces (see `docs/COURSE-MODEL.md` §5 for 
 |---|---|---|---|
 | **Course authoring** (write) | `POST /course`; `PUT`/`DELETE /course/:courseId`; `PUT …/tags`; lesson + section + content CRUD/reorder; `POST`/`PUT …/lesson/:id/language` | **Admin only.** Tutor/Manager/Learner denied. | **CLOSED (Step 3)** — all writes → `requireAdmin`; gap G1 closed |
 | **Course publish** | `PUT /course/:courseId` (`is_published`) | **Admin only** | **CLOSED (Step 3)** — `requireAdmin` |
-| **Lesson/session content read** | `GET /course/:courseId/lesson/:lessonId` | **Enrolled learner OR any staff**; for a learner, **published courses only** (no draft leakage) | predicate **landed** (`canReadCourseContent`); **wired onto the read path in Step 4** (gap G2) |
-| **Material download** | lesson-GET embedded presigned URLs; `POST /course/presign/*/download` | Enrolled-in-that-course learner **OR staff**, key bound to the course | delivery path is enrolment-gated today; standalone download **bound in Step 4** (gap G3 / Phase-1 gap H) |
+| **Lesson/session content read** | `GET /course/:courseId/lesson/:lessonId`; `GET …/lesson/:lessonId/language[/:locale]` | **Enrolled learner OR any staff**; for a learner, **published courses only** (no draft leakage) | **CLOSED (Step 4)** — `requireCourseContentRead` (`canReadCourseContent`) on these reads; gap G2 closed |
+| **Material download** | lesson-GET embedded presigned URLs; `POST /course/presign/{document,video}/download` | Enrolled-in-that-course learner **OR staff**; material keys bound to the course's current materials | **CLOSED (Step 4)** — `assertCourseMaterialDownloadAccess` (courseId + content-read + materials currency; no-courseId = staff-only); gap G3 / Phase-1 gap H closed |
 
 **Landed in Step 2 (the predicate + config, not yet the route wiring):**
 - `isEnrolledLearner(actor, courseId)` and `canReadCourseContent(actor, courseId)` in the shared
@@ -388,12 +388,21 @@ layer. The target access for these surfaces (see `docs/COURSE-MODEL.md` §5 for 
   `apps/api/src/__tests__/reorder-reindex.test.ts` + behavioral/static wiring in
   `authz/authoring-admin-only.test.ts`.
 
-**Still open (closed in Step 4 — see COURSE-MODEL.md §4):** G2 the learner content read does no publish
-check yet → wire `canReadCourseContent` onto `GET …/lesson/:lessonId`. G3 the standalone presign
-download is `requireActor()`-only (Phase-1 gap H) → bind each key to a course the caller may read.
-(Draft courses are already invisible in learner course lists / direct fetch — `public-course.ts`
-returns `null` for unpublished — so the realistic learner never sees a draft; G2 closes the
-enrolled-learner-of-a-draft content-read edge.)
+**Closed in Step 4 (materials serving):**
+- **G2 CLOSED** — `requireCourseContentRead` applies `canReadCourseContent` on the lesson GET +
+  lesson-language GETs, so an enrolled learner of a **draft** course is denied (staff bypass). Closes the
+  fail-open in `assertEnrolledStudentContentAccess`.
+- **G3 CLOSED** — the standalone `POST /course/presign/{document,video}/download` now requires a `courseId`
+  and runs `assertCourseMaterialDownloadAccess`: no courseId ⇒ staff-only (org-asset path); with courseId ⇒
+  content-read rule + (non-staff) every `materials/…` key must be a **current** material of the course. This
+  is the authoritative revocation point — a removed material's key is denied. Non-material document uploads
+  (exercise submissions) stay on the shared endpoint unchanged (flat key, no courseId) — their own coursework
+  access model is Phase 3's concern; Step 4 still tightens them from `requireActor()` to the course-read gate
+  when a courseId is supplied.
+- **Materials model**: files (`lesson.documents`, private `documents` bucket, `materials/{courseId}/…` keys),
+  rich text (`lesson_language.content`), and labeled links (`lesson.links`, migration `0010`). Tested in
+  `apps/api/src/__tests__/authz/materials-access.test.ts`. Live upload→retrieve roundtrip + raw-bucket-fails
+  verified against the dev stack.
 
 ## 5. Decision log & Phase-1 delta
 

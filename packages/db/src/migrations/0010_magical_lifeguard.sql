@@ -1,0 +1,1 @@
+ALTER TABLE "lesson" ADD COLUMN "links" jsonb DEFAULT '[]'::jsonb;

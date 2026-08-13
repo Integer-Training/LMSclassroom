@@ -39,7 +39,7 @@ import { ZLessonDownloadContent } from '@cio/utils/validation/course';
 import { authMiddleware } from '@api/middlewares/auth';
 import { courseMemberMiddleware } from '@api/middlewares/course-member';
 import { courseTeamMemberMiddleware } from '@api/middlewares/course-team-member';
-import { requireAdmin } from '@api/middlewares/guards';
+import { requireAdmin, requireCourseContentRead } from '@api/middlewares/guards';
 import { notifyCourseSessionUpdateService } from '@api/services/course/notify-session';
 import { generateLessonPdf } from '@api/utils/lesson';
 import { getGroupMemberIdByCourseAndProfile } from '@cio/db/queries/group';
@@ -70,29 +70,36 @@ export const lessonRouter = new Hono()
       return handleError(c, error, 'Failed to reorder lessons');
     }
   })
-  .get('/:lessonId', authMiddleware, courseMemberMiddleware, zValidator('param', ZLessonGetParam), async (c) => {
-    try {
-      const user = c.get('user')!;
-      const courseId = c.req.param('courseId')!;
-      const { lessonId } = c.req.valid('param');
+  .get(
+    '/:lessonId',
+    authMiddleware,
+    courseMemberMiddleware,
+    requireCourseContentRead,
+    zValidator('param', ZLessonGetParam),
+    async (c) => {
+      try {
+        const user = c.get('user')!;
+        const courseId = c.req.param('courseId')!;
+        const { lessonId } = c.req.valid('param');
 
-      await assertEnrolledStudentContentAccess({
-        courseId,
-        profileId: user.id,
-        contentId: lessonId,
-        type: ContentType.Lesson
-      });
+        await assertEnrolledStudentContentAccess({
+          courseId,
+          profileId: user.id,
+          contentId: lessonId,
+          type: ContentType.Lesson
+        });
 
-      const [lesson, watchProgress] = await Promise.all([
-        getLesson(lessonId),
-        getLessonWatchProgressService(lessonId, user.id)
-      ]);
+        const [lesson, watchProgress] = await Promise.all([
+          getLesson(lessonId),
+          getLessonWatchProgressService(lessonId, user.id)
+        ]);
 
-      return c.json({ success: true, data: { ...lesson, watchProgress } }, 200);
-    } catch (error) {
-      return handleError(c, error, 'Failed to fetch lesson');
+        return c.json({ success: true, data: { ...lesson, watchProgress } }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to fetch lesson');
+      }
     }
-  })
+  )
   .post('/', requireAdmin, zValidator('json', ZLessonCreate), async (c) => {
     try {
       const courseId = c.req.param('courseId')!;

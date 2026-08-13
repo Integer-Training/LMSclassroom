@@ -188,7 +188,7 @@
   async function refreshPlaybackUrl(): Promise<string | null> {
     if (!uploadStorageKey || !isMounted) return null;
 
-    const urls = await presignApi.getVideoDownloadUrls([uploadStorageKey]);
+    const urls = await presignApi.getVideoDownloadUrls([uploadStorageKey], courseId);
     const freshUrl = urls[uploadStorageKey];
 
     if (!freshUrl || !isMounted) return null;

@@ -251,6 +251,7 @@
         slideUrl: lessonApi.lesson.slideUrl || undefined,
         videos: lessonApi.lesson.videos || [],
         documents: lessonApi.lesson.documents || [],
+        links: lessonApi.lesson.links || [],
         unitType: lessonApi.lesson.unitType ?? null,
         slug: isPublicCourse && lessonApi.lesson.slug ? lessonApi.lesson.slug : undefined
       }),

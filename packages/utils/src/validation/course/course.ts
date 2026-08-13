@@ -137,12 +137,20 @@ export type TCoursePresignUrlUpload = z.infer<typeof ZCoursePresignUrlUpload>;
 export const ZCourseDocumentPresignUrlUpload = z.object({
   fileName: z.string().min(1),
   fileType: z.enum(ALLOWED_DOCUMENT_TYPES),
-  fileSize: z.number().int().min(0).optional()
+  fileSize: z.number().int().min(0).optional(),
+  // PearlLMS Phase 2 Step 4: when present, the object key is namespaced under `materials/{courseId}/…`
+  // (admin-authored unit materials). Absent for non-material document uploads (e.g. exercise
+  // submissions), which keep the flat legacy key — so this endpoint stays shared and non-breaking.
+  courseId: z.string().min(1).optional()
 });
 export type TCourseDocumentPresignUrlUpload = z.infer<typeof ZCourseDocumentPresignUrlUpload>;
 
 export const ZCourseDownloadPresignedUrl = z.object({
-  keys: z.array(z.string().min(1)).min(1)
+  keys: z.array(z.string().min(1)).min(1),
+  // PearlLMS Phase 2 Step 4: bind the download to a course so the guard can apply the content-read
+  // rule + verify each material key is current (closes gap G3). Absent = org-level asset path, which
+  // the guard restricts to staff.
+  courseId: z.string().min(1).optional()
 });
 export type TCourseDownloadPresignedUrl = z.infer<typeof ZCourseDownloadPresignedUrl>;
 

@@ -12,8 +12,9 @@ import {
 } from '@cio/core/utils/s3';
 
 import { Hono } from '@api/utils/hono';
-import { requireActor } from '@api/middlewares/guards';
-import { generateFileKey } from '@cio/core/utils/upload';
+import type { Actor } from '@cio/db/actor';
+import { requireActor, assertCourseMaterialDownloadAccess } from '@api/middlewares/guards';
+import { generateFileKey, generateMaterialFileKey } from '@cio/core/utils/upload';
 import { AppError } from '@api/utils/errors';
 import { MAX_DOCUMENT_SIZE, MAX_FILE_SIZE } from '@api/constants/upload';
 
@@ -124,11 +125,13 @@ export const presignRouter = new Hono()
     async (c) => {
       const body = c.req.valid('json');
 
-      const { fileName, fileType, fileSize } = body;
+      const { fileName, fileType, fileSize, courseId } = body;
 
       assertPresignFileSizeWithinLimit(fileSize, MAX_DOCUMENT_SIZE);
 
-      const fileKey = generateFileKey(fileName);
+      // PearlLMS Phase 2 Step 4: material uploads (courseId present) are namespaced under
+      // materials/{courseId}/…; other document uploads (e.g. exercise submissions) keep the flat key.
+      const fileKey = courseId ? generateMaterialFileKey(courseId, fileName) : generateFileKey(fileName);
 
       const presignedUrl = await generateDocumentUploadPresignedUrl(fileKey, fileType);
 
@@ -167,7 +170,11 @@ export const presignRouter = new Hono()
     async (c) => {
       const body = c.req.valid('json');
 
-      const { keys } = body;
+      const { keys, courseId } = body;
+
+      // Gap G3: bind the download to the course + content-read rule (staff, or enrolled learner of a
+      // published course; non-staff limited to the course's current material keys).
+      await assertCourseMaterialDownloadAccess(c.get('actor') as Actor, courseId, keys);
 
       const signedUrls = await generateVideoDownloadPresignedUrls(keys);
 
@@ -205,7 +212,10 @@ export const presignRouter = new Hono()
     async (c) => {
       const body = c.req.valid('json');
 
-      const { keys } = body;
+      const { keys, courseId } = body;
+
+      // Gap G3: same course-binding + content-read guard as video download.
+      await assertCourseMaterialDownloadAccess(c.get('actor') as Actor, courseId, keys);
 
       const signedUrls = await generateDocumentDownloadPresignedUrls(keys);
 

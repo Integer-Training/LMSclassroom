@@ -16,7 +16,7 @@ import type { TLocale } from '@db/types';
 import { b64EnvelopeRewrite } from '@api/middlewares/b64-envelope';
 import { authMiddleware } from '@api/middlewares/auth';
 import { courseMemberMiddleware } from '@api/middlewares/course-member';
-import { requireAdmin } from '@api/middlewares/guards';
+import { requireAdmin, requireCourseContentRead } from '@api/middlewares/guards';
 import { handleError } from '@api/utils/errors';
 import { zValidator } from '@hono/zod-validator';
 
@@ -27,22 +27,29 @@ export const lessonLanguageRouter = new Hono()
    * Gets all language translations for a lesson
    * Requires authentication and course membership
    */
-  .get('/', authMiddleware, courseMemberMiddleware, zValidator('param', ZLessonLanguageGetParam), async (c) => {
-    try {
-      const { lessonId } = c.req.valid('param');
-      const languages = await listLessonLanguages(lessonId);
+  .get(
+    '/',
+    authMiddleware,
+    courseMemberMiddleware,
+    requireCourseContentRead,
+    zValidator('param', ZLessonLanguageGetParam),
+    async (c) => {
+      try {
+        const { lessonId } = c.req.valid('param');
+        const languages = await listLessonLanguages(lessonId);
 
-      return c.json(
-        {
-          success: true,
-          data: languages
-        },
-        200
-      );
-    } catch (error) {
-      return handleError(c, error, 'Failed to fetch lesson languages');
+        return c.json(
+          {
+            success: true,
+            data: languages
+          },
+          200
+        );
+      } catch (error) {
+        return handleError(c, error, 'Failed to fetch lesson languages');
+      }
     }
-  })
+  )
   /**
    * GET /course/:courseId/lesson/:lessonId/language/:locale
    * Gets a single lesson language by locale
@@ -52,6 +59,7 @@ export const lessonLanguageRouter = new Hono()
     '/:locale',
     authMiddleware,
     courseMemberMiddleware,
+    requireCourseContentRead,
     zValidator('param', ZLessonLanguageGetByLocaleParam),
     async (c) => {
       try {

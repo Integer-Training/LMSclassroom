@@ -61,6 +61,15 @@ export const ZLessonUpdate = z.object({
       })
     )
     .optional(),
+  // PearlLMS Phase 2 Step 4: labeled external links (a distinct material kind — label + url only).
+  links: z
+    .array(
+      z.object({
+        label: z.string().min(1),
+        url: z.string().url()
+      })
+    )
+    .optional(),
   // PearlLMS Phase 2: optional unit/session type label (config-driven; null clears it)
   unitType: ZUnitTypeNullable
 });

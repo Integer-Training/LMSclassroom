@@ -17,11 +17,11 @@ export class GenericUploader {
     this.abortController = new AbortController();
   }
 
-  async getDownloadPresignedUrl(keys: string[], type = this.uploadType) {
+  async getDownloadPresignedUrl(keys: string[], type = this.uploadType, courseId?: string) {
     const urls =
       type === 'document'
-        ? await presignApi.getDocumentDownloadUrls(keys)
-        : await presignApi.getVideoDownloadUrls(keys);
+        ? await presignApi.getDocumentDownloadUrls(keys, courseId)
+        : await presignApi.getVideoDownloadUrls(keys, courseId);
 
     return { success: true, urls };
   }
@@ -49,13 +49,14 @@ export class GenericUploader {
     return urls;
   }
 
-  async getPresignedUrl(file: File) {
+  async getPresignedUrl(file: File, courseId?: string) {
     const result =
       this.uploadType === 'document'
         ? await presignApi.getDocumentUploadUrl(
             file?.name ?? '',
             file?.type ?? '',
-            file.size > 0 ? file.size : undefined
+            file.size > 0 ? file.size : undefined,
+            courseId
           )
         : await presignApi.getVideoUploadUrl(file?.name ?? '', file?.type ?? '', file.size > 0 ? file.size : undefined);
 

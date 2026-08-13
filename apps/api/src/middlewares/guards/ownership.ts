@@ -1,10 +1,11 @@
 import { Context, Next } from 'hono';
 
-import { ErrorCodes } from '@api/utils/errors';
+import { AppError, ErrorCodes } from '@api/utils/errors';
 import type { Actor } from '@cio/db/actor';
 import { isAllocatedTutor, isRole, isSelf, sameOrg } from '@cio/utils/auth';
 import { getSubmissionById } from '@cio/db/queries/submission';
 import { isCourseGroupMember } from '@cio/db/queries/group';
+import { getCourseMaterialKeys } from '@cio/db/queries/lesson';
 import { getCourseById } from '@cio/db/queries/course';
 import { forbidden, unauthorized } from '@api/middlewares/guards/require-role';
 
@@ -138,4 +139,73 @@ export async function canReadCourseContent(actor: Actor, courseId: string): Prom
   if (isContentStaff(actor)) return true;
   if (!(await isEnrolledLearner(actor, courseId))) return false;
   return isCoursePublished(courseId);
+}
+
+/**
+ * Route guard for the material-serving READ paths (lesson GET, lesson-language GET). Enforces the
+ * content-read rule on the `:courseId` in the path: staff OR an enrolled learner of a PUBLISHED
+ * course. Closes gap G2 — the stock lesson read never checked publish state, so a learner enrolled
+ * in a still-draft course could read its materials. Runs alongside the legacy courseMemberMiddleware
+ * (which keeps program-course backfill); this adds the missing publish gate.
+ */
+export async function requireCourseContentRead(c: Context, next: Next) {
+  const actor = c.get('actor') as Actor | undefined;
+  if (!actor?.authenticated) return unauthorized(c);
+
+  const courseId = c.req.param('courseId');
+  if (!courseId) return forbidden(c, 'Missing course context');
+
+  if (!(await canReadCourseContent(actor, courseId))) {
+    return forbidden(c, 'This content is not available to you');
+  }
+  return next();
+}
+
+/** Object-key prefix for admin-authored unit materials (mirrors generateMaterialFileKey in core). */
+const MATERIALS_KEY_PREFIX = 'materials/';
+
+/**
+ * Access decision for the standalone download (presign) endpoints. Closes gap G3 — the stock
+ * download signed any caller-supplied key for any authenticated user with no course binding. Rules:
+ *  - anonymous/deactivated → 401;
+ *  - **no `courseId`** (org-level asset path, e.g. the media library) → staff only (Admin/Tutor/Manager);
+ *  - **with `courseId`** → must satisfy the content-read rule (staff, or an enrolled learner of a
+ *    published course). A non-staff caller may additionally only sign `materials/…` keys that are a
+ *    CURRENT material of that course (present in a lesson's documents/videos) — removed or cross-course
+ *    material keys are 403 (this is what makes a deleted material unretrievable). Non-material keys
+ *    (e.g. a learner's own exercise-submission file) are gated by the read rule but not the material
+ *    currency check — their access model is the coursework subsystem's / Phase 3's concern.
+ * Staff bypass the currency check so the authoring upload flow can sign a just-uploaded key.
+ * Throws AppError (handled globally); returns normally when access is granted.
+ */
+export async function assertCourseMaterialDownloadAccess(
+  actor: Actor,
+  courseId: string | undefined,
+  keys: string[]
+): Promise<void> {
+  if (!actor.authenticated) {
+    throw new AppError('Unauthorized', ErrorCodes.UNAUTHORIZED, 401);
+  }
+
+  if (!courseId) {
+    // Org-level asset download (no course context) — restrict to staff (closes the any-authed-user hole).
+    if (!isContentStaff(actor)) {
+      throw new AppError('Only staff may download organization assets', ErrorCodes.FORBIDDEN, 403);
+    }
+    return;
+  }
+
+  if (!(await canReadCourseContent(actor, courseId))) {
+    throw new AppError('You do not have access to this course’s materials', ErrorCodes.FORBIDDEN, 403);
+  }
+  if (isContentStaff(actor)) return;
+
+  const materialKeys = keys.filter((key) => key.startsWith(MATERIALS_KEY_PREFIX));
+  if (materialKeys.length > 0) {
+    const currentKeys = await getCourseMaterialKeys(courseId);
+    const allCurrent = materialKeys.every((key) => currentKeys.has(key));
+    if (!allCurrent) {
+      throw new AppError('One or more materials are not available in this course', ErrorCodes.FORBIDDEN, 403);
+    }
+  }
 }

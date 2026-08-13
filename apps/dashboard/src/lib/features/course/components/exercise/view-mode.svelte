@@ -351,7 +351,7 @@
       maxContentLength: Infinity,
       maxBodyLength: Infinity
     });
-    const urls = await presignApi.getDocumentDownloadUrls([uploadResult.fileKey]);
+    const urls = await presignApi.getDocumentDownloadUrls([uploadResult.fileKey], courseApi.course.id);
     const fileUrl = urls[uploadResult.fileKey];
 
     return { fileKey: uploadResult.fileKey, fileName: file.name, fileUrl };

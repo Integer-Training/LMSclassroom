@@ -8,7 +8,7 @@
   import { onDestroy, untrack } from 'svelte';
   import { UpgradeBanner, CloseButton } from '$features/ui';
   import { isFreePlan } from '$lib/utils/store/org';
-  import { lessonApi } from '$features/course/api';
+  import { lessonApi, courseApi } from '$features/course/api';
   import { mediaApi } from '$features/media/api';
   import type { Lesson } from '$features/course/utils/types';
   import * as Dialog from '@cio/ui/base/dialog';
@@ -153,14 +153,19 @@
     $lessonDocUpload.isUploading = true;
 
     try {
-      const { url: presignedUrl, fileKey } = await documentUploader.getPresignedUrl(selectedFile);
+      const materialsCourseId = courseApi.course?.id;
+      const { url: presignedUrl, fileKey } = await documentUploader.getPresignedUrl(selectedFile, materialsCourseId);
 
       await documentUploader.uploadFile({
         url: presignedUrl,
         file: selectedFile
       });
 
-      const { urls: presignedUrls } = await documentUploader.getDownloadPresignedUrl([fileKey]);
+      const { urls: presignedUrls } = await documentUploader.getDownloadPresignedUrl(
+        [fileKey],
+        'document',
+        materialsCourseId
+      );
 
       const lessonDocumentPosition = Array.isArray(lessonApi.lesson?.documents) ? lessonApi.lesson.documents.length : 0;
 

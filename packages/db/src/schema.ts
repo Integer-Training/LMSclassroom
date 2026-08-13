@@ -1022,6 +1022,9 @@ export const lesson = pgTable(
         assetId?: string;
       }[]
     >(),
+    // PearlLMS Phase 2 Step 4: labeled external links attached to the unit (a distinct material kind
+    // from files — plain metadata, no stored object; rendered to enrolled learners on the gated read).
+    links: jsonb('links').default([]).$type<{ label: string; url: string }[]>(),
     sectionId: uuid('section_id').references(() => courseSection.id, {
       onDelete: 'cascade',
       onUpdate: 'cascade'

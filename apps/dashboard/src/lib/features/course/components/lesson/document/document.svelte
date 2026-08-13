@@ -4,6 +4,9 @@
   import { lessonDocUpload } from '$features/course/components/lesson/store';
   import MODES from '$lib/utils/constants/mode';
   import { IconButton } from '@cio/ui/custom/icon-button';
+  import { Button } from '@cio/ui/base/button';
+  import { InputField } from '@cio/ui/custom/input-field';
+  import Trash2Icon from '@lucide/svelte/icons/trash-2';
   import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
   import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
   import ZoomInIcon from '@lucide/svelte/icons/zoom-in';
@@ -322,6 +325,26 @@
   }
 
   let displayDocuments = $derived(lessonApi.lesson?.documents || []);
+
+  // ── Links (PearlLMS Phase 2 Step 4): labeled external links attached to the unit ────────────────
+  let displayLinks = $derived(lessonApi.lesson?.links ?? []);
+  let newLinkLabel = $state('');
+  let newLinkUrl = $state('');
+
+  function addLink() {
+    const label = newLinkLabel.trim();
+    const url = newLinkUrl.trim();
+    if (!label || !url) return;
+    const links = [...(lessonApi.lesson?.links ?? []), { label, url }];
+    lessonApi.updateLessonState('links', links);
+    newLinkLabel = '';
+    newLinkUrl = '';
+  }
+
+  function removeLink(index: number) {
+    const links = (lessonApi.lesson?.links ?? []).filter((_link, i) => i !== index);
+    lessonApi.updateLessonState('links', links);
+  }
 </script>
 
 <DocumentList
@@ -334,6 +357,58 @@
   {downloadDocument}
   {reorderDocuments}
 />
+
+<!-- Links (labeled external links) — a distinct material kind, rendered on the guarded lesson read -->
+{#if displayLinks.length > 0 || mode === MODES.edit}
+  <div class="mt-6">
+    <h3 class="mb-2 text-sm font-semibold text-gray-900 dark:text-gray-300">Links</h3>
+
+    {#if displayLinks.length > 0}
+      <ul class="space-y-2">
+        {#each displayLinks as link, index (index)}
+          <li
+            class="flex items-center justify-between gap-2 rounded-md border border-gray-200 px-3 py-2 dark:border-neutral-700"
+          >
+            <a
+              href={link.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="truncate text-blue-600 hover:underline dark:text-blue-400"
+            >
+              {link.label}
+            </a>
+            {#if mode === MODES.edit}
+              <IconButton onclick={() => removeLink(index)} tooltip="Remove link" aria-label="Remove link">
+                <Trash2Icon size={16} />
+              </IconButton>
+            {/if}
+          </li>
+        {/each}
+      </ul>
+    {/if}
+
+    {#if mode === MODES.edit}
+      <div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+        <InputField
+          label="Label"
+          value={newLinkLabel}
+          placeholder="e.g. Awarding body handbook"
+          onInputChange={(e) => (newLinkLabel = (e.currentTarget as HTMLInputElement).value)}
+        />
+        <InputField
+          type="url"
+          label="URL"
+          value={newLinkUrl}
+          placeholder="https://…"
+          onInputChange={(e) => (newLinkUrl = (e.currentTarget as HTMLInputElement).value)}
+        />
+        <Button variant="outline" onclick={addLink} disabled={!newLinkLabel.trim() || !newLinkUrl.trim()}>
+          Add link
+        </Button>
+      </div>
+    {/if}
+  </div>
+{/if}
 
 <DeleteModal bind:open={openDeleteDocumentModal} onDelete={confirmRemoveDocument} />
 

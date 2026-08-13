@@ -32,3 +32,13 @@ export function generateFileKey(fileName: string): string {
 
   return `${nanoid()}-${cleanedFileName}`;
 }
+
+/**
+ * Key for an admin-authored unit MATERIAL (PearlLMS Phase 2 Step 4). Namespaces the object under a
+ * per-course `materials/` prefix so Phase 3 learner coursework can live cleanly alongside (reserve
+ * `coursework/{courseId}/{learnerId}/…`; not built here). The prefix is organizational — access
+ * control is enforced by the guarded download binding, not by the key path.
+ */
+export function generateMaterialFileKey(courseId: string, fileName: string): string {
+  return `materials/${courseId}/${generateFileKey(fileName)}`;
+}

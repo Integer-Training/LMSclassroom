@@ -20,7 +20,9 @@ export {
   bindSubmissionToCourse,
   notFound,
   isEnrolledLearner,
-  canReadCourseContent
+  canReadCourseContent,
+  requireCourseContentRead,
+  assertCourseMaterialDownloadAccess
 } from './ownership';
 
 export { publicRoute } from './public';

@@ -26,6 +26,26 @@ export async function getLessonsByCourseId(courseId: string) {
   }
 }
 
+/**
+ * The set of storage keys currently referenced by a course's lessons — every `documents[].key` and
+ * `videos[].key`. This is the "current materials" set the guarded material download binds to
+ * (PearlLMS Phase 2 Step 4): a key not in this set does not belong to the course (or was removed),
+ * so a learner cannot mint a URL for it. Link materials carry no `key` and are naturally excluded.
+ */
+export async function getCourseMaterialKeys(courseId: string): Promise<Set<string>> {
+  const rows = await db
+    .select({ documents: schema.lesson.documents, videos: schema.lesson.videos })
+    .from(schema.lesson)
+    .where(eq(schema.lesson.courseId, courseId));
+
+  const keys = new Set<string>();
+  for (const row of rows) {
+    for (const doc of row.documents ?? []) if (doc?.key) keys.add(doc.key);
+    for (const video of row.videos ?? []) if (video?.key) keys.add(video.key);
+  }
+  return keys;
+}
+
 export interface LessonById extends TLesson {
   lessonLanguages: TLessonLanguage[];
 }

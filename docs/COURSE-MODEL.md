@@ -87,28 +87,51 @@ null `order`; they were backfilled to a contiguous 0-based sequence per `(course
   Supabase Storage's S3-compatible endpoint (Phase-0 Step 6). `documents` + `videos` are **private**
   (reachable only via 1-hour presigned GET); `media` is public. No storage code change is needed.
 
-**Gaps to close in Steps 3–4:**
-- **G1 — Authoring is not Admin-only.** The authoring guards are a patchwork; notably **lesson &
-  section CRUD are only `courseMemberMiddleware`** (any enrolled member — including a STUDENT — can
-  create/edit/delete/reorder): `routes/course/lesson.ts:61,95,107,143`, `section.ts:22,34,52,71,87`.
-  Course create is `orgAdminMiddleware` (`course.ts:137`); course/content update is
-  `courseTeamMemberMiddleware`. → swap authoring **writes** to **`requireAdmin`** (`middlewares/guards/`).
-  ACCESS.md §3b flagged these as Phase-2 work.
-- **G2 — No draft/status guard on the learner content path.** `course.is_published`/`status` are
-  checked only at *enrolment* (`services/course/invite.ts:649,984`), NOT on lesson read
-  (`lesson.ts:72` → `courseMemberMiddleware` + `services/course/access.ts` perform no status check;
-  `access.ts:21` even early-returns if the course row is absent). → add a published-course check so a
-  **learner** cannot read draft-course content; staff/admin can (to author).
-- **G3 — File download is not enrolment-bound.** The legitimate delivery path (the lesson GET already
-  embeds fresh 1-hour presigned URLs for each attached document/video via
-  `core/utils/lesson-media.ts:125-158`) **is** enrolment-gated. But the standalone
-  `POST /course/presign/document|video/download` is `requireActor()` only with caller-supplied `keys`
-  — an authenticated but non-enrolled user can fetch any material given the opaque key (the documented
-  Phase-1 presign gap H). → deliver materials through the enrolment-bound lesson-GET path, and close
-  the standalone download by binding it to a course the caller is enrolled in (require a `courseId` and
-  verify each `key` belongs to that course's lessons' `documents`; staff bypass). HLS/transcript
-  streams remain org-membership-bound (`hls.ts:124-136`, `transcripts.ts:78-84`) — acceptable for
-  Phase 2, noted.
+**Gap-closure status:**
+- **G1 — Authoring not Admin-only — CLOSED (Step 3).** All course/unit/phase authoring writes → `requireAdmin`.
+- **G2 — No draft/status guard on the learner content path — CLOSED (Step 4).** A new
+  `requireCourseContentRead` middleware (`middlewares/guards/ownership.ts`) applies `canReadCourseContent`
+  on the material reads — `GET …/lesson/:lessonId` and `GET …/lesson/:lessonId/language[/:locale]` — so a
+  learner enrolled in a **draft** course is denied (staff bypass; the stock `assertEnrolledStudentContentAccess`
+  fail-open on a missing course is now moot).
+- **G3 — Download not enrolment-bound — CLOSED (Step 4).** The standalone
+  `POST /course/presign/{document,video}/download` now takes a `courseId` and runs
+  `assertCourseMaterialDownloadAccess`: no `courseId` ⇒ staff-only (org-asset path); with `courseId` ⇒ the
+  content-read rule, and for non-staff every `materials/…` key must be a **current** material of the course
+  (removed/cross-course keys are 403). The learner delivery path (lesson-GET embedded 1-hour URLs via
+  `core/utils/lesson-media.ts`) stays the primary channel and is now also G2-gated. HLS/transcript streams
+  remain org-membership-bound (Phase-2-acceptable; noted).
+
+## 4a. Material model (Step 4)
+
+A unit's materials are three kinds, all authored by Admin and served only to enrolled learners of a
+published course (or staff):
+- **Rich text** → `lesson_language.content` (TipTap, per locale); served via the now-gated lesson-language GET.
+- **Files** → `lesson.documents` jsonb `{type,name,link,size,key,assetId}` + the private `documents`
+  bucket. Uploaded via `POST /course/presign/document/upload`; the learner's `link` is freshly presigned
+  server-side on each gated lesson GET.
+- **Links** → `lesson.links` jsonb `{label,url}[]` (new column, migration `0010`) — labeled external links,
+  plain metadata (no stored object), rendered as clickable labels on the gated read.
+
+**Object key scheme (clean room for Phase 3):** material uploads are namespaced
+**`materials/{courseId}/{nanoid}-{filename}`** (`generateMaterialFileKey`, `core/utils/upload.ts`) — reserve
+**`coursework/{courseId}/{learnerId}/…`** for Phase 3 learner submissions (not built). The prefix is
+organizational; access is enforced by the guarded download (current-material set), not the key path. The
+shared presign endpoint stays non-breaking: non-material document uploads (e.g. exercise submissions) omit
+`courseId` and keep the flat legacy key.
+
+**Delete / replace = tombstone-by-dereference.** Removing a material overwrites `lesson.documents` (or
+`lesson.links`) without the entry — learner access is revoked immediately (no longer embedded on the gated
+lesson GET; the currency-bound download 403s for that key). The private storage object is **orphaned**
+(unreachable via the guarded path once dereferenced). Actual S3 deletion stays the assets subsystem's job
+(`deleteAssetService` — usage-gated, best-effort background); no S3 delete is triggered by a lesson edit.
+Replace = delete + add (no in-place). 
+
+**Upload constraints (config-driven).** Content-type is **server-enforced** via `z.enum(ALLOWED_DOCUMENT_TYPES)`
+(pdf/doc/docx) / `ALLOWED_CONTENT_TYPES` (video) on the presign upload — a disallowed `fileType` is rejected.
+Size comes from `@cio/utils/config/upload-limits` (`UPLOAD_MAX_DOCUMENT_MB`, default 5MB; env-overridable) and
+is enforced **advisory** server-side (client-reported `fileSize`); the durable ceiling is the Supabase bucket
+policy. No public base-URL exists for `documents`/`videos` (only `media`) — no unauthenticated shortcut.
 
 ## 5. Access rows to add to docs/ACCESS.md (Steps 4/6)
 

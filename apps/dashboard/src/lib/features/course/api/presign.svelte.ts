@@ -15,11 +15,16 @@ export class PresignApi extends BaseApiWithErrors {
    * Gets a presigned upload URL for a document.
    * @returns { url, fileKey } on success
    */
-  async getDocumentUploadUrl(fileName: string, fileType: string, fileSize?: number) {
+  async getDocumentUploadUrl(fileName: string, fileType: string, fileSize?: number, courseId?: string) {
     const result = await this.execute<DocumentUploadPresignRequest>({
       requestFn: () =>
         classroomio.course.presign.document.upload.$post({
-          json: { fileName, fileType, ...(fileSize != null && fileSize > 0 ? { fileSize } : {}) }
+          json: {
+            fileName,
+            fileType,
+            ...(fileSize != null && fileSize > 0 ? { fileSize } : {}),
+            ...(courseId ? { courseId } : {})
+          }
         }),
       logContext: 'getting document upload URL'
     });
@@ -27,16 +32,17 @@ export class PresignApi extends BaseApiWithErrors {
   }
 
   /**
-   * Gets presigned download URLs for documents.
+   * Gets presigned download URLs for documents. Pass `courseId` for course materials (the guard then
+   * applies the content-read rule + material-currency check); omit for org-level assets (staff-only).
    * @param keys Array of document storage keys
    * @returns Record mapping keys to presigned URLs
    */
-  async getDocumentDownloadUrls(keys: string[]) {
+  async getDocumentDownloadUrls(keys: string[], courseId?: string) {
     if (keys.length === 0) return {};
     const result = await this.execute<DocumentDownloadPresignRequest>({
       requestFn: () =>
         classroomio.course.presign.document.download.$post({
-          json: { keys }
+          json: { keys, ...(courseId ? { courseId } : {}) }
         }),
       logContext: 'getting document download URLs'
     });
@@ -63,12 +69,12 @@ export class PresignApi extends BaseApiWithErrors {
    * @param keys Array of video storage keys
    * @returns Record mapping keys to presigned URLs
    */
-  async getVideoDownloadUrls(keys: string[]) {
+  async getVideoDownloadUrls(keys: string[], courseId?: string) {
     if (keys.length === 0) return {};
     const result = await this.execute<VideoDownloadPresignRequest>({
       requestFn: () =>
         classroomio.course.presign.video.download.$post({
-          json: { keys }
+          json: { keys, ...(courseId ? { courseId } : {}) }
         }),
       logContext: 'getting video download URLs'
     });
