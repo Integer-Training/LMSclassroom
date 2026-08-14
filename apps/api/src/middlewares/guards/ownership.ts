@@ -2,9 +2,10 @@ import { Context, Next } from 'hono';
 
 import { AppError, ErrorCodes } from '@api/utils/errors';
 import type { Actor } from '@cio/db/actor';
-import { isAllocatedTutor, isRole, isSelf, sameOrg } from '@cio/utils/auth';
+import { isRole, isSelf, sameOrg } from '@cio/utils/auth';
 import { getSubmissionById } from '@cio/db/queries/submission';
 import { isCourseGroupMember } from '@cio/db/queries/group';
+import { isTutorAllocatedToLearner } from '@cio/db/queries/allocation';
 import { getCourseMaterialKeys } from '@cio/db/queries/lesson';
 import { getCourseById } from '@cio/db/queries/course';
 import { forbidden, unauthorized } from '@api/middlewares/guards/require-role';
@@ -71,10 +72,21 @@ export function requireMarkingAccess(getLearnerId?: (c: Context) => string | nul
     if (!actor?.authenticated) return unauthorized(c);
 
     if (actor.role === 'ADMIN') return next();
-    if (actor.role === 'TUTOR' && isAllocatedTutor(actor, getLearnerId?.(c))) return next();
+    if (actor.role === 'TUTOR' && (await isAllocatedTutor(actor, getLearnerId?.(c)))) return next();
 
     return forbidden(c, 'Only the course admin (or an allocated tutor) can access marking');
   };
+}
+
+/**
+ * The caller is a TUTOR allocated to this learner — the real, DB-backed replacement for the Phase-1
+ * pure deny-stub (`@cio/utils/auth`). Allocation is PROVIDER-WIDE: a tutor's staff-ness is per-learner,
+ * not per-course. Only a TUTOR actor can be allocated; anonymous/Admin/Manager/Learner → false here
+ * (Admin's marking access is granted separately in requireMarkingAccess). Backed by `tutor_allocation`.
+ */
+export async function isAllocatedTutor(actor: Actor, learnerId: string | null | undefined): Promise<boolean> {
+  if (!actor.authenticated || actor.role !== 'TUTOR' || !learnerId) return false;
+  return isTutorAllocatedToLearner(actor.userId, learnerId);
 }
 
 /** 404 helper — hide existence from callers who shouldn't know the resource is there. */

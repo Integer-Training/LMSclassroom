@@ -1,13 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  canAccessConfig,
-  canManageUsers,
-  isAllocatedTutor,
-  isProviderWideReader,
-  isSelf,
-  sameOrg,
-  type Actor
-} from '@cio/utils/auth';
+import { canAccessConfig, canManageUsers, isProviderWideReader, isSelf, sameOrg, type Actor } from '@cio/utils/auth';
 
 // Pure ownership/scope predicates — the decision core the API guards compose. No DB, no request.
 
@@ -28,14 +20,6 @@ describe('isSelf', () => {
     expect(isSelf(deactivated, 'u-x')).toBe(false);
     expect(isSelf(learner, null)).toBe(false);
     expect(isSelf(learner, undefined)).toBe(false);
-  });
-});
-
-describe('isAllocatedTutor — the Phase-3 seam, denies in Phase 1', () => {
-  it('always false (no allocation table yet), for every role', () => {
-    expect(isAllocatedTutor(tutor, 'u-learner')).toBe(false);
-    expect(isAllocatedTutor(admin, 'u-learner')).toBe(false);
-    expect(isAllocatedTutor(tutor, null)).toBe(false);
   });
 });
 

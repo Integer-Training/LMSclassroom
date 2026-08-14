@@ -6,3 +6,4 @@
  */
 
 export * from './result';
+export * from './allocation';

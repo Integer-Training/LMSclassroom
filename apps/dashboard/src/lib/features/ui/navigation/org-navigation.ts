@@ -182,6 +182,16 @@ export const baseNavConfig: NavItemConfig[] = [
     matchPattern: '^/org/[^/]+/users(/.*)?$'
   },
   {
+    // Tutor↔learner allocation (Phase 3). Shown in the admin shell (Admin-only today); the API is
+    // requireManagerOrAdmin, so it already permits Managers for a future manager surface.
+    group: 'people',
+    titleKey: 'org_navigation.allocation',
+    path: '/allocation',
+    icon: PeopleIcon,
+    requiresAdmin: true,
+    matchPattern: '^/org/[^/]+/allocation(/.*)?$'
+  },
+  {
     group: 'automation',
     titleKey: 'automation.tabs.mcp',
     path: '/mcp',

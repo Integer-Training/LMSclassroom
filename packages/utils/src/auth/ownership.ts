@@ -14,18 +14,9 @@ export function isSelf(actor: Actor, targetUserId: string | null | undefined): b
   return actor.authenticated && targetUserId != null && actor.userId === targetUserId;
 }
 
-/**
- * The caller is a tutor allocated to this learner.
- *
- * Phase 1: there is no allocation table yet (it arrives in Phase 3), so this ALWAYS denies.
- * This is the seam: a tutor can reach NO individual learner's data in Phase 1. Phase 3 replaces
- * the body with a lookup against the allocation table — the call-sites and tests do not change.
- */
-export function isAllocatedTutor(actor: Actor, _learnerId: string | null | undefined): boolean {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  void _learnerId;
-  return false;
-}
+// The tutor↔learner allocation predicate that lived here as a Phase-1 deny-stub is now the real,
+// DB-backed `isAllocatedTutor` in apps/api/src/middlewares/guards/ownership.ts (it must read the
+// `tutor_allocation` table, so it can't be a pure no-DB predicate). Its consumers moved with it.
 
 /** User management (create / invite / role change / deactivate) — Admin only. */
 export function canManageUsers(actor: Actor): boolean {

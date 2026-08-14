@@ -73,6 +73,7 @@ import { requireAdmin, requireAdminOrApiKey } from '@api/middlewares/guards';
 import { quizRouter } from '@api/routes/organization/quiz';
 import { searchRouter } from '@api/routes/organization/search';
 import { usersRouter } from '@api/routes/organization/users';
+import { allocationsRouter } from '@api/routes/organization/allocations';
 import { tagsRouter } from '@api/routes/organization/tags';
 import { widgetsRouter } from '@api/routes/organization/widgets';
 import { zValidator } from '@hono/zod-validator';
@@ -765,6 +766,7 @@ export const organizationRouter = new Hono()
   .route('/assets', assetsRouter)
   .route('/ai-tutor', organizationAiTutorRouter)
   .route('/member/email-notifications', organizationMemberEmailNotificationsRouter)
-  // /users must be registered before the /:orgId param route so it isn't captured as orgId="users".
+  // /users and /allocations must be registered before the /:orgId param route so they aren't captured as orgId.
   .route('/users', usersRouter)
+  .route('/allocations', allocationsRouter)
   .route('/:orgId/quiz', quizRouter);

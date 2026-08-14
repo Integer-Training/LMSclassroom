@@ -22,7 +22,8 @@ export {
   isEnrolledLearner,
   canReadCourseContent,
   requireCourseContentRead,
-  assertCourseMaterialDownloadAccess
+  assertCourseMaterialDownloadAccess,
+  isAllocatedTutor
 } from './ownership';
 
 export { publicRoute } from './public';
