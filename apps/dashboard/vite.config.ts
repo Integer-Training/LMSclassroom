@@ -27,6 +27,17 @@ export default ({ mode }) => {
       },
       watch: {
         ignored: ['**/node_modules/!(@cio)/**', '**/.git/**']
+      },
+      // Pre-transform the heavy authoring routes at server start so the FIRST visit to a course /
+      // lesson page isn't a slow on-demand compile. Speeds up the common author flow in dev.
+      warmup: {
+        clientFiles: [
+          './src/routes/**/+layout.svelte',
+          './src/routes/(app)/+page.svelte',
+          './src/routes/(app)/courses/[id]/lessons/+page.svelte',
+          './src/routes/(app)/courses/[id]/lessons/[lessonId]/+page.svelte',
+          './src/routes/(app)/courses/[id]/settings/+page.svelte'
+        ]
       }
     },
     build: {

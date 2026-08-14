@@ -16,6 +16,7 @@
   import merge from 'lodash/merge';
   import { MetaTags } from 'svelte-meta-tags';
   import AppModeWatcher from '$features/app/app-mode-watcher.svelte';
+  import NavProgress from '$features/app/nav-progress.svelte';
   import OrgSiteFavicon from '$features/app/org-site-favicon.svelte';
 
   import '../app.css';
@@ -102,6 +103,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/logo-32.png" />
   {/if}
 </svelte:head>
+
+<NavProgress />
 
 <div>
   <AppModeWatcher />
