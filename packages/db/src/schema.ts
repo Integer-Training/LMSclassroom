@@ -3890,3 +3890,115 @@ export const learnerProfile = pgTable(
     unique('learner_profile_user_id_key').on(table.userId)
   ]
 );
+
+// ── Coursework loop (PearlLMS Phase 3) ────────────────────────────────────────────────────────────
+// Clean tables for the core loop, deliberately NOT reusing the quiz-bound `submission`/`exercise`
+// stack (which is exercise-keyed, points-graded, and course-team-authz'd — see docs/LOOP-MODEL.md).
+// A learner uploads coursework against a unit (versioned, history kept); an ALLOCATED tutor records a
+// Pass/Refer verdict + written feedback (recorded off-platform — the system only stores it).
+
+// Provider-wide tutor↔learner pairing. A tutor sees only learners allocated to them (isAllocatedTutor
+// reads this). Removal = delete the row (reallocation). learner_id/tutor_id are profile.id (= user id).
+export const tutorAllocation = pgTable(
+  'tutor_allocation',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    organizationId: uuid('organization_id').notNull(),
+    tutorId: uuid('tutor_id').notNull(),
+    learnerId: uuid('learner_id').notNull(),
+    createdBy: uuid('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.organizationId],
+      foreignColumns: [organization.id],
+      name: 'tutor_allocation_organization_id_fkey'
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.tutorId],
+      foreignColumns: [profile.id],
+      name: 'tutor_allocation_tutor_id_fkey'
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.learnerId],
+      foreignColumns: [profile.id],
+      name: 'tutor_allocation_learner_id_fkey'
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.createdBy],
+      foreignColumns: [profile.id],
+      name: 'tutor_allocation_created_by_fkey'
+    }).onDelete('set null'),
+    unique('tutor_allocation_pair_unique').on(table.tutorId, table.learnerId),
+    index('idx_tutor_allocation_tutor').on(table.tutorId),
+    index('idx_tutor_allocation_learner').on(table.learnerId)
+  ]
+);
+
+// A learner's coursework upload against a unit (lesson), versioned per (learner, lesson). learner_id
+// is profile.id so ownership is `actor.userId === learner_id`. Files live under the private
+// `coursework/{courseId}/{learnerId}/{lessonId}/{version}/…` bucket prefix. Rows are never deleted
+// (full resubmission history retained). status: 'submitted' → 'resulted'.
+export const courseworkSubmission = pgTable(
+  'coursework_submission',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    learnerId: uuid('learner_id').notNull(),
+    courseId: uuid('course_id').notNull(),
+    lessonId: uuid('lesson_id').notNull(),
+    version: integer().default(1).notNull(),
+    files: jsonb().default([]).$type<{ key: string; name: string; size?: number; type?: string }[]>().notNull(),
+    status: varchar().default('submitted').notNull(),
+    submittedAt: timestamp('submitted_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.learnerId],
+      foreignColumns: [profile.id],
+      name: 'coursework_submission_learner_id_fkey'
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.courseId],
+      foreignColumns: [course.id],
+      name: 'coursework_submission_course_id_fkey'
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.lessonId],
+      foreignColumns: [lesson.id],
+      name: 'coursework_submission_lesson_id_fkey'
+    }).onDelete('cascade'),
+    unique('coursework_submission_learner_lesson_version_unique').on(table.learnerId, table.lessonId, table.version),
+    index('idx_coursework_submission_learner_lesson').on(table.learnerId, table.lessonId),
+    index('idx_coursework_submission_course').on(table.courseId)
+  ]
+);
+
+// The tutor's verdict on one submission version — one result per version. `result` is a RESULT_VALUES
+// value (config-driven, not a Postgres enum), enforced at the validation layer. A REFER lets the
+// learner resubmit (a new coursework_submission version); a PASS is terminal for the unit.
+export const courseworkResult = pgTable(
+  'coursework_result',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    submissionId: uuid('submission_id').notNull(),
+    result: varchar().notNull(),
+    feedback: text(),
+    recordedBy: uuid('recorded_by'),
+    recordedAt: timestamp('recorded_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.submissionId],
+      foreignColumns: [courseworkSubmission.id],
+      name: 'coursework_result_submission_id_fkey'
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.recordedBy],
+      foreignColumns: [profile.id],
+      name: 'coursework_result_recorded_by_fkey'
+    }).onDelete('set null'),
+    unique('coursework_result_submission_unique').on(table.submissionId),
+    index('idx_coursework_result_submission').on(table.submissionId)
+  ]
+);
