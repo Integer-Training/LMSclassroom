@@ -19,7 +19,9 @@ import { zValidator } from '@hono/zod-validator';
 export const allocationsRouter = new Hono()
   .get('/', requireManagerOrAdmin, async (c) => {
     try {
-      const orgId = c.req.header('cio-org-id')!;
+      // Org comes from the RESOLVED actor, never a client-supplied header — a Manager/Admin can only
+      // ever act on their own org's allocations (single-org today; correct + header-proof for multi-org).
+      const orgId = (c.get('actor') as Extract<Actor, { authenticated: true }>).orgId;
       const data = await listOrgAllocations(orgId);
       return c.json({ success: true, data }, 200);
     } catch (error) {
@@ -29,7 +31,9 @@ export const allocationsRouter = new Hono()
   // Tutor + learner pickers for the assign form. Static path — registered before /:allocationId.
   .get('/assignable', requireManagerOrAdmin, async (c) => {
     try {
-      const orgId = c.req.header('cio-org-id')!;
+      // Org comes from the RESOLVED actor, never a client-supplied header — a Manager/Admin can only
+      // ever act on their own org's allocations (single-org today; correct + header-proof for multi-org).
+      const orgId = (c.get('actor') as Extract<Actor, { authenticated: true }>).orgId;
       const data = await getAssignablePeople(orgId);
       return c.json({ success: true, data }, 200);
     } catch (error) {
@@ -38,7 +42,9 @@ export const allocationsRouter = new Hono()
   })
   .post('/', requireManagerOrAdmin, zValidator('json', ZAllocationCreate), async (c) => {
     try {
-      const orgId = c.req.header('cio-org-id')!;
+      // Org comes from the RESOLVED actor, never a client-supplied header — a Manager/Admin can only
+      // ever act on their own org's allocations (single-org today; correct + header-proof for multi-org).
+      const orgId = (c.get('actor') as Extract<Actor, { authenticated: true }>).orgId;
       const actor = c.get('actor') as Actor;
       const input = c.req.valid('json');
       const data = await createTutorAllocation(orgId, actor, input);
@@ -49,7 +55,9 @@ export const allocationsRouter = new Hono()
   })
   .delete('/:allocationId', requireManagerOrAdmin, zValidator('param', ZAllocationIdParam), async (c) => {
     try {
-      const orgId = c.req.header('cio-org-id')!;
+      // Org comes from the RESOLVED actor, never a client-supplied header — a Manager/Admin can only
+      // ever act on their own org's allocations (single-org today; correct + header-proof for multi-org).
+      const orgId = (c.get('actor') as Extract<Actor, { authenticated: true }>).orgId;
       const actor = c.get('actor') as Actor;
       const { allocationId } = c.req.valid('param');
       const data = await removeTutorAllocation(orgId, actor, allocationId);

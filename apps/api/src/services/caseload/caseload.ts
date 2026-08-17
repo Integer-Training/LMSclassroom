@@ -70,6 +70,11 @@ export async function getTutorCaseload(
   if (!actor.authenticated) {
     throw new AppError('Unauthorized', ErrorCodes.UNAUTHORIZED, 401);
   }
+  // Defense-in-depth: only ADMIN or TUTOR own a caseload (the route's requireStaff enforces this too;
+  // this makes the service self-defending — a Manager/Learner is denied even if a caller forgets the guard).
+  if (actor.role !== 'ADMIN' && actor.role !== 'TUTOR') {
+    throw new AppError('You do not have a caseload', ErrorCodes.FORBIDDEN, 403);
+  }
 
   const roster: AllocatedLearner[] =
     actor.role === 'ADMIN' ? await listAllocatedLearnersForOrg(actor.orgId) : await listLearnersForTutor(actor.userId);
@@ -159,8 +164,12 @@ export async function getCaseloadLearnerDetail(
   if (!actor.authenticated) {
     throw new AppError('Unauthorized', ErrorCodes.UNAUTHORIZED, 401);
   }
-  if (actor.role === 'TUTOR' && !(await isAllocatedTutor(actor, learnerId))) {
-    // 403 for a tutor tampering with a learner id they are not allocated to.
+  // Only an ADMIN or a TUTOR ALLOCATED to this learner may open the detail. A tutor tampering with a
+  // learner id they are not allocated to — and a Manager/Learner reaching the service past the route —
+  // are both denied (URL-tamper + defense-in-depth).
+  const isAdmin = actor.role === 'ADMIN';
+  const isAllocated = actor.role === 'TUTOR' && (await isAllocatedTutor(actor, learnerId));
+  if (!isAdmin && !isAllocated) {
     throw new AppError('This learner is not in your caseload', ErrorCodes.FORBIDDEN, 403);
   }
 
