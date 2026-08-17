@@ -1,21 +1,11 @@
 name: Publish Docker Images
 
 on:
-  push:
-    branches:
-      - main
-    # Only rebuild images when something that affects them changes (not docs-only
-    # commits). Tag pushes and manual dispatch always run.
-    paths:
-      - "apps/api/**"
-      - "apps/dashboard/**"
-      - "apps/jobs/**"
-      - "packages/**"
-      - "docker/**"
-      - "pnpm-lock.yaml"
-      - ".github/workflows/docker-publish.yml"
-    tags:
-      - "v*"
+  # PearlLMS fork — auto-run on push DISABLED. Publishes images to ClassroomIO's
+  # registry and runs a boot smoke test that needs a reachable DATABASE_URL (not
+  # set on this fork), so every push failed and emailed. We deploy to DigitalOcean,
+  # not this registry. Manual-dispatch only until our own image pipeline is wired.
+  # See docs/CI.md.
   workflow_dispatch:
     inputs:
       version:

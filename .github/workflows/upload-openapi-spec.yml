@@ -1,11 +1,11 @@
 name: Upload OpenAPI Spec to R2
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/api/**'
-      - 'packages/utils/src/openapi/**'
+  # PearlLMS fork — auto-run on push DISABLED. This publishes the OpenAPI spec to
+  # ClassroomIO's Cloudflare R2 and triggers their docs rebuild; the CLOUDFLARE_*
+  # and CLOUDFLARE_DOCS_DEPLOY_HOOK secrets do not exist on the Integer-Training
+  # fork, so every push failed and emailed. Manual-dispatch only until/unless our
+  # own R2 + docs pipeline is wired. See docs/CI.md.
   workflow_dispatch:
 
 env:

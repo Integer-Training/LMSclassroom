@@ -1,12 +1,10 @@
 name: Deploy embeds to R2
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "packages/ui/**"
-      - "packages/question-types/**"
-      - "apps/embeds/**"
+  # PearlLMS fork — auto-run on push DISABLED. Deploys the embeds bundle to
+  # ClassroomIO's Cloudflare R2 (secrets not set on this fork). Would fail + email
+  # whenever packages/ui or apps/embeds changed. Manual-dispatch only until/unless
+  # our own R2 is wired. See docs/CI.md.
   workflow_dispatch:
 
 env:
