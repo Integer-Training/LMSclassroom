@@ -95,6 +95,24 @@ export async function listLearnersForTutor(tutorId: string): Promise<AllocatedLe
     .orderBy(schema.profile.fullname);
 }
 
+export interface AllocatedTutor {
+  tutorId: string;
+  email: string | null;
+}
+
+/**
+ * The tutors allocated to ONE learner, distinct, with email (PearlLMS Phase 3 Step 6). Backs the
+ * "submission created → the learner's allocated tutor(s)" notification. Sourced from `tutor_allocation`;
+ * an empty result means the learner has no allocated tutor yet (caller sends nothing).
+ */
+export async function listTutorsForLearner(learnerId: string): Promise<AllocatedTutor[]> {
+  return db
+    .selectDistinct({ tutorId: schema.tutorAllocation.tutorId, email: schema.profile.email })
+    .from(schema.tutorAllocation)
+    .leftJoin(schema.profile, eq(schema.profile.id, schema.tutorAllocation.tutorId))
+    .where(eq(schema.tutorAllocation.learnerId, learnerId));
+}
+
 /**
  * Every allocated learner in an org, distinct (for the Admin oversight caseload). Also allocation-
  * backed — Admin sees the union of the tutors' caseloads, never a learner set assembled some other way.

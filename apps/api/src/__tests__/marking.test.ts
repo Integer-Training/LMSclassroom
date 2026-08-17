@@ -20,6 +20,13 @@ vi.mock('@cio/db/audit', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@cio/db/audit')>()),
   recordAudit: vi.fn()
 }));
+// Mocked so the real notifications module (→ @api/services/jobs → the @cio/db/queries/notifications
+// vitest resolver quirk) is never loaded; emails are tested in coursework-notifications.test.ts.
+vi.mock('@api/services/coursework/notifications', () => ({
+  notifyCourseworkSubmitted: vi.fn(),
+  notifyCourseworkResulted: vi.fn(),
+  courseworkEmailsEnabled: vi.fn(() => true)
+}));
 
 import {
   getSubmissionById,

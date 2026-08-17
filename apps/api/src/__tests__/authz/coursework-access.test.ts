@@ -12,6 +12,13 @@ vi.mock('@cio/db/queries/coursework', () => ({
   listSubmissionsWithResultForLearnerUnit: vi.fn(),
   isUnitUploadClosed: vi.fn()
 }));
+// Keep the real coursework service (under test) from loading the notifications → jobs → notifications-
+// query resolver chain (a known vitest quirk). Email behaviour is covered in coursework-notifications.test.ts.
+vi.mock('@api/services/coursework/notifications', () => ({
+  notifyCourseworkSubmitted: vi.fn(),
+  notifyCourseworkResulted: vi.fn(),
+  courseworkEmailsEnabled: vi.fn(() => true)
+}));
 
 import { isTutorAllocatedToLearner } from '@cio/db/queries/allocation';
 import {

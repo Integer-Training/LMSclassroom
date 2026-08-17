@@ -17,6 +17,7 @@ import {
   type SubmissionWithResultRow
 } from '@cio/db/queries/coursework';
 import { canReadCoursework } from '@api/middlewares/guards';
+import { notifyCourseworkSubmitted } from '@api/services/coursework/notifications';
 
 // Learner coursework upload (PearlLMS Phase 3 Step 4). Uploads follow the Phase-2 guarded-storage
 // pattern: the server issues presigned PUT URLs under the learner's own coursework prefix, the client
@@ -125,6 +126,14 @@ export async function createCourseworkSubmission(
     entityId: row.id,
     metadata: { courseId, lessonId, version, fileCount: files.length } // ids + counts only
   });
+
+  // Notify the learner's allocated tutor(s) — fire-and-forget: a mail failure must never roll back the
+  // submission that was just recorded.
+  try {
+    await notifyCourseworkSubmitted({ learnerId: actor.userId, courseId, lessonId });
+  } catch (error) {
+    console.error('[coursework] submission notification failed (submission still recorded):', error);
+  }
 
   return row;
 }

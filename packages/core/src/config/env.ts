@@ -102,7 +102,13 @@ const envSchema = z.object({
   /** Max org landing page image upload size in megabytes (default 0.5). */
   UPLOAD_MAX_LANDING_IMAGE_MB: z.string().optional(),
   /** Max media thumbnail upload size in megabytes (default 5). */
-  UPLOAD_MAX_THUMBNAIL_MB: z.string().optional()
+  UPLOAD_MAX_THUMBNAIL_MB: z.string().optional(),
+  /**
+   * PearlLMS Phase 3 Step 6 — coursework notification emails (submission → allocated tutor;
+   * result → learner). Default ON; set to the string "false" to disable BOTH. Read at call time so
+   * it can be flipped without a rebuild.
+   */
+  COURSEWORK_EMAILS_ENABLED: z.string().optional()
 });
 
 export const env = envSchema.parse(process.env);

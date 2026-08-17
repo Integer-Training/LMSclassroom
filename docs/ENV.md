@@ -114,6 +114,7 @@ API sends auth-flow emails itself; everything else goes through the jobs worker 
 | `SMTP_REPLY_TO` | **Reply-To** identity — env-driven (Step 7; was hardcoded to `help@classroomio.com` before) | blank | local `'"Pearl LMS Support" <support@pearl.local>'`; prod: your support address | |
 | `SMTP_ALLOW_INSECURE` | **Dev only.** `true` lets nodemailer use an unauthenticated, non-TLS catcher (Mailpit): auth optional, `requireTLS` dropped. Unset = stock behaviour, zero prod impact. Added on the fork (Step 3). | unset | `true` in local api+jobs; **unset on DigitalOcean** | |
 | `ZOHO_TOKEN` | ZeptoMail switch — **leave unset or SMTP is ignored** | unset | unset | 🔒 |
+| `COURSEWORK_EMAILS_ENABLED` | PearlLMS Phase 3 Step 6 — the two coursework notifications (submission → allocated tutor; result → learner). **Default ON**; set to the string `"false"` to disable BOTH. Read at call time, so it flips without a rebuild. | n/a (fork) | leave unset (on); set `false` to silence both | |
 
 **Production SMTP (to decide / placeholders).** All mail is env-driven, so real
 credentials slot in unchanged at deploy time — set `SMTP_HOST`, `SMTP_PORT`

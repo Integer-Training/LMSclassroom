@@ -10,6 +10,7 @@ import {
   type CourseworkResultRow
 } from '@cio/db/queries/coursework';
 import { isAllocatedTutor } from '@api/middlewares/guards';
+import { notifyCourseworkResulted } from '@api/services/coursework/notifications';
 
 // Tutor marking (PearlLMS Phase 3 Step 5). The tutor assesses OFF-platform; this records the outcome
 // only — one result value (from config) + one free-text feedback field — against ONE submission version.
@@ -81,6 +82,18 @@ export async function recordResult(
     entityId: row.id,
     metadata: { submissionId, version: submission.version, result: input.result } // NEVER the feedback text
   });
+
+  // Notify the learner that feedback is available — fire-and-forget: a mail failure must never roll back
+  // the result that was just recorded.
+  try {
+    await notifyCourseworkResulted({
+      learnerId: submission.learnerId,
+      courseId: submission.courseId,
+      lessonId: submission.lessonId
+    });
+  } catch (error) {
+    console.error('[coursework] result notification failed (result still recorded):', error);
+  }
 
   return row;
 }
