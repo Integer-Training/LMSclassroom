@@ -17,7 +17,15 @@ import { assertCourseMaterialDownloadAccess, requireCourseContentRead } from '@a
 
 vi.mock('@cio/db/queries/group', () => ({ isCourseGroupMember: vi.fn() }));
 vi.mock('@cio/db/queries/course', () => ({ getCourseById: vi.fn() }));
-vi.mock('@cio/db/queries/lesson', () => ({ getCourseMaterialKeys: vi.fn() }));
+vi.mock('@cio/db/queries/lesson', () => ({
+  getCourseMaterialKeys: vi.fn(),
+  getMaterialKeyLessonMap: vi.fn(async () => new Map())
+}));
+// Phase 4 gating is OFF here (this is a Phase-2 material-access test) — isUnitUnlocked short-circuits open.
+vi.mock('@cio/db/queries/gating', () => ({
+  getCourseSequentialUnlock: vi.fn(async () => false),
+  getOrderedUnitsForCourse: vi.fn(async () => [])
+}));
 
 const mockedIsMember = vi.mocked(isCourseGroupMember);
 const mockedGetCourse = vi.mocked(getCourseById);

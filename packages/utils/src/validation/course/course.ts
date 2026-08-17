@@ -436,6 +436,8 @@ export const ZCourseUpdateBase = z.object({
   slug: z.string().optional(),
   isPublished: z.boolean().optional(),
   orgOnly: z.boolean().optional(),
+  // PearlLMS Phase 4 — per-course sequential unlock (Admin authoring only; default off).
+  sequentialUnlock: z.boolean().optional(),
   overview: z.string().optional(),
   metadata: ZCourseMetadata.optional(),
   cost: z.number().int().min(0).optional(),

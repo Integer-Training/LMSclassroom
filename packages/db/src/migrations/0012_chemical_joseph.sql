@@ -1,0 +1,1 @@
+ALTER TABLE "course" ADD COLUMN "sequential_unlock" boolean DEFAULT false NOT NULL;

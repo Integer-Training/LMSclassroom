@@ -236,6 +236,7 @@
         type: $settings.type,
         logo: logoUrl,
         isPublished: $settings.isPublished,
+        sequentialUnlock: $settings.sequentialUnlock,
         metadata: metadataPayload,
         slug: courseApi.course.slug ?? undefined,
         compliance:
@@ -289,6 +290,7 @@
         grading: !!course.metadata?.grading,
         lessonDownload: !!course.metadata?.lessonDownload,
         isPublished: !!course.isPublished,
+        sequentialUnlock: !!course.sequentialUnlock,
         allowNewStudents: !!course.metadata?.allowNewStudent,
         isContentGroupingEnabled: course.metadata?.isContentGroupingEnabled ?? true,
         progressionMode: course.metadata?.progressionMode ?? 'free',
@@ -692,6 +694,30 @@
         {$settings.isContentGroupingEnabled
           ? $t('course.navItem.settings.enabled')
           : $t('course.navItem.settings.disabled')}
+      </Label>
+    </Field.Field>
+  </Field.Set>
+
+  <Field.Separator />
+
+  <!-- PearlLMS Phase 4 — per-course sequential unlock (Admin authoring only; server-enforced). -->
+  <Field.Set>
+    <Field.Legend>Sequential unlock</Field.Legend>
+    <Field.Description>
+      When on, each session is locked for a learner until the previous session has a passing result. Induction and
+      ID-check sessions are always open. Staff are never gated.
+    </Field.Description>
+    <Field.Field orientation="horizontal">
+      <Switch
+        id="sequential-unlock"
+        checked={$settings.sequentialUnlock}
+        onCheckedChange={(checked) => {
+          $settings.sequentialUnlock = checked;
+          hasUnsavedChanges = true;
+        }}
+      />
+      <Label for="sequential-unlock">
+        {$settings.sequentialUnlock ? 'On' : 'Off'}
       </Label>
     </Field.Field>
   </Field.Set>

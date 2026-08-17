@@ -6,8 +6,10 @@ import { isRole, isSelf, sameOrg } from '@cio/utils/auth';
 import { getSubmissionById } from '@cio/db/queries/submission';
 import { isCourseGroupMember } from '@cio/db/queries/group';
 import { isTutorAllocatedToLearner } from '@cio/db/queries/allocation';
-import { getSubmissionByFileKey, isUnitUploadClosed } from '@cio/db/queries/coursework';
-import { getCourseMaterialKeys } from '@cio/db/queries/lesson';
+import { getSubmissionByFileKey, hasLearnerPassedUnit, isUnitUploadClosed } from '@cio/db/queries/coursework';
+import { getCourseMaterialKeys, getMaterialKeyLessonMap } from '@cio/db/queries/lesson';
+import { getCourseSequentialUnlock, getOrderedUnitsForCourse } from '@cio/db/queries/gating';
+import { isExemptUnitType } from '@cio/utils/constants';
 import { getCourseById } from '@cio/db/queries/course';
 import { forbidden, unauthorized } from '@api/middlewares/guards/require-role';
 
@@ -154,6 +156,33 @@ export async function canReadCourseContent(actor: Actor, courseId: string): Prom
   return isCoursePublished(courseId);
 }
 
+// ── Sequential unlock (PearlLMS Phase 4) ─────────────────────────────────────────────────────────
+/** The learner-facing lock refusal message (docs/UNLOCK-MODEL.md §4 refusal style — 403 via forbidden/AppError). */
+const LOCKED_MESSAGE = 'This session is locked — complete the previous session first';
+
+/**
+ * Is this unit unlocked for this LEARNER? The ONE gating authority — every enforcement point calls this,
+ * never re-implements the walk. Computed LIVE (no stored lock bit) per docs/UNLOCK-MODEL.md §1: toggle off
+ * → open; exempt unit → open; otherwise gate on the nearest preceding NON-exempt unit's passing result
+ * (Phase-3 `hasLearnerPassedUnit`); no preceding non-exempt unit → open. Applies to LEARNERS only — callers
+ * must not consult it for staff (staff are never gated).
+ */
+export async function isUnitUnlocked(courseId: string, lessonId: string, learnerId: string): Promise<boolean> {
+  if (!(await getCourseSequentialUnlock(courseId))) return true;
+
+  const units = await getOrderedUnitsForCourse(courseId);
+  const idx = units.findIndex((u) => u.lessonId === lessonId);
+  if (idx === -1) return true; // unit not in the course's ordering — do not block (defensive)
+  if (isExemptUnitType(units[idx].unitType)) return true;
+
+  for (let p = idx - 1; p >= 0; p--) {
+    if (!isExemptUnitType(units[p].unitType)) {
+      return hasLearnerPassedUnit(learnerId, units[p].lessonId);
+    }
+  }
+  return true; // no preceding non-exempt unit — the first gated unit is open
+}
+
 /**
  * Route guard for the material-serving READ paths (lesson GET, lesson-language GET). Enforces the
  * content-read rule on the `:courseId` in the path: staff OR an enrolled learner of a PUBLISHED
@@ -170,6 +199,11 @@ export async function requireCourseContentRead(c: Context, next: Next) {
 
   if (!(await canReadCourseContent(actor, courseId))) {
     return forbidden(c, 'This content is not available to you');
+  }
+  // Phase 4: a non-staff learner is additionally gated by sequential unlock on this unit (path lessonId).
+  const lessonId = c.req.param('lessonId');
+  if (lessonId && !isContentStaff(actor) && !(await isUnitUnlocked(courseId, lessonId, actor.userId))) {
+    return forbidden(c, LOCKED_MESSAGE);
   }
   return next();
 }
@@ -220,6 +254,15 @@ export async function assertCourseMaterialDownloadAccess(
     if (!allCurrent) {
       throw new AppError('One or more materials are not available in this course', ErrorCodes.FORBIDDEN, 403);
     }
+    // Phase 4: a locked unit's materials are refused (this path has no lessonId, so resolve each material
+    // key → its owning unit → isUnitUnlocked). Non-staff learners only — staff returned above.
+    const keyLesson = await getMaterialKeyLessonMap(courseId);
+    for (const key of materialKeys) {
+      const lessonId = keyLesson.get(key);
+      if (lessonId && !(await isUnitUnlocked(courseId, lessonId, actor.userId))) {
+        throw new AppError(LOCKED_MESSAGE, ErrorCodes.FORBIDDEN, 403);
+      }
+    }
   }
 }
 
@@ -266,6 +309,10 @@ export async function requireCourseworkSubmit(c: Context, next: Next) {
   }
   if (await isUnitUploadClosed(actor.userId, lessonId)) {
     return forbidden(c, 'You have passed this unit — no further submissions are needed');
+  }
+  // Phase 4: a locked unit refuses submissions too (same isUnitUnlocked gate as content read).
+  if (!(await isUnitUnlocked(courseId, lessonId, actor.userId))) {
+    return forbidden(c, LOCKED_MESSAGE);
   }
   return next();
 }

@@ -22,3 +22,16 @@ export const UNIT_TYPE_LABELS: Record<UnitType, string> = {
 export function isAllowedUnitType(value: unknown): value is UnitType {
   return typeof value === 'string' && (UNIT_TYPES as readonly string[]).includes(value);
 }
+
+/**
+ * Unit types EXEMPT from Phase-4 sequential gating (owner-confirmed for iCQ: induction + ID check).
+ * Exempt units are always open AND transparent to the chain — a gated unit gates on the nearest preceding
+ * NON-exempt unit, skipping these (docs/UNLOCK-MODEL.md §1, D1/D2). Single config source: gating reads only
+ * this list, never a literal. Extend the set here (not in queries/guards) to change what is exempt.
+ */
+export const GATING_EXEMPT_UNIT_TYPES = ['induction', 'id-check'] as const;
+
+/** Is this unit type exempt from sequential gating? A null/unknown type is NOT exempt (a normal gated unit). */
+export function isExemptUnitType(value: unknown): boolean {
+  return typeof value === 'string' && (GATING_EXEMPT_UNIT_TYPES as readonly string[]).includes(value);
+}

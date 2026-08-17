@@ -728,6 +728,10 @@ export const course = pgTable(
     currency: varchar().default('USD').notNull(),
     bannerImage: text('banner_image'),
     isPublished: boolean('is_published').default(false),
+    // PearlLMS Phase 4 — per-course sequential unlock. Default OFF (courses stay fully open unless an
+    // Admin turns it on in the authoring UI). Gating (docs/UNLOCK-MODEL.md) is computed live from this
+    // flag + the config exempt list + the Phase-3 passed-helper; there is no stored per-unit lock state.
+    sequentialUnlock: boolean('sequential_unlock').default(false).notNull(),
     certificate: jsonb().default({}).$type<{
       isDownloadable?: boolean;
       /** @deprecated Use `design.templateId`. Legacy 6-theme id; mapped on read via LEGACY_THEME_MAP. */

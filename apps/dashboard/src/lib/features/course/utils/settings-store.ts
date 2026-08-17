@@ -12,6 +12,8 @@ type CourseSettings = {
   tabs: { id: number; name: string }[];
   lessonDownload: boolean;
   isPublished: boolean;
+  /** PearlLMS Phase 4 — per-course sequential unlock (maps to course.sequential_unlock). Admin-only. */
+  sequentialUnlock: boolean;
   isContentGroupingEnabled: boolean;
   progressionMode: 'free' | 'sequential';
   callout: TCourseCallout | null;
@@ -33,6 +35,7 @@ export const settings = writable<CourseSettings>({
   ],
   lessonDownload: false,
   isPublished: false,
+  sequentialUnlock: false,
   isContentGroupingEnabled: true,
   progressionMode: 'free',
   callout: null,

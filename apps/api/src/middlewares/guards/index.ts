@@ -26,7 +26,8 @@ export {
   isAllocatedTutor,
   canReadCoursework,
   requireCourseworkSubmit,
-  assertCourseworkDownloadAccess
+  assertCourseworkDownloadAccess,
+  isUnitUnlocked
 } from './ownership';
 
 export { publicRoute } from './public';

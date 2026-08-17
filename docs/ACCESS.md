@@ -482,3 +482,31 @@ Notes:
 - The legacy stock `submission`/`exercise`/`mark` marking stack (gaps A / gradebook / course-team authz) is
   **untouched and unused** by the coursework loop — the new flow keys on **allocation**, never course-team
   membership, so those gaps cannot leak in.
+
+---
+
+## 8. Phase 4 — sequential unlock (LIVE as of Step 2, 2026-08-17)
+
+Per-course setting `course.sequential_unlock` (Admin authoring only, default **off**). When ON, a non-staff
+**learner** is additionally gated per unit by the canonical `isUnitUnlocked(courseId, lessonId, learnerId)`
+(docs/UNLOCK-MODEL.md): a session is locked until the **nearest preceding non-exempt** unit has a passing
+result (Phase-3 `hasLearnerPassedUnit`); `induction`/`id-check` units (config `GATING_EXEMPT_UNIT_TYPES`) are
+exempt + transparent. Computed **live**, no stored lock bit. **Staff are never gated; toggle-off courses are
+fully open.** The added condition on each affected learner row:
+
+| Surface | Endpoint | Base guard | Phase-4 added gate |
+|---|---|---|---|
+| Unit content read | `GET /course/:courseId/lesson/:lessonId` | `requireCourseContentRead` | learner + locked unit → **403** (`isUnitUnlocked` inside the guard) |
+| Unit rich text | `GET …/lesson/:lessonId/language[/:locale]` | `requireCourseContentRead` | same **403** |
+| Coursework submit | `POST …/lesson/:lessonId/coursework[/presign]` | `requireCourseworkSubmit` | learner + locked unit → **403** (beside `isUnitUploadClosed`) |
+| Material download | `POST /course/presign/{document,video}/download` | `assertCourseMaterialDownloadAccess` | non-staff: each material key → owning `lessonId` (new `getMaterialKeyLessonMap`) → locked → **403**. Closes gap **H** for the gating check |
+
+Notes:
+- **Refusal style unchanged** — `403` via `forbidden(c, 'This session is locked — complete the previous
+  session first')` (middleware) / `AppError(FORBIDDEN, 403)` (assert path). No deviation from the doc.
+- **PDF exports** (`POST …/lesson/download/pdf`, `POST …/download/content`) render **client-supplied** body
+  content (no server fetch by id) → not a locked-unit content leak; the content-read 403 above is the gate.
+- **Outline** (`GET /course/:courseId/lesson`, `GET /course/:courseId`) is **annotated** (not refused) so the
+  learner sees all sessions with locked markers — the learner UI + annotation land in Step 3.
+- **One enforcement path:** every point calls the single `isUnitUnlocked`; there is no second lock
+  implementation and no denormalised lock column (only the `sequential_unlock` toggle is stored).

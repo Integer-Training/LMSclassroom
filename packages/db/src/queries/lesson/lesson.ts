@@ -46,6 +46,26 @@ export async function getCourseMaterialKeys(courseId: string): Promise<Set<strin
   return keys;
 }
 
+/**
+ * Map every current material key of a course → the `lessonId` (unit) it belongs to (PearlLMS Phase 4).
+ * The standalone material-download presign path carries only `courseId` + keys (no lessonId), so
+ * sequential-unlock resolves each requested key to its owning unit through this map, then gates on
+ * `isUnitUnlocked`. A key not in the map is not a current material of the course (removed / cross-course).
+ */
+export async function getMaterialKeyLessonMap(courseId: string): Promise<Map<string, string>> {
+  const rows = await db
+    .select({ id: schema.lesson.id, documents: schema.lesson.documents, videos: schema.lesson.videos })
+    .from(schema.lesson)
+    .where(eq(schema.lesson.courseId, courseId));
+
+  const map = new Map<string, string>();
+  for (const row of rows) {
+    for (const doc of row.documents ?? []) if (doc?.key) map.set(doc.key, row.id);
+    for (const video of row.videos ?? []) if (video?.key) map.set(video.key, row.id);
+  }
+  return map;
+}
+
 export interface LessonById extends TLesson {
   lessonLanguages: TLessonLanguage[];
 }
