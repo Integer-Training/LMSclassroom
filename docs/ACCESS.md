@@ -510,3 +510,19 @@ Notes:
   learner sees all sessions with locked markers — the learner UI + annotation land in Step 3.
 - **One enforcement path:** every point calls the single `isUnitUnlocked`; there is no second lock
   implementation and no denormalised lock column (only the `sequential_unlock` toggle is stored).
+
+### 8a. Learner-facing lock states + course-view surface (Step 3, 2026-08-18)
+
+- **Outline unlock map** — `GET /course/:courseId/unlock` (`courseMemberMiddleware`) returns per-unit
+  `{ unlocked, lockedByTitle }` for the requesting actor (staff / toggle-off → all open). Presentation only;
+  the outline + lesson page read it to show locked state + the "complete <session> first" hint. Same
+  `isUnitUnlocked` rule (shared `findGatePredecessorIndex`), no client chain logic.
+- **Course-view surface opened to enrolled learners.** `(app)/courses/[id]/+layout.server.ts` relaxed from
+  `requireAdmin` → `requireActor` so an ENROLLED learner reaches the **lesson view** in read-only mode
+  (content-read / material / coursework / unlock all API-enforced; edit affordances are role-gated client-side
+  and every authoring/marking mutation is `requireAdmin` on the API). To keep authoring/marking pages
+  admin-only after the relax, **each admin sub-page now carries its own `requireAdmin`** server guard:
+  `settings, people (layout), marks, submissions, analytics, compliance, attendance, certificates,
+  certificates/editor, landingpage, ai-tutor, exercises/[exerciseId]`. `lessons` + `lessons/[lessonId]` are
+  the only learner-open routes; the layout's `isPermitted` dialog still blocks non-members. Net: admin pages
+  are exactly as protected as before; the only new access is enrolled-learner → their own lesson view.

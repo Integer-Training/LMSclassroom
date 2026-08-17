@@ -35,3 +35,19 @@ export const GATING_EXEMPT_UNIT_TYPES = ['induction', 'id-check'] as const;
 export function isExemptUnitType(value: unknown): boolean {
   return typeof value === 'string' && (GATING_EXEMPT_UNIT_TYPES as readonly string[]).includes(value);
 }
+
+/**
+ * The index of the nearest preceding NON-exempt unit for `units[idx]`, or null if none precedes it — the
+ * ONE place the "look back past exempt units" chain walk lives (Phase 4). Both the isUnitUnlocked guard and
+ * the outline unlock-map compose this pure function, so there is no duplicated chain logic anywhere. Generic
+ * over the ordered unit shape (only `unitType` is read).
+ */
+export function findGatePredecessorIndex(
+  units: ReadonlyArray<{ unitType: string | null }>,
+  idx: number
+): number | null {
+  for (let p = idx - 1; p >= 0; p--) {
+    if (!isExemptUnitType(units[p].unitType)) return p;
+  }
+  return null;
+}

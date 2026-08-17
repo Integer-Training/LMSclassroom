@@ -19,7 +19,12 @@ export async function getCourseSequentialUnlock(courseId: string): Promise<boole
 export interface OrderedUnit {
   lessonId: string;
   unitType: string | null;
+  title: string | null;
 }
+
+// The pure chain walk `findGatePredecessorIndex` lives in @cio/utils/constants (beside the exempt config)
+// so both the guard (isUnitUnlocked) and the outline unlock-map compose ONE implementation — no duplicate
+// chain logic, and it stays outside the DB-mockable surface.
 
 /**
  * A course's units in **sequence order** — `course_section.order` then `lesson.order` — each with its
@@ -32,6 +37,7 @@ export async function getOrderedUnitsForCourse(courseId: string): Promise<Ordere
     .select({
       lessonId: schema.lesson.id,
       unitType: schema.lesson.unitType,
+      title: schema.lesson.title,
       sectionOrder: schema.courseSection.order,
       lessonOrder: schema.lesson.order
     })
@@ -47,5 +53,5 @@ export async function getOrderedUnitsForCourse(courseId: string): Promise<Ordere
       a.lessonId.localeCompare(b.lessonId)
   );
 
-  return rows.map((r) => ({ lessonId: r.lessonId, unitType: r.unitType ?? null }));
+  return rows.map((r) => ({ lessonId: r.lessonId, unitType: r.unitType ?? null, title: r.title ?? null }));
 }

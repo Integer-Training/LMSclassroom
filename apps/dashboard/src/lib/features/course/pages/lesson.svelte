@@ -22,7 +22,7 @@
   import { snackbar } from '$features/ui/snackbar/store';
   import { RefreshPageData, UnsavedChanges } from '$features/ui';
   import LessonVersionHistory from '$features/course/components/lesson/lesson-version-history.svelte';
-  import { courseApi, lessonApi } from '$features/course/api';
+  import { courseApi, courseUnlockApi, lessonApi } from '$features/course/api';
   import { isHtmlValueEmpty } from '$lib/utils/functions/toHtml';
   import { lessonVideoUpload, lessonDocUpload } from '$features/course/components/lesson/store';
   import { t } from '$lib/utils/functions/translations';
@@ -86,7 +86,12 @@
     )
   );
   const lessonTitle = $derived(currentLessonContentItem?.title || lessonApi.lesson?.title || 'Lesson');
-  const contentLockReason = $derived(getStudentContentLockReason(courseApi.course, lessonId, ContentType.Lesson));
+  const stockLockReason = $derived(getStudentContentLockReason(courseApi.course, lessonId, ContentType.Lesson));
+  // PearlLMS Phase 4: overlay the server sequential-unlock map (authoritative) on top of the stock lock reason.
+  const unlockHint = $derived(courseUnlockApi.hint(lessonId));
+  const contentLockReason = $derived(
+    stockLockReason ?? (courseUnlockApi.isLocked(lessonId) ? 'progression_locked' : null)
+  );
   const isStudentLessonStateReady = $derived.by(() => {
     if (!$isCourseLearnerView) {
       return true;
@@ -485,7 +490,7 @@
             <Spinner />
           </div>
         {:else if contentLockReason}
-          <StudentContentLockedNotice reason={contentLockReason} contentType={ContentType.Lesson} />
+          <StudentContentLockedNotice reason={contentLockReason} contentType={ContentType.Lesson} hint={unlockHint} />
         {:else if lessonApi.lesson}
           {#key lessonId}
             <div class="mb-20 flex w-full flex-col" in:fade={{ delay: 500 }} out:fade>

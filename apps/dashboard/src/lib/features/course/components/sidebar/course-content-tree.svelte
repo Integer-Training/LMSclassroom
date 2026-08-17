@@ -7,7 +7,7 @@
   import * as Sidebar from '@cio/ui/base/sidebar';
   import * as Collapsible from '@cio/ui/base/collapsible';
   import { ContentType } from '@cio/utils/constants/content';
-  import { courseApi } from '$features/course/api';
+  import { courseApi, courseUnlockApi } from '$features/course/api';
   import { getContentItemsProgress, getContentRoute, getCourseContent } from '$features/course/utils/content';
   import { CircleCheckIcon } from '$features/ui/icons';
   import { t } from '$lib/utils/functions/translations';
@@ -98,12 +98,19 @@
                     <Sidebar.MenuSubButton isActive={(path || page.url.pathname).includes(contentItem.id)}>
                       {#snippet child({ props })}
                         {@const isContentLocked = (contentItem.isUnlocked ?? true) === false}
+                        {@const unlockLockHint = courseUnlockApi.hint(contentItem.id)}
                         {@const isLockedForStudent =
-                          $isCourseLearnerView && (isContentLocked || contentItem.accessible === false)}
+                          $isCourseLearnerView &&
+                          (isContentLocked ||
+                            contentItem.accessible === false ||
+                            courseUnlockApi.isLocked(contentItem.id))}
+                        {@const lockTitle = unlockLockHint
+                          ? `Locked — complete ${unlockLockHint} first`
+                          : $t('course.navItem.lessons.add_lesson.lock')}
                         <a
                           href={resolve(getContentRoute(id, contentItem), {})}
                           aria-disabled={isLockedForStudent}
-                          title={contentItem.title}
+                          title={isLockedForStudent && unlockLockHint ? lockTitle : contentItem.title}
                           class="flex w-full items-center gap-2 {isLockedForStudent
                             ? 'cursor-not-allowed opacity-50'
                             : ''}"
@@ -125,11 +132,7 @@
                             {#if contentItem.type === ContentType.Lesson && contentItem.callUrl}
                               {@render liveSessionDot()}
                             {:else if isContentLocked || isLockedForStudent}
-                              <span
-                                class="shrink-0"
-                                title={$t('course.navItem.lessons.add_lesson.lock')}
-                                aria-label={$t('course.navItem.lessons.add_lesson.lock')}
-                              >
+                              <span class="shrink-0" title={lockTitle} aria-label={lockTitle}>
                                 <LockIcon size={12} />
                               </span>
                             {/if}
@@ -151,11 +154,17 @@
         <Sidebar.MenuSubButton isActive={(path || page.url.pathname).includes(contentItem.id)}>
           {#snippet child({ props })}
             {@const isContentLocked = (contentItem.isUnlocked ?? true) === false}
-            {@const isLockedForStudent = $isCourseLearnerView && (isContentLocked || contentItem.accessible === false)}
+            {@const unlockLockHint = courseUnlockApi.hint(contentItem.id)}
+            {@const isLockedForStudent =
+              $isCourseLearnerView &&
+              (isContentLocked || contentItem.accessible === false || courseUnlockApi.isLocked(contentItem.id))}
+            {@const lockTitle = unlockLockHint
+              ? `Locked — complete ${unlockLockHint} first`
+              : $t('course.navItem.lessons.add_lesson.lock')}
             <a
               href={resolve(getContentRoute(id, contentItem), {})}
               aria-disabled={isLockedForStudent}
-              title={contentItem.title}
+              title={isLockedForStudent && unlockLockHint ? lockTitle : contentItem.title}
               class="flex w-full items-center gap-2 {isLockedForStudent ? 'cursor-not-allowed opacity-50' : ''}"
               onclick={(event) => {
                 if (isLockedForStudent) {
@@ -175,11 +184,7 @@
                 {#if contentItem.type === ContentType.Lesson && contentItem.callUrl}
                   {@render liveSessionDot()}
                 {:else if isContentLocked || isLockedForStudent}
-                  <span
-                    class="shrink-0"
-                    title={$t('course.navItem.lessons.add_lesson.lock')}
-                    aria-label={$t('course.navItem.lessons.add_lesson.lock')}
-                  >
+                  <span class="shrink-0" title={lockTitle} aria-label={lockTitle}>
                     <LockIcon size={12} />
                   </span>
                 {/if}

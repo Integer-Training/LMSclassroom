@@ -53,6 +53,8 @@ import { AppError, ErrorCodes, handleError } from '@api/utils/errors';
 import { invitesRouter } from '@api/routes/course/invite';
 import { katexRouter } from '@api/routes/course/katex';
 import { lessonRouter } from '@api/routes/course/lesson';
+import { getCourseUnlockMap } from '@api/services/gating/unlock';
+import type { Actor } from '@cio/db/actor';
 import { markRouter } from '@api/routes/course/mark';
 import { membersRouter } from '@api/routes/course/people';
 import { newsfeedRouter } from '@api/routes/course/newsfeed';
@@ -273,6 +275,19 @@ export const courseRouter = new Hono()
       }
     }
   )
+  /**
+   * Per-unit sequential-unlock state for the requesting learner's OUTLINE (Phase 4 Step 3). Presentation
+   * only — the content/material/upload guards remain the control. Staff + toggle-off courses → all open.
+   */
+  .get('/:courseId/unlock', courseMemberMiddleware, zValidator('param', ZCourseGetParam), async (c) => {
+    try {
+      const { courseId } = c.req.valid('param');
+      const data = await getCourseUnlockMap(c.get('actor') as Actor, courseId);
+      return c.json({ success: true, data }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to load unlock state');
+    }
+  })
   /**
    * PUT /course/:courseId/landing-page
    * Updates landing-page-facing course fields such as copy, media, pricing, and reviews.

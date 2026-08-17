@@ -1,8 +1,11 @@
 import { classroomio, getApiHeaders } from '$lib/utils/services/api';
 import { safeServerApi } from '$lib/utils/services/api/server';
+import { requireAdmin } from '$lib/server/guards';
 import type { MarksPageData } from '$features/course/utils/marks-utils';
 
-export const load = async ({ params, cookies }) => {
+// PearlLMS Phase 4 — admin-only marking page; guards itself now that the course layout admits learners.
+export const load = async ({ params, cookies, locals }) => {
+  requireAdmin(locals);
   const courseId = params.id || '';
   if (!courseId) {
     return {

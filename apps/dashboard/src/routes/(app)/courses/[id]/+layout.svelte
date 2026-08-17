@@ -10,7 +10,7 @@
   import * as Dialog from '@cio/ui/base/dialog';
   import { Button } from '@cio/ui/base/button';
   import { Confetti } from '$features/ui';
-  import { courseApi } from '$features/course/api';
+  import { courseApi, courseUnlockApi } from '$features/course/api';
   import ContentCreateModal from '$features/course/components/content/content-create-modal.svelte';
   import CourseCompletionModal from '$features/course/components/ceritficate/course-completion-modal.svelte';
   import { aiAssistantPanelDefinition, ContentAskAiBar, AI_ASSISTANT_PANEL_ID } from '$features/ai-assistant';
@@ -60,10 +60,15 @@
 
     if (data.course) {
       courseApi.setCourse(data.course, $profile.id);
-      return;
+    } else {
+      courseApi.ensureCourse(data.courseId, $profile.id);
     }
 
-    courseApi.ensureCourse(data.courseId, $profile.id);
+    // PearlLMS Phase 4: load the sequential-unlock map for the outline + lesson lock states (authoritative
+    // server computation; staff / toggle-off courses come back all-unlocked).
+    if (courseUnlockApi.courseId !== data.courseId) {
+      courseUnlockApi.load(data.courseId);
+    }
   });
 
   const isCourseReady = $derived.by(() => {

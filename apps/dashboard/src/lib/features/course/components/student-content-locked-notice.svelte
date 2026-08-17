@@ -12,12 +12,15 @@
   interface Props {
     reason: StudentContentLockReason;
     contentType: typeof ContentType.Lesson | typeof ContentType.Exercise;
+    /** PearlLMS Phase 4 — the session that unlocks this one (from the server unlock map). Overrides the copy. */
+    hint?: string | null;
   }
 
-  let { reason, contentType }: Props = $props();
+  let { reason, contentType, hint = null }: Props = $props();
 
   const titleKey = $derived(getStudentContentLockTitleKey(reason));
   const descriptionKey = $derived(getStudentContentLockDescriptionKey(reason, contentType));
+  const description = $derived(hint ? `Locked — complete ${hint} first.` : $t(descriptionKey));
 </script>
 
-<Empty title={$t(titleKey)} description={$t(descriptionKey)} icon={LockIcon} variant="page" class="text-center" />
+<Empty title={$t(titleKey)} {description} icon={LockIcon} variant="page" class="text-center" />

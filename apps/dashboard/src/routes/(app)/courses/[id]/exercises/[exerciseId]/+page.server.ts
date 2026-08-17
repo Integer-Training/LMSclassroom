@@ -1,8 +1,12 @@
 import type { GetExerciseSuccess, ListExerciseSubmissionsSuccess } from '$features/course/utils/types';
 import { classroomio, getApiHeaders } from '$lib/utils/services/api';
 import { safeServerApi } from '$lib/utils/services/api/server';
+import { requireAdmin } from '$lib/server/guards';
 
-export const load = async ({ params, cookies }) => {
+// PearlLMS Phase 4 — the stock exercise (quiz) surface is admin-only here; PearlLMS assessment is the
+// coursework loop, not exercises. Guards itself now that the course layout admits enrolled learners.
+export const load = async ({ params, cookies, locals }) => {
+  requireAdmin(locals);
   const courseId = params.id || '';
   const exerciseId = params.exerciseId || '';
 

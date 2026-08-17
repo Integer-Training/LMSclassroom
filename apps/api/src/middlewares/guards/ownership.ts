@@ -9,7 +9,7 @@ import { isTutorAllocatedToLearner } from '@cio/db/queries/allocation';
 import { getSubmissionByFileKey, hasLearnerPassedUnit, isUnitUploadClosed } from '@cio/db/queries/coursework';
 import { getCourseMaterialKeys, getMaterialKeyLessonMap } from '@cio/db/queries/lesson';
 import { getCourseSequentialUnlock, getOrderedUnitsForCourse } from '@cio/db/queries/gating';
-import { isExemptUnitType } from '@cio/utils/constants';
+import { findGatePredecessorIndex, isExemptUnitType } from '@cio/utils/constants';
 import { getCourseById } from '@cio/db/queries/course';
 import { forbidden, unauthorized } from '@api/middlewares/guards/require-role';
 
@@ -175,12 +175,9 @@ export async function isUnitUnlocked(courseId: string, lessonId: string, learner
   if (idx === -1) return true; // unit not in the course's ordering — do not block (defensive)
   if (isExemptUnitType(units[idx].unitType)) return true;
 
-  for (let p = idx - 1; p >= 0; p--) {
-    if (!isExemptUnitType(units[p].unitType)) {
-      return hasLearnerPassedUnit(learnerId, units[p].lessonId);
-    }
-  }
-  return true; // no preceding non-exempt unit — the first gated unit is open
+  const predecessor = findGatePredecessorIndex(units, idx);
+  if (predecessor === null) return true; // no preceding non-exempt unit — the first gated unit is open
+  return hasLearnerPassedUnit(learnerId, units[predecessor].lessonId);
 }
 
 /**
