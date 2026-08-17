@@ -20,6 +20,20 @@ export const RESULT_LABELS: Record<ResultValue, string> = {
 /** The terminal (unit-passed) result — Phase-4 gating reads this. */
 export const PASS_RESULT: ResultValue = 'PASS';
 
+/**
+ * Which result values count as PASSING a unit — the single place this is recorded, so a future
+ * result set (e.g. Distinction/Merit/Pass/Refer) stays coherent: add the value to RESULT_VALUES and
+ * mark it passing here. `hasLearnerPassedUnit` and the upload-closed rule read ONLY this.
+ * NOTE: the result set is a GLOBAL config today. Per-course result sets are a possible later request
+ * (noted in LOOP-MODEL.md) — not built here.
+ */
+export const PASSING_RESULTS = ['PASS'] as const;
+
+/** Does this result value count as passing the unit? */
+export function isPassingResult(value: unknown): value is ResultValue {
+  return typeof value === 'string' && (PASSING_RESULTS as readonly string[]).includes(value);
+}
+
 /** Runtime membership check against the configured list. */
 export function isAllowedResult(value: unknown): value is ResultValue {
   return typeof value === 'string' && (RESULT_VALUES as readonly string[]).includes(value);

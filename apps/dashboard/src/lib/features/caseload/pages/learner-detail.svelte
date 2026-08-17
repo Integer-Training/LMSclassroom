@@ -3,7 +3,13 @@
   import { Badge } from '@cio/ui/base/badge';
   import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
   import FileTextIcon from '@lucide/svelte/icons/file-text';
+  import { RESULT_LABELS, isPassingResult } from '@cio/utils/constants';
+  import MarkingForm from '$features/caseload/components/marking-form.svelte';
   import { caseloadApi, type DetailFile } from '$features/caseload/api/caseload.svelte';
+
+  function resultLabel(result: string | null): string {
+    return result ? (RESULT_LABELS[result as keyof typeof RESULT_LABELS] ?? result) : '';
+  }
 
   // Caseload learner detail (PearlLMS Phase 3 Step 4). Read-only version history per unit; files open
   // through the guarded coursework download endpoint. Server re-checks allocation for this learnerId.
@@ -58,11 +64,18 @@
                     <Badge variant={unit.state.awaitingMarking ? 'secondary' : 'outline'}>{unit.state.label}</Badge>
                   </div>
                   <ul class="divide-y">
-                    {#each unit.submissions as sub (sub.id)}
+                    {#each unit.submissions as sub, idx (sub.id)}
                       <li class="px-4 py-3">
                         <div class="mb-2 flex items-center justify-between gap-2">
                           <span class="text-sm font-medium">Version {sub.version}</span>
-                          <span class="text-muted-foreground text-xs">{formatDate(sub.submittedAt)}</span>
+                          <div class="flex items-center gap-2">
+                            {#if sub.result}
+                              <Badge variant={isPassingResult(sub.result) ? 'default' : 'destructive'}>
+                                {resultLabel(sub.result)}
+                              </Badge>
+                            {/if}
+                            <span class="text-muted-foreground text-xs">{formatDate(sub.submittedAt)}</span>
+                          </div>
                         </div>
                         <ul class="space-y-1">
                           {#each sub.files as file (file.key)}
@@ -81,6 +94,16 @@
                             </li>
                           {/each}
                         </ul>
+                        {#if sub.feedback}
+                          <div class="bg-muted/40 mt-2 rounded-md p-2.5">
+                            <p class="text-muted-foreground mb-0.5 text-xs font-medium">Feedback</p>
+                            <p class="text-sm whitespace-pre-wrap">{sub.feedback}</p>
+                          </div>
+                        {/if}
+                        {#if idx === 0 && !sub.result}
+                          <!-- Latest, unmarked version → record a result (allocated tutor / Admin). -->
+                          <MarkingForm submissionId={sub.id} onMarked={() => caseloadApi.loadLearner(learnerId)} />
+                        {/if}
                       </li>
                     {/each}
                   </ul>

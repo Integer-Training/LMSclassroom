@@ -19,6 +19,10 @@ export interface CourseworkSubmission {
   files: CourseworkFile[];
   status: string;
   submittedAt: string;
+  /** The tutor's result on this version (Step 5), or null while awaiting marking. */
+  result: string | null;
+  /** The tutor's written feedback for this version (Step 5), or null. */
+  feedback: string | null;
 }
 
 // Allowed document types + limit mirror the server config (validation/constants + upload-limits). The
@@ -37,6 +41,7 @@ const ALLOWED_TYPES = [
  */
 class CourseworkApi extends BaseApi {
   submissions = $state<CourseworkSubmission[]>([]);
+  canSubmit = $state(true);
   isUploading = $state(false);
   uploadError = $state<string | null>(null);
   lastSubmitted = $state<CourseworkSubmission | null>(null);
@@ -50,7 +55,8 @@ class CourseworkApi extends BaseApi {
       requestFn: () => this.base(courseId, lessonId).$get({ param: { courseId, lessonId } }),
       logContext: 'listing coursework',
       onSuccess: (result) => {
-        this.submissions = result.data as CourseworkSubmission[];
+        this.submissions = result.data.submissions as CourseworkSubmission[];
+        this.canSubmit = result.data.canSubmit;
       },
       onError: (result) => {
         if (typeof result === 'string') snackbar.error(result);

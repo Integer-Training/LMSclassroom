@@ -453,3 +453,32 @@ Six inventory rows re-opened against the code (incl. ≥2 gap rows):
 
 Completeness: every dashboard route group and every API router under `apps/api/src/routes` is
 represented above exactly once.
+
+---
+
+## 7. Phase 3 — coursework loop (LIVE as of Steps 2–5, 2026-08-17)
+
+The Phase-3 rows are no longer "planned/deny" — they are implemented, guarded and tested. The tutor↔learner
+allocation table is real; the Phase-1 `isAllocatedTutor` deny-stub is now the DB-backed predicate.
+
+| Surface | Endpoint | Live guard | Target access |
+|---|---|---|---|
+| Allocation manage | `GET/POST/DELETE /organization/allocations` | `requireManagerOrAdmin` | **Manager or Admin** |
+| Coursework submit | `POST /course/:courseId/lesson/:lessonId/coursework` `/coursework/presign` | `requireCourseworkSubmit` | **Enrolled learner, self, published course** — and **closed once the unit is passed** |
+| Coursework read (own) | `GET …/coursework` (metadata + result + feedback) | `requireActor` + self-scoped by `actor.userId` | **self only** (learner sees only their own) |
+| Coursework detail | `GET …/coursework/:submissionId` | `requireActor` + `canReadCoursework` | **self / allocated tutor / Admin**; Manager **NO** |
+| Coursework file download | `POST …/coursework/download` | `assertCourseworkDownloadAccess` (key bound to a readable submission) | same set; a guessed key → 403 |
+| Caseload | `GET /caseload`, `GET /caseload/learners/:learnerId` | `requireStaff` + allocation re-check on detail | **Tutor** (allocated only) **or Admin**; Manager/Learner **NO** |
+| **Result write** | `POST /caseload/submissions/:submissionId/result` | `requireStaff` + `recordResult` (allocated-tutor/Admin, latest-only, no re-mark) | **allocated tutor OR Admin**; Manager/Learner **NO** |
+
+Notes:
+- **Result values + "passing" values come from config** (`@cio/utils/constants` — `RESULT_VALUES`,
+  `PASSING_RESULTS`). No `PASS`/`REFER` literals in queries or components.
+- `hasLearnerPassedUnit` = the **latest marked version**'s result is passing (a later Refer overrides an
+  earlier Pass). Phase 4 consumes it; **no gating/locking of any other session exists** — the only unit-level
+  effect is that a **passed** unit closes its OWN upload.
+- **Audit**: `allocation.created/removed`, `coursework.submitted`, `result.entered` — ids + values only,
+  **never** learner names/emails or **feedback text**.
+- The legacy stock `submission`/`exercise`/`mark` marking stack (gaps A / gradebook / course-team authz) is
+  **untouched and unused** by the coursework loop — the new flow keys on **allocation**, never course-team
+  membership, so those gaps cannot leak in.

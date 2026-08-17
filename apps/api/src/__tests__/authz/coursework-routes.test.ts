@@ -17,15 +17,20 @@ vi.mock('@api/services/coursework/coursework', () => ({
 }));
 vi.mock('@cio/db/queries/group', () => ({ isCourseGroupMember: vi.fn() }));
 vi.mock('@cio/db/queries/course', () => ({ getCourseById: vi.fn() }));
-vi.mock('@cio/db/queries/coursework', () => ({ getSubmissionByFileKey: vi.fn(async () => null) }));
+vi.mock('@cio/db/queries/coursework', () => ({
+  getSubmissionByFileKey: vi.fn(async () => null),
+  isUnitUploadClosed: vi.fn(async () => false)
+}));
 vi.mock('@cio/db/queries/allocation', () => ({ isTutorAllocatedToLearner: vi.fn(async () => false) }));
 
 import { isCourseGroupMember } from '@cio/db/queries/group';
 import { getCourseById } from '@cio/db/queries/course';
+import { isUnitUploadClosed } from '@cio/db/queries/coursework';
 import { courseworkRouter } from '@api/routes/course/coursework';
 
 const mockedIsMember = vi.mocked(isCourseGroupMember);
 const mockedGetCourse = vi.mocked(getCourseById);
+const mockedUploadClosed = vi.mocked(isUnitUploadClosed);
 
 const ORG = 'org-1';
 const ACTORS: Record<string, Actor> = {
@@ -57,6 +62,7 @@ function req(method: string, path: string, actor: string, body?: unknown) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockedUploadClosed.mockResolvedValue(false); // clearAllMocks resets calls, not the implementation
 });
 
 const SUBMIT_ROUTES: Array<{ method: string; path: string; body: unknown }> = [
@@ -95,6 +101,13 @@ describe('coursework submit guard — enrolled learner of a published course onl
       mockedIsMember.mockResolvedValue(true);
       mockedGetCourse.mockResolvedValue(published);
       expect((await req(method, path, 'learner', body)).status).toBeLessThan(300);
+    });
+
+    it(`${method} ${path}: unit already PASSED (upload closed) → 403 (cannot resubmit after Pass)`, async () => {
+      mockedIsMember.mockResolvedValue(true);
+      mockedGetCourse.mockResolvedValue(published);
+      mockedUploadClosed.mockResolvedValue(true);
+      expect((await req(method, path, 'learner', body)).status).toBe(403);
     });
   }
 });

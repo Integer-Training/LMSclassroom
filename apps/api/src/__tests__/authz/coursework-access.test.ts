@@ -8,17 +8,26 @@ import type { Actor } from '@cio/db/actor';
 vi.mock('@cio/db/queries/allocation', () => ({ isTutorAllocatedToLearner: vi.fn() }));
 vi.mock('@cio/db/queries/coursework', () => ({
   getSubmissionByFileKey: vi.fn(),
-  getSubmissionById: vi.fn()
+  getSubmissionById: vi.fn(),
+  listSubmissionsWithResultForLearnerUnit: vi.fn(),
+  isUnitUploadClosed: vi.fn()
 }));
 
 import { isTutorAllocatedToLearner } from '@cio/db/queries/allocation';
-import { getSubmissionByFileKey, getSubmissionById } from '@cio/db/queries/coursework';
+import {
+  getSubmissionByFileKey,
+  getSubmissionById,
+  listSubmissionsWithResultForLearnerUnit,
+  isUnitUploadClosed
+} from '@cio/db/queries/coursework';
 import { assertCourseworkDownloadAccess, canReadCoursework } from '@api/middlewares/guards';
-import { getCourseworkSubmissionForReader } from '@api/services/coursework/coursework';
+import { getCourseworkSubmissionForReader, listOwnCourseworkForUnit } from '@api/services/coursework/coursework';
 
 const mockedAllocated = vi.mocked(isTutorAllocatedToLearner);
 const mockedByKey = vi.mocked(getSubmissionByFileKey);
 const mockedById = vi.mocked(getSubmissionById);
+const mockedListForUnit = vi.mocked(listSubmissionsWithResultForLearnerUnit);
+const mockedUploadClosed = vi.mocked(isUnitUploadClosed);
 
 const ORG = 'org-1';
 const learnerA: Actor = { authenticated: true, userId: 'u-A', role: 'LEARNER', status: 'ACTIVE', orgId: ORG };
@@ -125,5 +134,71 @@ describe('getCourseworkSubmissionForReader — detail, course/unit-bound + read-
   it('unknown submission id → 404', async () => {
     mockedById.mockResolvedValue(null);
     expect(await status(getCourseworkSubmissionForReader(learnerA, 'c-1', 'l-1', 'sub-x'))).toBe(404);
+  });
+});
+
+describe('listOwnCourseworkForUnit — learner sees own result + feedback, self-scoped (Step 5)', () => {
+  it("returns the caller's own submissions with result + feedback and a canSubmit flag", async () => {
+    mockedListForUnit.mockResolvedValue([
+      {
+        id: 's2',
+        learnerId: 'u-A',
+        courseId: 'c-1',
+        lessonId: 'l-1',
+        version: 2,
+        files: [],
+        status: 'submitted',
+        submittedAt: 't2',
+        result: null,
+        feedback: null
+      },
+      {
+        id: 's1',
+        learnerId: 'u-A',
+        courseId: 'c-1',
+        lessonId: 'l-1',
+        version: 1,
+        files: [],
+        status: 'submitted',
+        submittedAt: 't1',
+        result: 'REFER',
+        feedback: 'Please expand section 2'
+      }
+    ] as never);
+    mockedUploadClosed.mockResolvedValue(false);
+
+    const out = await listOwnCourseworkForUnit(learnerA, 'l-1');
+    // Self-scoped: the query is called with the ACTOR's own id, never a supplied learner id.
+    expect(mockedListForUnit).toHaveBeenCalledWith('u-A', 'l-1');
+    expect(out.submissions.find((s) => s.version === 1)?.result).toBe('REFER');
+    expect(out.submissions.find((s) => s.version === 1)?.feedback).toBe('Please expand section 2');
+    expect(out.canSubmit).toBe(true);
+  });
+
+  it('a passed unit reports canSubmit=false (upload closed)', async () => {
+    mockedListForUnit.mockResolvedValue([
+      {
+        id: 's1',
+        learnerId: 'u-A',
+        courseId: 'c-1',
+        lessonId: 'l-1',
+        version: 1,
+        files: [],
+        status: 'submitted',
+        submittedAt: 't1',
+        result: 'PASS',
+        feedback: 'Great'
+      }
+    ] as never);
+    mockedUploadClosed.mockResolvedValue(true);
+    const out = await listOwnCourseworkForUnit(learnerA, 'l-1');
+    expect(out.canSubmit).toBe(false);
+  });
+
+  it("learner B is scoped to their OWN id (never learner A's)", async () => {
+    mockedListForUnit.mockResolvedValue([] as never);
+    mockedUploadClosed.mockResolvedValue(false);
+    await listOwnCourseworkForUnit(learnerB, 'l-1');
+    expect(mockedListForUnit).toHaveBeenCalledWith('u-B', 'l-1');
   });
 });

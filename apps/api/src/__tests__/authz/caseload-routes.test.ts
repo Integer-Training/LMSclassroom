@@ -11,6 +11,11 @@ vi.mock('@api/services/caseload/caseload', () => ({
   getTutorCaseload: vi.fn(async () => ({ learners: [], awaiting: [] })),
   getCaseloadLearnerDetail: vi.fn(async () => ({ learner: { id: 'u-L1', name: null, email: null }, courses: [] }))
 }));
+// The marking endpoint (POST /caseload/submissions/:id/result) lives on the same router; mock the
+// marking service so a 2xx comes only from the requireStaff guard chain.
+vi.mock('@api/services/coursework/marking', () => ({
+  recordResult: vi.fn(async () => ({ id: 'r1', submissionId: 's1', result: 'PASS' }))
+}));
 
 import { caseloadRouter } from '@api/routes/caseload/caseload';
 
@@ -31,6 +36,7 @@ const app = new Hono<AuthSession>()
   .route('/caseload', caseloadRouter as unknown as Hono);
 
 const LEARNER_UUID = '11111111-1111-4111-8111-111111111111';
+const SUB_UUID = '22222222-2222-4222-8222-222222222222';
 function req(path: string, actor: string) {
   return app.request(path, { method: 'GET', headers: { 'x-test-actor': actor } });
 }
@@ -47,4 +53,21 @@ describe('caseload routes — TUTOR/ADMIN only', () => {
       expect((await req(path, 'admin')).status).toBe(200);
     });
   }
+});
+
+describe('mark result route (POST /caseload/submissions/:id/result) — TUTOR/ADMIN only', () => {
+  function post(actor: string) {
+    return app.request(`/caseload/submissions/${SUB_UUID}/result`, {
+      method: 'POST',
+      headers: { 'x-test-actor': actor, 'content-type': 'application/json' },
+      body: JSON.stringify({ result: 'PASS', feedback: 'ok' })
+    });
+  }
+  it('LEARNER/MANAGER → 403, anon → 401, TUTOR/ADMIN pass the guard (2xx)', async () => {
+    expect((await post('learner')).status).toBe(403);
+    expect((await post('manager')).status).toBe(403);
+    expect((await post('anon')).status).toBe(401);
+    expect((await post('tutor')).status).toBeLessThan(300);
+    expect((await post('admin')).status).toBeLessThan(300);
+  });
 });

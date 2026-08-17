@@ -77,12 +77,15 @@ validator built from it. Notification + gating never hardcode `Pass`/`Refer` lit
 
 ## 3. Canonical "has passed" query (Phase 4 consumes — no gating built now)
 
-`hasLearnerPassedUnit(learnerId, lessonId): Promise<boolean>` (db query, tested Step 5): **true iff any
-`coursework_submission` for `(learner_id, lesson_id)` has a `coursework_result.result = 'PASS'`** (once a
-version passes, the unit is passed). Companion `getLatestUnitResult(learnerId, lessonId)` returns the
-result on the highest `version` for tutor/learner display. Phase 4's sequential-unlock will call
-`hasLearnerPassedUnit`; **Phase 3 builds and tests it but wires NO gating** (learners still see/submit any
-session — correct for now, scope-fenced).
+**IMPLEMENTED (Step 5) — definition refined from the original draft.** `hasLearnerPassedUnit(learnerId,
+lessonId): Promise<boolean>` (db query, `@cio/db/queries/coursework`): **true iff the LATEST MARKED version's
+result is a passing value** — i.e. the highest-`version` `coursework_submission` for `(learner_id, lesson_id)`
+that HAS a `coursework_result`, and that result is in `PASSING_RESULTS` (config). No marked submission → false.
+A later **Refer overrides an earlier Pass** (follows the latest marked version), so this is NOT "any version
+passed". "Passing" values come only from `PASSING_RESULTS` (`@cio/utils/constants`), keeping a future result
+set coherent. Companion `getLatestMarkedResult` returns that value for display. Phase 4's sequential-unlock
+will call `hasLearnerPassedUnit`; **Phase 3 builds/tests it but wires NO gating** — the only unit-level effect
+is that a **passed** unit closes its OWN upload (`isUnitUploadClosed`); no other session is locked.
 
 ## 4. Access rows to add to docs/ACCESS.md (Step 3/4)
 

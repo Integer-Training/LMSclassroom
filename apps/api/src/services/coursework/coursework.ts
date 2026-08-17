@@ -10,9 +10,11 @@ import {
   createSubmission,
   getNextSubmissionVersion,
   getSubmissionById,
-  listSubmissionsForLearnerUnit,
+  isUnitUploadClosed,
+  listSubmissionsWithResultForLearnerUnit,
   type CourseworkFile,
-  type CourseworkSubmissionRow
+  type CourseworkSubmissionRow,
+  type SubmissionWithResultRow
 } from '@cio/db/queries/coursework';
 import { canReadCoursework } from '@api/middlewares/guards';
 
@@ -127,12 +129,23 @@ export async function createCourseworkSubmission(
   return row;
 }
 
-/** The CALLER'S OWN submissions for a unit, newest version first. Self-scoped by the actor's user id. */
-export async function listOwnCourseworkForUnit(actor: Actor, lessonId: string): Promise<CourseworkSubmissionRow[]> {
+/**
+ * The CALLER'S OWN submissions for a unit — newest version first, each with its result + feedback
+ * (Step 5) — plus `canSubmit` (false once the unit is passed, so the UI closes the uploader). Self-
+ * scoped by the actor's user id: a learner only ever sees their own work, never another learner's.
+ */
+export async function listOwnCourseworkForUnit(
+  actor: Actor,
+  lessonId: string
+): Promise<{ submissions: SubmissionWithResultRow[]; canSubmit: boolean }> {
   if (!actor.authenticated) {
     throw new AppError('Unauthorized', ErrorCodes.UNAUTHORIZED, 401);
   }
-  return listSubmissionsForLearnerUnit(actor.userId, lessonId);
+  const [submissions, closed] = await Promise.all([
+    listSubmissionsWithResultForLearnerUnit(actor.userId, lessonId),
+    isUnitUploadClosed(actor.userId, lessonId)
+  ]);
+  return { submissions, canSubmit: !closed };
 }
 
 /**

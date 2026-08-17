@@ -132,6 +132,7 @@ export interface LearnerDetailSubmission {
   submittedAt: string;
   status: string;
   result: string | null;
+  feedback: string | null;
   files: { key: string; name: string; size?: number; type?: string }[];
 }
 export interface LearnerDetailUnit {
@@ -188,6 +189,7 @@ export async function getCaseloadLearnerDetail(
       submittedAt: s.submittedAt,
       status: s.status,
       result: s.result,
+      feedback: s.feedback,
       files: s.files
     });
     units.set(s.lessonId, unit);

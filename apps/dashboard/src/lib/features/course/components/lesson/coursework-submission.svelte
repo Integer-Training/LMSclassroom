@@ -9,7 +9,12 @@
   import { CloseButton } from '$features/ui';
   import { snackbar } from '$features/ui/snackbar/store';
   import { getResolvedUploadLimits } from '$lib/utils/config/upload-limits-context';
+  import { RESULT_LABELS, isPassingResult } from '@cio/utils/constants';
   import { courseworkApi, type CourseworkFile } from '$features/course/api/coursework.svelte';
+
+  function resultLabel(result: string | null): string {
+    return result ? (RESULT_LABELS[result as keyof typeof RESULT_LABELS] ?? result) : '';
+  }
 
   interface Props {
     courseId: string;
@@ -76,56 +81,63 @@
     Upload your work for this unit. Each upload is saved as a new version — your tutor sees the latest.
   </p>
 
-  <!-- Upload area -->
-  <div class="mb-4">
-    {#if selected.length > 0}
-      <div class="mb-3 space-y-2">
-        {#each selected as file, i (file.name + i)}
-          <div class="border-border flex items-center gap-3 rounded-lg border p-3">
-            <FileTextIcon class="ui:text-muted-foreground size-5 shrink-0" />
-            <div class="min-w-0 flex-1">
-              <p class="truncate font-medium">{file.name}</p>
-              <p class="text-muted-foreground text-xs">{formatSize(file.size)}</p>
+  <!-- Upload area — closed once the unit is passed (no further submissions) -->
+  {#if !courseworkApi.canSubmit}
+    <div class="mb-4 flex items-start gap-2 rounded-md border border-green-200 bg-green-50 p-3">
+      <CheckCircleIcon class="mt-0.5 size-4 shrink-0 text-green-600" />
+      <p class="text-sm text-green-700">You have passed this unit. No further submissions are needed.</p>
+    </div>
+  {:else}
+    <div class="mb-4">
+      {#if selected.length > 0}
+        <div class="mb-3 space-y-2">
+          {#each selected as file, i (file.name + i)}
+            <div class="border-border flex items-center gap-3 rounded-lg border p-3">
+              <FileTextIcon class="ui:text-muted-foreground size-5 shrink-0" />
+              <div class="min-w-0 flex-1">
+                <p class="truncate font-medium">{file.name}</p>
+                <p class="text-muted-foreground text-xs">{formatSize(file.size)}</p>
+              </div>
+              <CloseButton onClick={() => removeFile(i)} />
             </div>
-            <CloseButton onClick={() => removeFile(i)} />
-          </div>
-        {/each}
-      </div>
-    {/if}
+          {/each}
+        </div>
+      {/if}
 
-    {#if selected.length < MAX_FILES}
-      <FileDropZone.Root
-        accept=".pdf,.doc,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
-        maxFiles={MAX_FILES}
-        fileCount={selected.length}
-        maxFileSize={maxBytes}
-        onUpload={addFiles}
-        {onFileRejected}
-      >
-        <FileDropZone.Trigger
-          label="Drag & drop or click to choose your coursework"
-          formatMaxFiles={() => `PDF or Word, up to ${MAX_FILES} files`}
-          formatMaxFilesAndSize={(size) => `(up to ${size})`}
-          formatMaxSize={(size) => `PDF or Word (${size})`}
-        />
-      </FileDropZone.Root>
-    {/if}
+      {#if selected.length < MAX_FILES}
+        <FileDropZone.Root
+          accept=".pdf,.doc,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
+          maxFiles={MAX_FILES}
+          fileCount={selected.length}
+          maxFileSize={maxBytes}
+          onUpload={addFiles}
+          {onFileRejected}
+        >
+          <FileDropZone.Trigger
+            label="Drag & drop or click to choose your coursework"
+            formatMaxFiles={() => `PDF or Word, up to ${MAX_FILES} files`}
+            formatMaxFilesAndSize={(size) => `(up to ${size})`}
+            formatMaxSize={(size) => `PDF or Word (${size})`}
+          />
+        </FileDropZone.Root>
+      {/if}
 
-    {#if courseworkApi.uploadError}
-      <div class="mt-3 rounded-md border border-red-200 bg-red-50 p-3">
-        <p class="text-sm text-red-600">{courseworkApi.uploadError}</p>
-      </div>
-    {/if}
+      {#if courseworkApi.uploadError}
+        <div class="mt-3 rounded-md border border-red-200 bg-red-50 p-3">
+          <p class="text-sm text-red-600">{courseworkApi.uploadError}</p>
+        </div>
+      {/if}
 
-    {#if selected.length > 0}
-      <div class="mt-4 flex justify-end gap-2">
-        <Button variant="outline" onclick={() => (selected = [])} disabled={courseworkApi.isUploading}>Clear</Button>
-        <Button onclick={submit} loading={courseworkApi.isUploading} disabled={courseworkApi.isUploading}>
-          Submit coursework
-        </Button>
-      </div>
-    {/if}
-  </div>
+      {#if selected.length > 0}
+        <div class="mt-4 flex justify-end gap-2">
+          <Button variant="outline" onclick={() => (selected = [])} disabled={courseworkApi.isUploading}>Clear</Button>
+          <Button onclick={submit} loading={courseworkApi.isUploading} disabled={courseworkApi.isUploading}>
+            Submit coursework
+          </Button>
+        </div>
+      {/if}
+    </div>
+  {/if}
 
   <!-- Confirmation of the most recent submission -->
   {#if courseworkApi.lastSubmitted}
@@ -153,7 +165,13 @@
             <div class="mb-2 flex items-center justify-between gap-2">
               <span class="font-medium">Version {sub.version}</span>
               <div class="flex items-center gap-2">
-                <Badge variant="outline">{sub.status}</Badge>
+                {#if sub.result}
+                  <Badge variant={isPassingResult(sub.result) ? 'default' : 'destructive'}
+                    >{resultLabel(sub.result)}</Badge
+                  >
+                {:else}
+                  <Badge variant="secondary">Awaiting marking</Badge>
+                {/if}
                 <span class="text-muted-foreground text-xs">{formatDate(sub.submittedAt)}</span>
               </div>
             </div>
@@ -172,6 +190,12 @@
                 </li>
               {/each}
             </ul>
+            {#if sub.feedback}
+              <div class="bg-muted/40 mt-2 rounded-md p-2.5">
+                <p class="text-muted-foreground mb-0.5 text-xs font-medium">Tutor feedback</p>
+                <p class="text-sm whitespace-pre-wrap">{sub.feedback}</p>
+              </div>
+            {/if}
           </li>
         {/each}
       </ul>

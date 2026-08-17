@@ -6,7 +6,7 @@ import { isRole, isSelf, sameOrg } from '@cio/utils/auth';
 import { getSubmissionById } from '@cio/db/queries/submission';
 import { isCourseGroupMember } from '@cio/db/queries/group';
 import { isTutorAllocatedToLearner } from '@cio/db/queries/allocation';
-import { getSubmissionByFileKey } from '@cio/db/queries/coursework';
+import { getSubmissionByFileKey, isUnitUploadClosed } from '@cio/db/queries/coursework';
 import { getCourseMaterialKeys } from '@cio/db/queries/lesson';
 import { getCourseById } from '@cio/db/queries/course';
 import { forbidden, unauthorized } from '@api/middlewares/guards/require-role';
@@ -247,19 +247,25 @@ export async function canReadCoursework(actor: Actor, submission: { learnerId: s
  * Submit-coursework guard for `POST …/lesson/:lessonId/coursework(/presign)`. Only an ENROLLED
  * LEARNER of a PUBLISHED course may submit — self is implicit (the learnerId is always the actor's own
  * user id, never taken from input). Staff/Manager do not submit; a draft (unpublished) course is not
- * submittable; a learner not enrolled in the course is denied. This is the sole write door.
+ * submittable; a learner not enrolled in the course is denied. Finally (Step 5), once the unit has been
+ * PASSED, upload is closed for that unit (the only unit-level close — no cross-session gating). This is
+ * the sole write door.
  */
 export async function requireCourseworkSubmit(c: Context, next: Next) {
   const actor = c.get('actor') as Actor | undefined;
   if (!actor?.authenticated) return unauthorized(c);
 
   const courseId = c.req.param('courseId');
-  if (!courseId) return forbidden(c, 'Missing course context');
+  const lessonId = c.req.param('lessonId');
+  if (!courseId || !lessonId) return forbidden(c, 'Missing course context');
 
   if (actor.role !== 'LEARNER') return forbidden(c, 'Only enrolled learners can submit coursework');
   if (!(await isEnrolledLearner(actor, courseId))) return forbidden(c, 'You are not enrolled in this course');
   if (!(await isCoursePublished(courseId))) {
     return forbidden(c, 'This course is not open for coursework submission');
+  }
+  if (await isUnitUploadClosed(actor.userId, lessonId)) {
+    return forbidden(c, 'You have passed this unit — no further submissions are needed');
   }
   return next();
 }

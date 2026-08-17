@@ -1,5 +1,7 @@
 import * as z from 'zod';
 
+import { ZResult } from './result';
+
 /**
  * Validators for learner coursework upload (PearlLMS Phase 3 Step 4). Shape only — the config-driven
  * allow-list (type) and size ceiling are enforced in the service with clear user-facing messages, and
@@ -44,6 +46,16 @@ export const ZSubmissionIdParam = z.object({
 export const ZCaseloadLearnerParam = z.object({
   learnerId: z.uuid()
 });
+
+/**
+ * Recording a result on a submission version (Step 5). `result` must be a configured value (ZResult);
+ * feedback is ONE optional free-text field — no rubric/criteria fields (tutors assess off-platform).
+ */
+export const ZMarkSubmission = z.object({
+  result: ZResult,
+  feedback: z.string().max(5000).optional()
+});
+export type MarkSubmissionInput = z.infer<typeof ZMarkSubmission>;
 
 export type CourseworkPresignInput = z.infer<typeof ZCourseworkPresign>;
 export type CourseworkCreateInput = z.infer<typeof ZCourseworkCreate>;

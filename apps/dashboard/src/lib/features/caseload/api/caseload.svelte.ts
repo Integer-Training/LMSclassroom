@@ -52,6 +52,7 @@ export interface DetailSubmission {
   submittedAt: string;
   status: string;
   result: string | null;
+  feedback: string | null;
   files: DetailFile[];
 }
 export interface DetailUnit {
@@ -106,6 +107,24 @@ class CaseloadApi extends BaseApi {
         if (typeof result === 'string') snackbar.error(result);
       }
     });
+  }
+
+  /** Record a result + feedback on a submission version (allocated tutor / Admin). Returns true on success. */
+  async markResult(submissionId: string, result: string, feedback: string): Promise<boolean> {
+    const res = await this.execute<(typeof classroomio.caseload.submissions)[':submissionId']['result']['$post']>({
+      requestFn: () =>
+        classroomio.caseload.submissions[':submissionId'].result.$post({
+          param: { submissionId },
+          json: { result, feedback: feedback.trim() ? feedback.trim() : undefined }
+        }),
+      logContext: 'recording result',
+      onSuccess: () => snackbar.success('Result recorded'),
+      onError: (result) => {
+        if (typeof result === 'string') snackbar.error(result);
+        else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
+      }
+    });
+    return !!res;
   }
 
   /** Open one coursework file via the shared guarded download endpoint (allocated tutor / Admin only). */
