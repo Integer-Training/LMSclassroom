@@ -17,7 +17,6 @@
   import { toggleAiAssistant } from '$features/ai-assistant/utils/store';
   import { openCoursePreview } from '$features/course/utils/course-preview';
   import { t } from '$lib/utils/functions/translations';
-  import CourseProgressPopover from './course-progress-popover.svelte';
   import CoursePublishBadge from './course-publish-badge.svelte';
   import CoursePublicBadge from './course-public-badge.svelte';
   import CourseContextMenuContent from './course-context-menu-content.svelte';
@@ -86,9 +85,8 @@
 
     <span class="grow"></span>
 
-    {#if $isStudentExperience}
-      <CourseProgressPopover class="md:hidden" />
-    {/if}
+    <!-- PearlLMS Phase 5 Step 3 — stock self-asserted progress popover removed for the student experience;
+         the learner's single result-derived progress lives in the sidebar (docs/PROGRESS-MODEL.md §4). -->
 
     <Button
       size="sm"

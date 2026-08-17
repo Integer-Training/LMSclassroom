@@ -54,6 +54,7 @@ import { invitesRouter } from '@api/routes/course/invite';
 import { katexRouter } from '@api/routes/course/katex';
 import { lessonRouter } from '@api/routes/course/lesson';
 import { getCourseUnlockMap } from '@api/services/gating/unlock';
+import { getOwnCourseProgress } from '@api/services/progress/progress';
 import type { Actor } from '@cio/db/actor';
 import { markRouter } from '@api/routes/course/mark';
 import { membersRouter } from '@api/routes/course/people';
@@ -286,6 +287,21 @@ export const courseRouter = new Hono()
       return c.json({ success: true, data }, 200);
     } catch (error) {
       return handleError(c, error, 'Failed to load unlock state');
+    }
+  })
+  /**
+   * The requesting learner's OWN progress for this course (Phase 5 Step 3): passed / total non-exempt units,
+   * current session position, and completion date once done. Self-only — computed for c.get('actor').userId;
+   * there is no learnerId parameter, so a learner can never read another's progress. courseMemberMiddleware
+   * enforces enrolment.
+   */
+  .get('/:courseId/progress', courseMemberMiddleware, zValidator('param', ZCourseGetParam), async (c) => {
+    try {
+      const { courseId } = c.req.valid('param');
+      const data = await getOwnCourseProgress(c.get('actor') as Actor, courseId);
+      return c.json({ success: true, data }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to load progress');
     }
   })
   /**

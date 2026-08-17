@@ -98,7 +98,9 @@
     return lesson?.isComplete ?? false;
   });
 
-  const showMarkComplete = $derived(!!lessonId && !exerciseId);
+  // PearlLMS Phase 5 Step 3 — learners do NOT self-assert completion; progress is result-derived only
+  // (docs/PROGRESS-MODEL.md §4). The "Mark as complete" control is hidden in the learner view.
+  const showMarkComplete = $derived(!!lessonId && !exerciseId && !$isCourseLearnerView);
 
   const currentLessonItem = $derived(lessonId ? lessonItems.find((l) => l.id === lessonId) : null);
   const contentLockReason = $derived(
@@ -137,9 +139,8 @@
   const isMarkCompleteDisabled = $derived(
     isMarkingComplete || isLessonLocked || isLessonComplete || isVideoWatchLesson
   );
-  const showWatchProgress = $derived(
-    !!lessonId && $isCourseLearnerView && isVideoWatchLesson && !showVideoWatchCompleteState && !isLessonLocked
-  );
+  // Video-watch auto-completion is a stock self-progress signal — also hidden in the learner view (Phase 5).
+  const showWatchProgress = $derived(false as boolean);
 
   const watchProgressTooltip = $derived(
     watchVideosRequired > 1

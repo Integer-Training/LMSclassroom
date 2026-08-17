@@ -124,7 +124,7 @@
                           <CourseContentIcon type={contentItem.type} size={14} />
                           <span class="flex-1 truncate">{contentItem.title}</span>
                           <div class="ml-auto flex items-center gap-1">
-                            {#if contentItem.isComplete}
+                            {#if contentItem.isComplete && !$isCourseLearnerView}
                               <span class="shrink-0">
                                 <CircleCheckIcon size={16} filled />
                               </span>
@@ -176,7 +176,7 @@
               <CourseContentIcon type={contentItem.type} size={14} />
               <span class="flex-1 truncate">{contentItem.title}</span>
               <div class="ml-auto flex items-center gap-1">
-                {#if contentItem.isComplete}
+                {#if contentItem.isComplete && !$isCourseLearnerView}
                   <span class="shrink-0">
                     <CircleCheckIcon size={16} filled />
                   </span>

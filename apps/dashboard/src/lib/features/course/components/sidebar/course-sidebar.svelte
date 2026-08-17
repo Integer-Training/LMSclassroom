@@ -10,10 +10,9 @@
   import Navigation from './course-sidebar-navigation.svelte';
   import SidebarSkeleton from '$features/ui/sidebar/sidebar-skeleton.svelte';
   import PoweredBy from '$features/ui/powered-by.svelte';
-  import { courseApi } from '$features/course/api';
-  import { getCourseProgress } from '$features/course/utils/content';
+  import { courseApi, courseProgressApi } from '$features/course/api';
   import { useSidebar } from '@cio/ui/base/sidebar';
-  import CourseProgressCard from '$features/course/components/course-progress-card.svelte';
+  import LearnerCourseProgress from '$features/course/components/learner-course-progress.svelte';
   import { startResizablePanelDrag } from '$lib/utils/functions/resizable-panel';
   import { COURSE_SIDEBAR_DEFAULT_WIDTH, COURSE_SIDEBAR_MAX_WIDTH, COURSE_SIDEBAR_MIN_WIDTH } from './constants';
 
@@ -47,10 +46,16 @@
   let stopSidebarResize: (() => void) | null = null;
 
   const attributionCourseSlug = $derived(courseApi.course?.slug ?? null);
-  const courseProgress = $derived(getCourseProgress(courseApi.course));
-  const showCourseProgress = $derived(
-    $isStudentExperience && isCourseReady && sidebar.open && !sidebar.isMobile && courseProgress.total > 0
-  );
+  // PearlLMS Phase 5 Step 3 — result-derived learner progress replaces the stock self-asserted progress card.
+  const learnerCourseId = $derived(courseApi.course?.id ?? null);
+  const showCourseProgress = $derived($isStudentExperience && isCourseReady && sidebar.open && !sidebar.isMobile);
+
+  // Load the learner's own progress (self-scoped server computation) when the student experience is active.
+  $effect(() => {
+    if ($isStudentExperience && isCourseReady && learnerCourseId) {
+      void courseProgressApi.load(learnerCourseId);
+    }
+  });
 
   function clampSidebarWidth(width: number) {
     return Math.min(COURSE_SIDEBAR_MAX_WIDTH, Math.max(COURSE_SIDEBAR_MIN_WIDTH, width));
@@ -149,9 +154,9 @@
     <Sidebar.Rail onclick={handleRailClick} onpointerdown={handleRailPointerDown} />
 
     <Sidebar.Footer>
-      {#if showCourseProgress}
-        <CourseProgressCard
-          progress={courseProgress}
+      {#if showCourseProgress && learnerCourseId}
+        <LearnerCourseProgress
+          courseId={learnerCourseId}
           class="ui:border-sidebar-border ui:bg-sidebar-accent/50 rounded-lg border p-3"
         />
       {/if}
