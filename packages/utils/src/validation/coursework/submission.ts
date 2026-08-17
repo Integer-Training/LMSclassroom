@@ -40,5 +40,10 @@ export const ZSubmissionIdParam = z.object({
   submissionId: z.uuid()
 });
 
+/** Path param for the tutor caseload learner-detail route. */
+export const ZCaseloadLearnerParam = z.object({
+  learnerId: z.uuid()
+});
+
 export type CourseworkPresignInput = z.infer<typeof ZCourseworkPresign>;
 export type CourseworkCreateInput = z.infer<typeof ZCourseworkCreate>;

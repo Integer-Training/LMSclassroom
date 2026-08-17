@@ -39,6 +39,7 @@ import { organizationSsoRouter } from '@api/routes/organization/sso';
 import { organizationTokenAuthRouter } from '@api/routes/organization/token-auth';
 import { prettyJSON } from 'hono/pretty-json';
 import { cohortRouter } from '@api/routes/cohort';
+import { caseloadRouter } from '@api/routes/caseload/caseload';
 import { publicCourseRouter, orgSiteOgRouter } from '@api/routes/org-site';
 import { publicWidgetsRouter } from '@api/routes/widgets';
 import rateLimiter from '@api/middlewares/rate-limiter';
@@ -259,6 +260,7 @@ export const app = new Hono()
   .route('/org-site/og', orgSiteOgRouter)
   .route('/public-api/v1', v1Router)
   .route('/cohort', cohortRouter)
+  .route('/caseload', caseloadRouter)
   .route('/unsplash', unsplashRouter)
   .route('/widgets', publicWidgetsRouter)
   .route('/internal', internalRouter)

@@ -415,12 +415,16 @@ class AppInitApi extends BaseApi {
       return;
     }
 
-    // Tutor and Manager have no dedicated home in Phase 1 (caseload/reports arrive in later phases)
-    // and the org admin area is now ADMIN-only server-side — routing them to /org would 403. Land
-    // them on the interim /welcome page instead. Learner -> /lms, Admin -> /org (unchanged).
+    // Tutor -> caseload (their real home, Phase 3 Step 4). Manager still lands on the interim /welcome
+    // (provider reports arrive Phase 5). The org admin area is ADMIN-only server-side, so routing either
+    // to /org would 403. Learner -> /lms, Admin -> /org (unchanged).
     const currentRoleId = get(currentOrg).roleId;
-    if (!isOrgSite && (currentRoleId === ROLE.TUTOR || currentRoleId === ROLE.MANAGER)) {
-      console.log('redirecting tutor/manager to interim /welcome');
+    if (!isOrgSite && currentRoleId === ROLE.TUTOR) {
+      console.log('redirecting tutor to caseload');
+      return goto(resolve('/caseload', {}));
+    }
+    if (!isOrgSite && currentRoleId === ROLE.MANAGER) {
+      console.log('redirecting manager to interim /welcome');
       return goto(resolve('/welcome', {}));
     }
 

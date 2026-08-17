@@ -4,6 +4,7 @@ export * from './content';
 export * from './course-type';
 export * from './unit-type';
 export * from './result';
+export * from './submission-state';
 export * from './domains';
 export * from './embeds';
 export * from './error-codes';

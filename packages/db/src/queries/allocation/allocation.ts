@@ -71,6 +71,47 @@ export async function listAllocationsByOrg(organizationId: string): Promise<Allo
     .orderBy(schema.tutorAllocation.createdAt);
 }
 
+export interface AllocatedLearner {
+  learnerId: string;
+  name: string | null;
+  email: string | null;
+}
+
+/**
+ * The learners allocated to ONE tutor — the caseload's roster (PearlLMS Phase 3 Step 4). Sourced
+ * straight from `tutor_allocation` (the same table isAllocatedTutor reads), so the caseload can never
+ * list a learner the tutor is not allocated to. Distinct by learner, ordered by name.
+ */
+export async function listLearnersForTutor(tutorId: string): Promise<AllocatedLearner[]> {
+  return db
+    .selectDistinct({
+      learnerId: schema.tutorAllocation.learnerId,
+      name: schema.profile.fullname,
+      email: schema.profile.email
+    })
+    .from(schema.tutorAllocation)
+    .leftJoin(schema.profile, eq(schema.profile.id, schema.tutorAllocation.learnerId))
+    .where(eq(schema.tutorAllocation.tutorId, tutorId))
+    .orderBy(schema.profile.fullname);
+}
+
+/**
+ * Every allocated learner in an org, distinct (for the Admin oversight caseload). Also allocation-
+ * backed — Admin sees the union of the tutors' caseloads, never a learner set assembled some other way.
+ */
+export async function listAllocatedLearnersForOrg(organizationId: string): Promise<AllocatedLearner[]> {
+  return db
+    .selectDistinct({
+      learnerId: schema.tutorAllocation.learnerId,
+      name: schema.profile.fullname,
+      email: schema.profile.email
+    })
+    .from(schema.tutorAllocation)
+    .leftJoin(schema.profile, eq(schema.profile.id, schema.tutorAllocation.learnerId))
+    .where(eq(schema.tutorAllocation.organizationId, organizationId))
+    .orderBy(schema.profile.fullname);
+}
+
 /** A profile's role id in an org (for validating tutor=TUTOR, learner=STUDENT before allocating). */
 export async function getOrgMemberRoleId(organizationId: string, profileId: string): Promise<number | null> {
   const rows = await db

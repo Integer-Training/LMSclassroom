@@ -1,6 +1,6 @@
 import * as schema from '@db/schema';
 
-import { and, db, desc, eq, sql } from '@db/drizzle';
+import { and, db, desc, eq, inArray, sql } from '@db/drizzle';
 
 // Learner coursework submissions (PearlLMS Phase 3 Step 4). A submission is a learner's upload against
 // one unit, versioned (1-based per learner+unit); history is retained (rows are never deleted). These
@@ -88,4 +88,55 @@ export async function getSubmissionByFileKey(key: string): Promise<CourseworkSub
     .where(sql`${schema.courseworkSubmission.files} @> ${JSON.stringify([{ key }])}::jsonb`)
     .limit(1);
   return (row as CourseworkSubmissionRow) ?? null;
+}
+
+export interface SubmissionWithContext extends CourseworkSubmissionRow {
+  courseTitle: string;
+  unitTitle: string;
+  /** The recorded result on this submission version (Step 5), or null while awaiting marking. */
+  result: string | null;
+}
+
+/**
+ * Every submission for a set of learners, enriched with course + unit titles and the version's result
+ * (left join — null until Step 5). Fed the ALREADY-ALLOCATION-SCOPED learner id set (the caseload/detail
+ * services derive it from tutor_allocation), so this query never widens the roster — an empty set yields
+ * an empty list. Newest submissions first.
+ */
+export async function getSubmissionsWithContextForLearners(learnerIds: string[]): Promise<SubmissionWithContext[]> {
+  if (learnerIds.length === 0) return [];
+  const rows = await db
+    .select({
+      id: schema.courseworkSubmission.id,
+      learnerId: schema.courseworkSubmission.learnerId,
+      courseId: schema.courseworkSubmission.courseId,
+      lessonId: schema.courseworkSubmission.lessonId,
+      version: schema.courseworkSubmission.version,
+      files: schema.courseworkSubmission.files,
+      status: schema.courseworkSubmission.status,
+      submittedAt: schema.courseworkSubmission.submittedAt,
+      courseTitle: schema.course.title,
+      unitTitle: schema.lesson.title,
+      result: schema.courseworkResult.result
+    })
+    .from(schema.courseworkSubmission)
+    .leftJoin(schema.course, eq(schema.course.id, schema.courseworkSubmission.courseId))
+    .leftJoin(schema.lesson, eq(schema.lesson.id, schema.courseworkSubmission.lessonId))
+    .leftJoin(schema.courseworkResult, eq(schema.courseworkResult.submissionId, schema.courseworkSubmission.id))
+    .where(inArray(schema.courseworkSubmission.learnerId, learnerIds))
+    .orderBy(desc(schema.courseworkSubmission.submittedAt));
+
+  return rows.map((r) => ({
+    id: r.id,
+    learnerId: r.learnerId,
+    courseId: r.courseId,
+    lessonId: r.lessonId,
+    version: r.version,
+    files: (r.files ?? []) as CourseworkFile[],
+    status: r.status,
+    submittedAt: r.submittedAt as string,
+    courseTitle: r.courseTitle ?? 'Untitled course',
+    unitTitle: r.unitTitle ?? 'Untitled unit',
+    result: r.result ?? null
+  }));
 }
