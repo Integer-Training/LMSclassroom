@@ -17,7 +17,11 @@ marking or unlock behaviour.**
 
 ---
 
-## ⚠️ OWNER DECISIONS — confirm before Step 2
+## ⚠️ OWNER DECISIONS — ✅ CONFIRMED 2026-08-17 (both "do recommended")
+
+> **D1 → confirmed:** completion = ALL non-exempt units passed (robust rule).
+> **D2 → confirmed:** hide stock self-asserted completion on the learner surface; ours is the only completion.
+> Step 2 proceeds on these.
 
 **D1. Completion rule = ALL non-exempt units passed (RECOMMENDED).** A learner completes course C when
 **every non-exempt unit of C has a passing latest marked result** (the Phase-3 `hasLearnerPassedUnit`
