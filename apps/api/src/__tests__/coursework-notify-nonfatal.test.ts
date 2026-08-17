@@ -29,6 +29,14 @@ vi.mock('@cio/db/audit', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@cio/db/audit')>()),
   recordAudit: vi.fn()
 }));
+// Phase 5: inert scaffolding for recordResult's same-transaction completion collaborator (passthrough tx +
+// no-op trigger) so this Phase-3 non-fatal-mail test exercises the same behaviour. Completion is covered in
+// completion-trigger.test.ts.
+vi.mock('@cio/db/drizzle', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@cio/db/drizzle')>()),
+  runInTransaction: (fn: (tx: unknown) => unknown) => fn({})
+}));
+vi.mock('@cio/db/queries/completion', () => ({ recordCompletionIfComplete: vi.fn(async () => null) }));
 
 import {
   createSubmission,

@@ -46,6 +46,16 @@ export type DbClient = typeof db;
 export type TxClient = Parameters<typeof db.transaction>[0] extends (tx: infer T) => any ? T : never;
 export type DbOrTxClient = DbClient | TxClient;
 
+/**
+ * Run `fn` in a single DB transaction, passing it the tx client. The one place a transaction boundary is
+ * opened for the service layer (PearlLMS Phase 5): a completion write must be atomic with the result that
+ * completes the course, and the rule must read-your-writes inside the tx to see that just-recorded result.
+ * Thin + isolated so a unit test can mock this to a passthrough without mocking the whole drizzle module.
+ */
+export function runInTransaction<T>(fn: (tx: TxClient) => Promise<T>): Promise<T> {
+  return db.transaction(fn);
+}
+
 export * from 'drizzle-orm';
 export * from './schema';
 

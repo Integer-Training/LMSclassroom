@@ -15,7 +15,9 @@ export const AUDIT_ACTIONS = {
   // Phase 3 — learner coursework submission (ids + counts only; never file names/contents).
   COURSEWORK_SUBMITTED: 'coursework.submitted',
   // Phase 3 — tutor marking (submission id + version + result value only; NEVER the feedback text).
-  RESULT_ENTERED: 'result.entered'
+  RESULT_ENTERED: 'result.entered',
+  // Phase 5 — durable course completion (learner id + course id + completion id only; no names/PII).
+  COMPLETION_RECORDED: 'completion.recorded'
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS] | (string & {});

@@ -1,6 +1,6 @@
 import * as schema from '@db/schema';
 
-import { and, db, desc, eq, inArray, sql } from '@db/drizzle';
+import { and, db, desc, eq, inArray, sql, type DbOrTxClient } from '@db/drizzle';
 import { isPassingResult } from '@cio/utils/constants';
 
 // Learner coursework submissions (PearlLMS Phase 3 Step 4). A submission is a learner's upload against
@@ -168,8 +168,11 @@ export interface RecordResultInput {
 }
 
 /** Insert the result for a submission version. UNIQUE(submission_id) makes a double-mark a 23505 race. */
-export async function recordCourseworkResult(input: RecordResultInput): Promise<CourseworkResultRow> {
-  const [row] = await db.insert(schema.courseworkResult).values(input).returning();
+export async function recordCourseworkResult(
+  input: RecordResultInput,
+  client: DbOrTxClient = db
+): Promise<CourseworkResultRow> {
+  const [row] = await client.insert(schema.courseworkResult).values(input).returning();
   return row as CourseworkResultRow;
 }
 
@@ -188,8 +191,12 @@ export async function getResultForSubmission(submissionId: string): Promise<Cour
  * if none is marked. INNER JOIN drops unmarked versions, so this is exactly the "latest marked version"
  * the passed-helper follows (Step-5 semantics: a later Refer overrides an earlier Pass). Phase 4 reads this.
  */
-export async function getLatestMarkedResult(learnerId: string, lessonId: string): Promise<string | null> {
-  const [row] = await db
+export async function getLatestMarkedResult(
+  learnerId: string,
+  lessonId: string,
+  client: DbOrTxClient = db
+): Promise<string | null> {
+  const [row] = await client
     .select({ result: schema.courseworkResult.result })
     .from(schema.courseworkSubmission)
     .innerJoin(schema.courseworkResult, eq(schema.courseworkResult.submissionId, schema.courseworkSubmission.id))
@@ -206,8 +213,12 @@ export async function getLatestMarkedResult(learnerId: string, lessonId: string)
  * iff the LATEST MARKED version's result is a passing value — a later Refer overrides an earlier Pass.
  * No marked submission → false. Reads passing-ness ONLY from config (isPassingResult).
  */
-export async function hasLearnerPassedUnit(learnerId: string, lessonId: string): Promise<boolean> {
-  return isPassingResult(await getLatestMarkedResult(learnerId, lessonId));
+export async function hasLearnerPassedUnit(
+  learnerId: string,
+  lessonId: string,
+  client: DbOrTxClient = db
+): Promise<boolean> {
+  return isPassingResult(await getLatestMarkedResult(learnerId, lessonId, client));
 }
 
 /**

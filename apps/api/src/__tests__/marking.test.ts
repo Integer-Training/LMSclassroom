@@ -27,6 +27,14 @@ vi.mock('@api/services/coursework/notifications', () => ({
   notifyCourseworkResulted: vi.fn(),
   courseworkEmailsEnabled: vi.fn(() => true)
 }));
+// Phase 5: inert scaffolding for the new same-transaction completion collaborator so these Phase-3 marking
+// tests exercise the SAME behaviour — the tx boundary is a passthrough, and the completion trigger is a
+// no-op here (its own behaviour is covered in completion-trigger.test.ts). No marking assertion changes.
+vi.mock('@cio/db/drizzle', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@cio/db/drizzle')>()),
+  runInTransaction: (fn: (tx: unknown) => unknown) => fn({})
+}));
+vi.mock('@cio/db/queries/completion', () => ({ recordCompletionIfComplete: vi.fn(async () => null) }));
 
 import {
   getSubmissionById,
@@ -106,7 +114,8 @@ describe('recordResult — mark the latest version', () => {
     const row = await recordResult(tutor, 's1', { result: 'PASS', feedback: 'Solid work' });
     expect(row.result).toBe('PASS');
     expect(mRecord).toHaveBeenCalledWith(
-      expect.objectContaining({ submissionId: 's1', result: 'PASS', recordedBy: 'u-tutor' })
+      expect.objectContaining({ submissionId: 's1', result: 'PASS', recordedBy: 'u-tutor' }),
+      expect.anything() // Phase 5: now receives the tx client — the asserted result payload is unchanged
     );
   });
 

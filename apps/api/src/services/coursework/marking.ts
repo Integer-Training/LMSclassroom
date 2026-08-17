@@ -2,6 +2,8 @@ import { AppError, ErrorCodes } from '@api/utils/errors';
 import type { Actor } from '@cio/db/actor';
 import { AUDIT_ACTIONS, recordAudit } from '@cio/db/audit';
 import { isUniqueConstraintViolation } from '@cio/utils/errors';
+import { isPassingResult } from '@cio/utils/constants';
+import { runInTransaction } from '@cio/db/drizzle';
 import {
   getLatestSubmissionResultState,
   getResultForSubmission,
@@ -9,6 +11,7 @@ import {
   recordCourseworkResult,
   type CourseworkResultRow
 } from '@cio/db/queries/coursework';
+import { recordCompletionIfComplete, type CompletionRow } from '@cio/db/queries/completion';
 import { isAllocatedTutor } from '@api/middlewares/guards';
 import { notifyCourseworkResulted } from '@api/services/coursework/notifications';
 
@@ -60,14 +63,34 @@ export async function recordResult(
     throw new AppError('A newer version has been submitted — mark the latest version', ErrorCodes.CONFLICT, 409);
   }
 
+  // The result insert AND the completion evaluation share ONE transaction: the completion rule must
+  // read-your-writes to see this just-recorded Pass, and the completion row must be atomic with the result
+  // that completed the course. Completion is evaluated ONLY for a passing result (a Refer can never
+  // complete a course). This ADDS to marking — the verdict/feedback/versioning are untouched.
   let row: CourseworkResultRow;
+  let newCompletion: CompletionRow | null = null;
   try {
-    row = await recordCourseworkResult({
-      submissionId,
-      result: input.result,
-      feedback: input.feedback ?? null,
-      recordedBy: actor.userId
+    const outcome = await runInTransaction(async (tx) => {
+      const resultRow = await recordCourseworkResult(
+        {
+          submissionId,
+          result: input.result,
+          feedback: input.feedback ?? null,
+          recordedBy: actor.userId
+        },
+        tx
+      );
+      const completion = isPassingResult(input.result)
+        ? await recordCompletionIfComplete(tx, {
+            learnerId: submission.learnerId,
+            courseId: submission.courseId,
+            completedAt: resultRow.recordedAt
+          })
+        : null;
+      return { resultRow, completion };
     });
+    row = outcome.resultRow;
+    newCompletion = outcome.completion;
   } catch (error) {
     if (isUniqueConstraintViolation(error)) {
       throw new AppError('This version has already been marked', ErrorCodes.CONFLICT, 409);
@@ -82,6 +105,18 @@ export async function recordResult(
     entityId: row.id,
     metadata: { submissionId, version: submission.version, result: input.result } // NEVER the feedback text
   });
+
+  // A completion row was newly written → audit it (ids only). Fired ONLY on a genuine new insert — the
+  // idempotent ON CONFLICT no-op returns null, so a repeat/concurrent completing mark records no second audit.
+  if (newCompletion) {
+    await recordAudit({
+      actor,
+      action: AUDIT_ACTIONS.COMPLETION_RECORDED,
+      entityType: 'course_completion',
+      entityId: newCompletion.id,
+      metadata: { learnerId: submission.learnerId, courseId: submission.courseId, completionId: newCompletion.id }
+    });
+  }
 
   // Notify the learner that feedback is available — fire-and-forget: a mail failure must never roll back
   // the result that was just recorded.

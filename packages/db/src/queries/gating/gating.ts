@@ -1,6 +1,6 @@
 import * as schema from '@db/schema';
 
-import { db, eq } from '@db/drizzle';
+import { db, eq, type DbOrTxClient } from '@db/drizzle';
 
 // Sequential-unlock gating data (PearlLMS Phase 4). Read-only inputs to the canonical isUnitUnlocked
 // helper (apps/api guards): the per-course toggle and the course's units in sequence order with their
@@ -32,8 +32,8 @@ export interface OrderedUnit {
  * Ungrouped lessons (no section) sort after grouped ones by their own order; ties break on lesson id for
  * determinism.
  */
-export async function getOrderedUnitsForCourse(courseId: string): Promise<OrderedUnit[]> {
-  const rows = await db
+export async function getOrderedUnitsForCourse(courseId: string, client: DbOrTxClient = db): Promise<OrderedUnit[]> {
+  const rows = await client
     .select({
       lessonId: schema.lesson.id,
       unitType: schema.lesson.unitType,

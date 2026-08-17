@@ -4006,3 +4006,35 @@ export const courseworkResult = pgTable(
     index('idx_coursework_result_submission').on(table.submissionId)
   ]
 );
+
+// PearlLMS Phase 5 — durable per-learner-per-course COMPLETION record (docs/PROGRESS-MODEL.md §2). Written
+// transactionally with the tutor result that completes the course (every NON-EXEMPT unit passed); the
+// UNIQUE(learner,course) constraint is the idempotency backstop (check-and-insert via ON CONFLICT DO
+// NOTHING). This is a timestamped milestone event — the boolean is always reconciled from live results, this
+// row is the authoritative DATE. Distinct from the stock compliance `course_completion_record` (recurring
+// cycles); this is the result-derived apprenticeship completion.
+export const courseCompletion = pgTable(
+  'course_completion',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    learnerId: uuid('learner_id').notNull(),
+    courseId: uuid('course_id').notNull(),
+    completedAt: timestamp('completed_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.learnerId],
+      foreignColumns: [profile.id],
+      name: 'course_completion_learner_id_fkey'
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.courseId],
+      foreignColumns: [course.id],
+      name: 'course_completion_course_id_fkey'
+    }).onDelete('cascade'),
+    unique('course_completion_learner_course_unique').on(table.learnerId, table.courseId),
+    index('idx_course_completion_course').on(table.courseId),
+    index('idx_course_completion_learner').on(table.learnerId)
+  ]
+);
