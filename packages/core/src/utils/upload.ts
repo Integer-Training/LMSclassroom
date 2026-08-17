@@ -42,3 +42,26 @@ export function generateFileKey(fileName: string): string {
 export function generateMaterialFileKey(courseId: string, fileName: string): string {
   return `materials/${courseId}/${generateFileKey(fileName)}`;
 }
+
+/**
+ * Object-key prefix for a learner's coursework on one unit VERSION (PearlLMS Phase 3 Step 4). The
+ * key is learner- and unit-scoped: `coursework/{courseId}/{learnerId}/{lessonId}/{version}/…`. The
+ * prefix is organizational only — access is enforced by the guarded coursework-download binding
+ * (assertCourseworkDownloadAccess), never by the path. The server reconstructs this exact prefix from
+ * the authenticated actor + path when a submission is created, so a learner can only register keys
+ * under their OWN prefix (blocks key injection / cross-learner references).
+ */
+export function courseworkKeyPrefix(courseId: string, learnerId: string, lessonId: string, version: number): string {
+  return `coursework/${courseId}/${learnerId}/${lessonId}/${version}/`;
+}
+
+/** Key for one coursework file in a given submission version (see courseworkKeyPrefix). */
+export function generateCourseworkFileKey(
+  courseId: string,
+  learnerId: string,
+  lessonId: string,
+  version: number,
+  fileName: string
+): string {
+  return `${courseworkKeyPrefix(courseId, learnerId, lessonId, version)}${generateFileKey(fileName)}`;
+}

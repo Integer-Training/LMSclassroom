@@ -11,7 +11,9 @@ export const AUDIT_ACTIONS = {
   PROFILE_UPDATED: 'profile.updated',
   // Phase 3 — tutor↔learner allocation (ids only in metadata; never names/emails).
   ALLOCATION_CREATED: 'allocation.created',
-  ALLOCATION_REMOVED: 'allocation.removed'
+  ALLOCATION_REMOVED: 'allocation.removed',
+  // Phase 3 — learner coursework submission (ids + counts only; never file names/contents).
+  COURSEWORK_SUBMITTED: 'coursework.submitted'
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS] | (string & {});

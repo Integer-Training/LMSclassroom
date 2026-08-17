@@ -6,6 +6,7 @@ import { isRole, isSelf, sameOrg } from '@cio/utils/auth';
 import { getSubmissionById } from '@cio/db/queries/submission';
 import { isCourseGroupMember } from '@cio/db/queries/group';
 import { isTutorAllocatedToLearner } from '@cio/db/queries/allocation';
+import { getSubmissionByFileKey } from '@cio/db/queries/coursework';
 import { getCourseMaterialKeys } from '@cio/db/queries/lesson';
 import { getCourseById } from '@cio/db/queries/course';
 import { forbidden, unauthorized } from '@api/middlewares/guards/require-role';
@@ -218,6 +219,72 @@ export async function assertCourseMaterialDownloadAccess(
     const allCurrent = materialKeys.every((key) => currentKeys.has(key));
     if (!allCurrent) {
       throw new AppError('One or more materials are not available in this course', ErrorCodes.FORBIDDEN, 403);
+    }
+  }
+}
+
+// ── Coursework access (PearlLMS Phase 3 Step 4) ─────────────────────────────────────────────────
+// Coursework submissions are the most sensitive objects in the system: one learner's work must never
+// reach another learner. The read set is deliberately narrow — SELF (the learner), the learner's
+// ALLOCATED tutor, or an ADMIN. A Manager gets NO coursework (they get states/reports in Phase 5), and
+// a tutor NOT allocated to the learner is denied everywhere (list, detail, file). Provider-wide
+// allocation (not course-team membership) is the tutor rule, so the stock "any course tutor can grade
+// any learner" gap cannot leak in.
+
+/**
+ * May this actor read this submission? SELF (own coursework) OR the learner's allocated TUTOR OR
+ * ADMIN. Manager and any non-allocated tutor → false. Backs the read + file-download guards.
+ */
+export async function canReadCoursework(actor: Actor, submission: { learnerId: string }): Promise<boolean> {
+  if (!actor.authenticated) return false;
+  if (actor.role === 'ADMIN') return true;
+  if (isSelf(actor, submission.learnerId)) return true;
+  if (actor.role === 'TUTOR') return isAllocatedTutor(actor, submission.learnerId);
+  return false;
+}
+
+/**
+ * Submit-coursework guard for `POST …/lesson/:lessonId/coursework(/presign)`. Only an ENROLLED
+ * LEARNER of a PUBLISHED course may submit — self is implicit (the learnerId is always the actor's own
+ * user id, never taken from input). Staff/Manager do not submit; a draft (unpublished) course is not
+ * submittable; a learner not enrolled in the course is denied. This is the sole write door.
+ */
+export async function requireCourseworkSubmit(c: Context, next: Next) {
+  const actor = c.get('actor') as Actor | undefined;
+  if (!actor?.authenticated) return unauthorized(c);
+
+  const courseId = c.req.param('courseId');
+  if (!courseId) return forbidden(c, 'Missing course context');
+
+  if (actor.role !== 'LEARNER') return forbidden(c, 'Only enrolled learners can submit coursework');
+  if (!(await isEnrolledLearner(actor, courseId))) return forbidden(c, 'You are not enrolled in this course');
+  if (!(await isCoursePublished(courseId))) {
+    return forbidden(c, 'This course is not open for coursework submission');
+  }
+  return next();
+}
+
+/**
+ * Access decision for signing coursework file downloads. Each requested key must belong to a REAL
+ * coursework submission (authoritative jsonb lookup — a guessed/nonexistent key is denied), AND the
+ * actor must be permitted to read that submission (canReadCoursework). A single bad key fails the whole
+ * request. This is the ONLY door to coursework bytes — raw bucket access is already denied (private
+ * bucket, no public URL), and knowing a key never bypasses this guard. Throws AppError (handled
+ * globally); returns normally when every key is permitted.
+ */
+export async function assertCourseworkDownloadAccess(actor: Actor, keys: string[]): Promise<void> {
+  if (!actor.authenticated) {
+    throw new AppError('Unauthorized', ErrorCodes.UNAUTHORIZED, 401);
+  }
+  if (keys.length === 0) {
+    throw new AppError('No files requested', ErrorCodes.VALIDATION_ERROR, 400);
+  }
+
+  for (const key of keys) {
+    const submission = await getSubmissionByFileKey(key);
+    if (!submission || !(await canReadCoursework(actor, submission))) {
+      // 403 (not 404) whether the key is unknown or simply not the caller's — never reveal which.
+      throw new AppError('You do not have access to this coursework file', ErrorCodes.FORBIDDEN, 403);
     }
   }
 }

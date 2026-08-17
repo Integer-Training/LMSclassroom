@@ -23,7 +23,10 @@ export {
   canReadCourseContent,
   requireCourseContentRead,
   assertCourseMaterialDownloadAccess,
-  isAllocatedTutor
+  isAllocatedTutor,
+  canReadCoursework,
+  requireCourseworkSubmit,
+  assertCourseworkDownloadAccess
 } from './ownership';
 
 export { publicRoute } from './public';

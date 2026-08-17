@@ -59,6 +59,7 @@
   import { getOrderedNavigableContent } from '$features/course/utils/content';
   import StudentContentLockedNotice from '$features/course/components/student-content-locked-notice.svelte';
   import LiveSessionCard from '$features/course/components/lesson/live-session-card.svelte';
+  import CourseworkSubmission from '$features/course/components/lesson/coursework-submission.svelte';
 
   interface Props {
     courseId: string;
@@ -485,16 +486,28 @@
           </div>
         {:else if contentLockReason}
           <StudentContentLockedNotice reason={contentLockReason} contentType={ContentType.Lesson} />
-        {:else if lessonApi.lesson && !isMaterialsEmpty}
+        {:else if lessonApi.lesson}
           {#key lessonId}
             <div class="mb-20 flex w-full flex-col" in:fade={{ delay: 500 }} out:fade>
-              {#if !hasLessonVideos}
-                <LessonMaterialActions showSummarize {lessonId} alignWithNote />
+              {#if !isMaterialsEmpty}
+                {#if !hasLessonVideos}
+                  <LessonMaterialActions showSummarize {lessonId} alignWithNote />
+                {/if}
+
+                {#each viewModeComponents as Component, index (index)}
+                  <Component {mode} {lessonId} {courseId} />
+                {/each}
+              {:else}
+                <Empty
+                  title={$t('course.navItem.lessons.materials.no_content')}
+                  icon={VideoIcon}
+                  variant="default"
+                  class="text-center"
+                />
               {/if}
 
-              {#each viewModeComponents as Component, index (index)}
-                <Component {mode} {lessonId} {courseId} />
-              {/each}
+              <!-- Learner coursework upload (PearlLMS Phase 3 Step 4): self-only; guarded read/download. -->
+              <CourseworkSubmission {courseId} {lessonId} />
 
               {#if $currentOrg.customization?.apps?.comments}
                 <hr class="my-2" />
