@@ -45,6 +45,7 @@ import {
   updateOrg,
   updateOrgPlan
 } from '@api/services/organization';
+import { overlayResultDerivedProgress } from '@api/services/progress/enrolled-progress';
 
 import { Hono } from '@api/utils/hono';
 import { ROLE } from '@cio/utils/constants';
@@ -426,6 +427,10 @@ export const organizationRouter = new Hono()
 
       const orgId = c.req.header('cio-org-id')!;
       const result = await getUserEnrolledCourses(orgId, user.id);
+
+      // PearlLMS Phase 5: overlay the learner's RESULT-DERIVED progress so the LMS home shows the same single
+      // notion of progress as the course view + reports (docs/PROGRESS-MODEL.md §4). Best-effort per course.
+      await overlayResultDerivedProgress(user.id, result);
 
       return c.json(
         {
