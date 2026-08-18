@@ -39,6 +39,28 @@ function buildOAuthProxyPlugin() {
   return [oAuthProxy({ productionURL: CONSTANTS.BASE_URL })];
 }
 
+/**
+ * PearlLMS Phase 7 (docs/ONBOARDING-MODEL.md D5) — the two remaining plugins whose code paths can mint a
+ * NET-NEW account for a stranger:
+ *   - sso() JIT-creates a user on a real IdP login for a domain matching an ACTIVE organization_sso_config.
+ *   - tokenExchange() calls signUpEmail for an unknown email when an ACTIVE organization_token_auth row exists.
+ * Both are inert today (empty backing tables), but on a self-hosted closed system they should not be
+ * enable-able merely by inserting a config row. We drop them entirely from the plugin list when self-hosted —
+ * defense-in-depth on top of disableSignUp. (Cloud builds keep them.)
+ */
+function buildStrangerAccountPlugins() {
+  if (process.env.PUBLIC_IS_SELFHOSTED === 'true') {
+    return [];
+  }
+  return [
+    sso({
+      // OIDC providers are registered dynamically per organization
+      // via the admin API (auth.api.registerSSOProvider)
+    }),
+    tokenExchange()
+  ];
+}
+
 export const auth: ReturnType<typeof betterAuth> = betterAuth({
   baseURL: CONSTANTS.BASE_URL,
   database: drizzleAdapter(db, {
@@ -147,13 +169,11 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
     admin(),
     // `anonymous()` removed — it exposed POST /api/auth/sign-in/anonymous which creates accounts
     // (a public account-creation vector, unused by the client). Closed system: no anonymous users.
-    sso({
-      // OIDC providers are registered dynamically per organization
-      // via the admin API (auth.api.registerSSOProvider)
-    }),
+    // sso() + tokenExchange() are gated self-hosted-off (PearlLMS Phase 7 D5) — the two remaining
+    // net-new-account doors; on a closed self-hosted system they must not be enable-able by a config row.
+    ...buildStrangerAccountPlugins(),
     ...buildOAuthProxyPlugin(),
     loginLink(),
-    tokenExchange(),
     // Attaches the user's org memberships ({ [orgId]: roleId }) to the session
     // so org-scoped middlewares can authorize without a per-request DB query.
     // Refreshes when the session cookie cache expires (see session.cookieCache.maxAge).

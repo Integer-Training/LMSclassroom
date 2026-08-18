@@ -5,6 +5,7 @@ export * from './course-type';
 export * from './unit-type';
 export * from './result';
 export * from './notification';
+export * from './registration';
 export * from './submission-state';
 export * from './domains';
 export * from './embeds';

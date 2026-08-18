@@ -32,10 +32,12 @@ export * from './coursework-submitted';
 export * from './coursework-resulted';
 export * from './message-received';
 export * from './announcement-published';
+export * from './registration-submitted';
 
 import type { newsfeedCommentEmail, newsfeedPostEmail } from './newsfeed';
 import type { messageReceivedEmail } from './message-received';
 import type { announcementPublishedEmail } from './announcement-published';
+import type { registrationSubmittedEmail } from './registration-submitted';
 
 // Import types for schema mapping (must be after exports to avoid circular dependency)
 import type { forgotPasswordEmail } from './forgot-password';
@@ -97,4 +99,5 @@ export type EmailSchemas = {
   courseworkResulted: typeof courseworkResultedEmail.template.schema;
   messageReceived: typeof messageReceivedEmail.template.schema;
   announcementPublished: typeof announcementPublishedEmail.template.schema;
+  registrationSubmitted: typeof registrationSubmittedEmail.template.schema;
 };

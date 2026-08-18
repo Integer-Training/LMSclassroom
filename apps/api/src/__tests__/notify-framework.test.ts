@@ -36,12 +36,13 @@ describe('config — categories + defaults (D3)', () => {
     expect(categoryForNotificationType('announcement.published')).toBe('announcement');
     expect(categoryForNotificationType('session.unlocked')).toBe('session');
   });
-  it('email defaults: coursework/messaging ON, announcement/session OFF', () => {
+  it('email defaults: coursework/messaging/registration ON, announcement/session OFF', () => {
     expect(NOTIFICATION_EMAIL_DEFAULTS).toEqual({
       coursework: true,
       messaging: true,
       announcement: false,
-      session: false
+      session: false,
+      registration: true // PearlLMS Phase 7 — staff-actionable, email default ON
     });
   });
 });

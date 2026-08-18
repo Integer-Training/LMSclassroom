@@ -14,7 +14,8 @@ export const NOTIFICATION_TYPES = [
   'result.recorded',
   'message.received',
   'announcement.published',
-  'session.unlocked'
+  'session.unlocked',
+  'registration.submitted'
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -24,7 +25,7 @@ export function isAllowedNotificationType(value: unknown): value is Notification
 }
 
 /** Preference categories — email toggles are per-category, not per-type. */
-export const NOTIFICATION_CATEGORIES = ['coursework', 'messaging', 'announcement', 'session'] as const;
+export const NOTIFICATION_CATEGORIES = ['coursework', 'messaging', 'announcement', 'session', 'registration'] as const;
 
 export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
 
@@ -38,7 +39,8 @@ export const NOTIFICATION_TYPE_CATEGORY: Record<NotificationType, NotificationCa
   'result.recorded': 'coursework',
   'message.received': 'messaging',
   'announcement.published': 'announcement',
-  'session.unlocked': 'session'
+  'session.unlocked': 'session',
+  'registration.submitted': 'registration'
 };
 
 export function categoryForNotificationType(type: NotificationType): NotificationCategory {
@@ -53,7 +55,10 @@ export const NOTIFICATION_EMAIL_DEFAULTS: Record<NotificationCategory, boolean> 
   coursework: true,
   messaging: true,
   announcement: false,
-  session: false
+  session: false,
+  // PearlLMS Phase 7 — a new learner registration is staff-actionable, so managers/admins get the email by
+  // default (in-app always fires regardless). The applicant is never notified (docs/ONBOARDING-MODEL.md D1).
+  registration: true
 };
 
 export function emailDefaultForCategory(category: NotificationCategory): boolean {
@@ -65,7 +70,8 @@ export const NOTIFICATION_CATEGORY_LABELS: Record<NotificationCategory, string> 
   coursework: 'Coursework — submissions & feedback',
   messaging: 'Messages from your tutor',
   announcement: 'Announcements',
-  session: 'New sessions unlocked'
+  session: 'New sessions unlocked',
+  registration: 'New learner registrations'
 };
 
 /**

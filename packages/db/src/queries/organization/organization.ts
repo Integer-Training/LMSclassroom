@@ -555,6 +555,32 @@ export const isUserOrgTeamMember = async (orgId: string, profileId: string): Pro
  * @param orgId Organization ID
  * @returns Array of team members with profile information
  */
+/**
+ * PearlLMS Phase 7 — the org's Managers + Admins as notification recipients (docs/ONBOARDING-MODEL.md §6).
+ * Returns one row per verified member with an ADMIN or MANAGER role, shaped for emitNotification's
+ * NotifyRecipient[] ({ userId, email }). Tutors + learners are excluded.
+ */
+export const getOrgManagersAndAdmins = async (orgId: string): Promise<{ userId: string; email: string }[]> => {
+  const rows = await db
+    .select({
+      profileId: schema.organizationmember.profileId,
+      memberEmail: schema.organizationmember.email,
+      profileEmail: schema.profile.email
+    })
+    .from(schema.organizationmember)
+    .leftJoin(schema.profile, eq(schema.organizationmember.profileId, schema.profile.id))
+    .where(
+      and(
+        eq(schema.organizationmember.organizationId, orgId),
+        inArray(schema.organizationmember.roleId, [ROLE.ADMIN, ROLE.MANAGER])
+      )
+    );
+
+  return rows
+    .filter((r): r is typeof r & { profileId: string } => Boolean(r.profileId))
+    .map((r) => ({ userId: r.profileId, email: r.profileEmail || r.memberEmail || '' }));
+};
+
 export const getOrganizationTeam = async (orgId: string) => {
   const result = await db
     .select({

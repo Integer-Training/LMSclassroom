@@ -4217,3 +4217,41 @@ export const announcement = pgTable(
     index('idx_announcement_published').on(table.publishedAt)
   ]
 );
+
+// PearlLMS Phase 7 — a public registration is a PENDING APPLICATION, never an account (docs/ONBOARDING-MODEL.md
+// §3). The public form writes ONLY here; approval (Manager/Admin) later composes the Phase-5 onboardLearner
+// service to create the actual user + enrolment. One-way status: pending → approved | rejected. No credential,
+// no session, nothing readable by the applicant — the row is inert until staff act.
+export const registration = pgTable(
+  'registration',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    organizationId: uuid('organization_id').notNull(),
+    fullName: varchar('full_name').notNull(),
+    email: varchar().notNull(), // stored lowercased + trimmed
+    requestedCourseId: uuid('requested_course_id'), // the course of interest; approval can change it
+    status: varchar().default('pending').notNull(), // REGISTRATION_STATUS config (no pg-enum)
+    decisionNote: text('decision_note'),
+    decidedBy: uuid('decided_by'),
+    decidedAt: timestamp('decided_at', { withTimezone: true, mode: 'string' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull() // = submitted_at
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.organizationId],
+      foreignColumns: [organization.id],
+      name: 'registration_organization_id_fkey'
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.requestedCourseId],
+      foreignColumns: [course.id],
+      name: 'registration_requested_course_id_fkey'
+    }).onDelete('set null'),
+    foreignKey({
+      columns: [table.decidedBy],
+      foreignColumns: [profile.id],
+      name: 'registration_decided_by_fkey'
+    }).onDelete('set null'),
+    index('idx_registration_org_status_created').on(table.organizationId, table.status, table.createdAt)
+  ]
+);

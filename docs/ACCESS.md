@@ -579,3 +579,21 @@ Notes:
   string; attachment-shaped payloads are stripped and a non-string body is rejected 400 (PHASE6.md §4 B1/B2).
 - **Emails are content-light everywhere** — announce + link only; no message body, feedback, result value, file,
   or PII beyond a display name (PHASE6.md §3).
+
+## 11. Phase 7 — governed intake (Step 2 LIVE, 2026-08-18)
+
+Signup stays invite-only and the public registration form is the sole public entrance (docs/ONBOARDING-MODEL.md).
+Account creation flows ONLY through staff provisioning (`createOrgUser` → set-password invite). The public form
+writes a PENDING `registration` row and never touches the auth stack. Live-verified closure (Step 1 + this step):
+`sign-up/email` → 400 (org-context, then `disableSignUp`); anonymous → 404; social → `SOCIAL_AUTH_NOT_ENABLED`;
+`/signup` → 308 → `/register`. The two residual net-new-account plugins (`sso()`, `tokenExchange()`) are now
+dropped from the plugin list when `PUBLIC_IS_SELFHOSTED === 'true'` (defense-in-depth, D5).
+
+| Surface | Endpoint | Live guard | Access |
+|---|---|---|---|
+| Public register (create pending) | `POST /register` (via dashboard `(auth)/register` action) | `apiKeyMiddleware` + honeypot + per-IP rate limit (in service) | **Anonymous**, rate-limited; writes ONLY a `registration` row — no user/member/session. Duplicate existing-member OR open-pending email → neutral 409 (no enumeration); honeypot-filled → silent drop |
+| Register course picker | `GET /register/courses` | `apiKeyMiddleware` | Published courses (id + title) for the form; sole-org resolved |
+
+`registration.submitted` notifies every Manager + Admin through the Phase-6 framework (new `registration`
+category, email default ON). The approval-queue, approve/reject, and ID-verification rows land with their
+Step-3/4 features.

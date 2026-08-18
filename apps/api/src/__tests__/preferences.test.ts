@@ -39,9 +39,15 @@ beforeEach(() => {
 });
 
 describe('getMyPreferences — effective values via the single resolver', () => {
-  it('returns all four categories with the resolver value and isDefault when no row', async () => {
+  it('returns all categories with the resolver value and isDefault when no row', async () => {
     const items = await getMyPreferences(learner);
-    expect(items.map((i) => i.category).sort()).toEqual(['announcement', 'coursework', 'messaging', 'session']);
+    expect(items.map((i) => i.category).sort()).toEqual([
+      'announcement',
+      'coursework',
+      'messaging',
+      'registration',
+      'session'
+    ]);
     // resolution came from getCategoryEmailEnabled for the ACTOR
     expect(mResolve).toHaveBeenCalledWith('me', 'coursework');
     const byCat = Object.fromEntries(items.map((i) => [i.category, i]));
