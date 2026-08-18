@@ -86,3 +86,16 @@ Call-sites are added by the steps that own each action — Step 3 only ships the
 **Lite onboarding (Phase 5 Step 5) adds NO new audit action.** It composes Phase 1's `createOrgUser`, so the
 account creation is recorded by the existing **`user.created`** (id-only metadata). The enrolment write is not
 independently audited (it mirrors the existing course-enrolment path, which is unaudited).
+
+## Phase 6 actions (wired)
+
+| Action | When | Entity | Example metadata |
+|---|---|---|---|
+| `announcement.published` | admin/manager publishes an announcement (course-scoped or provider-wide) | `announcement` | `{ announcementId, scope, courseId }` (ids only — NEVER the title or body) |
+
+**Notifications, messaging and preference changes are intentionally NOT audited.** They are self-only
+operational state with no privileged-decision value: in-app notification rows and read cursors, per-user
+message sends within an already-audited allocation, and a user toggling their own email preference. Auditing
+them would add per-message/per-read PII-adjacent volume for no oversight benefit. The privileged decisions
+around comms *are* audited elsewhere — the allocation that authorises a thread (`allocation.created` /
+`allocation.removed`) and the announcement publish above.

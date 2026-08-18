@@ -553,3 +553,29 @@ Notes:
   the existing course enrolment. The credential is the learner's own login from the set-password invite.
 - **One notion of progress for learners** — the stock self-asserted completion is hidden in the course view
   (Step 3) and the LMS-home surfaces read the result-derived overlay, so no second "complete" state shows.
+
+## 10. Phase 6 — comms centre (LIVE, 2026-08-18)
+
+Notifications, messaging, announcements and per-user email preferences (docs/COMMS-MODEL.md, decisions D1–D4).
+One pipeline (`emitNotification`): an in-app row per recipient ALWAYS; a content-light email only when the
+recipient's per-category preference is on (config default when unset). Messaging threads are bound to the
+(tutor, learner) allocation **pair**, not to an allocation id, and go read-only (`archived_at`) on reallocation.
+COMMS-MODEL.md §7 is the canonical comms access table; the enforced guards are:
+
+| Surface | Endpoint | Live guard | Target access |
+|---|---|---|---|
+| Notification centre (self) | `GET /notifications`, `POST /notifications/:id/read`, `POST /notifications/read-all` | `requireActor` + `user_id = actor.userId` | **Self only** — no userId parameter exists; a foreign notification id marks nothing |
+| Email preferences (self) | `GET /notifications/preferences`, `PUT /notifications/preferences/:category` | `requireActor`; actor from session, only the category is a path value | **Self only**; anon **401**, unknown category **400**. Effective value from the single `getCategoryEmailEnabled` resolver |
+| Messaging | `POST /messages/open`, `GET /messages/threads/:id`, `POST /messages/threads/:id/messages`, `/read`, `GET /messages/my-tutor` | `requireActor` + participant/allocation/not-archived in-service (`isAllocatedTutor` / participant) | **Allocated tutor↔learner participants only**; **Admin read-any / write-none** (D2); **Manager excluded** (D2); non-allocated tutor + other learners **403**. TEXT ONLY — no attachment field or column exists |
+| Announcements — read | `GET /announcements`, `GET /announcements/course/:courseId` | `requireActor` + scope filter (provider-wide to all; course-scoped to enrolled; staff see all) | Enrolment-scoped + provider-wide; unenrolled learner sees neither the course-scoped announcement nor its notification |
+| Announcements — compose | `POST /announcements` | `requireManagerOrAdmin` + `isRole(ADMIN, MANAGER)` in-service | **Admin + Manager only** (D1); **Tutor + Learner 403**; anon **401**. Audited `announcement.published` (ids only) |
+
+Notes:
+- **No user-id-bearing surface** for notifications or preferences — the actor is always the session actor, so
+  "read/write another user's notifications/preferences by id" is a non-existent route, not merely a refused one.
+  The one id-accepting call (mark-one-read) is self-scoped: supplying another learner's notification id marks
+  nothing for them (verified adversarially, docs/PHASE6.md §4 row D2).
+- **No-attachments invariant** — the `message` table has no attachment column and the send schema is a bounded
+  string; attachment-shaped payloads are stripped and a non-string body is rejected 400 (PHASE6.md §4 B1/B2).
+- **Emails are content-light everywhere** — announce + link only; no message body, feedback, result value, file,
+  or PII beyond a display name (PHASE6.md §3).
