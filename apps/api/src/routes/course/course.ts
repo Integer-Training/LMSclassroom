@@ -295,7 +295,7 @@ export const courseRouter = new Hono()
    * there is no learnerId parameter, so a learner can never read another's progress. courseMemberMiddleware
    * enforces enrolment.
    */
-  .get('/:courseId/progress', courseMemberMiddleware, zValidator('param', ZCourseGetParam), async (c) => {
+  .get('/:courseId/learner-progress', courseMemberMiddleware, zValidator('param', ZCourseGetParam), async (c) => {
     try {
       const { courseId } = c.req.valid('param');
       const data = await getOwnCourseProgress(c.get('actor') as Actor, courseId);

@@ -31,8 +31,8 @@ class CourseProgressApi extends BaseApi {
 
   async load(courseId: string) {
     if (!courseId) return;
-    return this.execute<(typeof classroomio.course)[':courseId']['progress']['$get']>({
-      requestFn: () => classroomio.course[':courseId'].progress.$get({ param: { courseId } }),
+    return this.execute<(typeof classroomio.course)[':courseId']['learner-progress']['$get']>({
+      requestFn: () => classroomio.course[':courseId']['learner-progress'].$get({ param: { courseId } }),
       logContext: 'loading course progress',
       onSuccess: (result) => {
         this.courseId = courseId;

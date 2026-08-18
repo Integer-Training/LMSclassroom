@@ -64,6 +64,9 @@ export function computeProgress(
     }
   }
 
+  // The display `completed` boolean (total > 0 && all non-exempt passed) is the SAME rule as the trigger's
+  // authority `isCourseComplete` (queries/completion) — both compose isExemptUnitType + the passed-helper.
+  // Keep them in lock-step: if you change the completion rule, change it in both (docs/PROGRESS-MODEL.md §3).
   const completed = total > 0 && passed === total;
   return { courseId, passed, total, completed, completedAt, currentPosition: completed ? null : currentPosition };
 }

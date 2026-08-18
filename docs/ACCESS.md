@@ -526,3 +526,30 @@ Notes:
   certificates/editor, landingpage, ai-tutor, exercises/[exerciseId]`. `lessons` + `lessons/[lessonId]` are
   the only learner-open routes; the layout's `isPermitted` dialog still blocks non-members. Net: admin pages
   are exactly as protected as before; the only new access is enrolled-learner → their own lesson view.
+
+---
+
+## 9. Phase 5 — progress, completion, reports & lite onboarding (LIVE, 2026-08-18)
+
+Progress and completion are **result-derived** (docs/PROGRESS-MODEL.md) — a durable `course_completion` row is
+written transactionally when every non-exempt unit is passed. One shared computation (`computeProgress`) backs
+the learner view, the reports, and the LMS-home overlay.
+
+| Surface | Endpoint | Live guard | Target access |
+|---|---|---|---|
+| Learner progress (self) | `GET /course/:courseId/learner-progress` | `courseMemberMiddleware` + computed for `actor.userId` only | **Enrolled learner, self only** — no learnerId parameter exists, so one learner can never read another's progress |
+| LMS-home progress overlay | `GET /organization/courses/enrolled` | `authMiddleware` + self (`user.id`) | **self only** — the learner's own enrolled courses, progress counters overridden with their result-derived passed/total |
+| Provider-wide report | `GET /reports/progress?courseId=…`, `GET /reports/progress/courses` | `requireManagerOrAdmin` + course bound to `actor.orgId` | **Manager or Admin**; Tutor + Learner **403**, anon **401**. **No profile PII** — name from the `user` table, never `profile` |
+| Lite onboarding | `POST /organization/users/onboard`, `GET /organization/users/onboard/courses` | `requireAdmin` | **Admin only**; Manager/Tutor/Learner **403**, anon **401** |
+
+Notes:
+- **Completion write** has no endpoint — it fires inside the `recordResult` transaction (`ON CONFLICT DO
+  NOTHING` on `UNIQUE(learner_id, course_id)`), audited `completion.recorded` (ids only), and is backfilled
+  once through the same rule code.
+- **Reports carry no profile PII** — proven at the serialisation level (row keys are exactly
+  `{learnerId, name, passed, total, completed, completedAt, currentPosition}`) and by a live fixture whose
+  populated profile values never appear on the wire.
+- **Lite onboarding adds no new audit action** — it composes Phase 1 `createOrgUser` (→ `user.created`) plus
+  the existing course enrolment. The credential is the learner's own login from the set-password invite.
+- **One notion of progress for learners** — the stock self-asserted completion is hidden in the course view
+  (Step 3) and the LMS-home surfaces read the result-derived overlay, so no second "complete" state shows.
