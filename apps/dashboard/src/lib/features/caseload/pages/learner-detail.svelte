@@ -1,11 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
   import { Badge } from '@cio/ui/base/badge';
+  import { Button } from '@cio/ui/base/button';
   import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
   import FileTextIcon from '@lucide/svelte/icons/file-text';
+  import MessageSquareIcon from '@lucide/svelte/icons/message-square';
   import { RESULT_LABELS, isPassingResult } from '@cio/utils/constants';
   import MarkingForm from '$features/caseload/components/marking-form.svelte';
   import { caseloadApi, type DetailFile } from '$features/caseload/api/caseload.svelte';
+  import { messagingApi } from '$features/messaging/api/messaging.svelte';
 
   function resultLabel(result: string | null): string {
     return result ? (RESULT_LABELS[result as keyof typeof RESULT_LABELS] ?? result) : '';
@@ -34,6 +38,19 @@
   function open(courseId: string, lessonId: string, file: DetailFile) {
     caseloadApi.openFile(courseId, lessonId, file.key);
   }
+
+  // PearlLMS Phase 6 Step 4 — open (or reuse) the thread with this allocated learner, then view it.
+  let openingThread = $state(false);
+  async function messageLearner() {
+    if (openingThread) return;
+    openingThread = true;
+    try {
+      await messagingApi.open(learnerId);
+      if (messagingApi.view) await goto(`/messages/${messagingApi.view.threadId}`);
+    } finally {
+      openingThread = false;
+    }
+  }
 </script>
 
 <div class="mx-auto w-full max-w-4xl p-6">
@@ -44,9 +61,14 @@
   {#if !caseloadApi.detail}
     <p class="text-muted-foreground text-sm">{caseloadApi.isLoading ? 'Loading…' : 'Learner not found.'}</p>
   {:else}
-    <div class="mb-6">
-      <h1 class="text-xl font-semibold">{caseloadApi.detail.learner.name || 'Learner'}</h1>
-      <p class="text-muted-foreground text-sm">{caseloadApi.detail.learner.email}</p>
+    <div class="mb-6 flex items-start justify-between gap-3">
+      <div>
+        <h1 class="text-xl font-semibold">{caseloadApi.detail.learner.name || 'Learner'}</h1>
+        <p class="text-muted-foreground text-sm">{caseloadApi.detail.learner.email}</p>
+      </div>
+      <Button variant="outline" size="sm" onclick={messageLearner} loading={openingThread}>
+        <MessageSquareIcon class="size-4" /> Message
+      </Button>
     </div>
 
     {#if caseloadApi.detail.courses.length === 0}

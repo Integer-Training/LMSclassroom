@@ -12,6 +12,7 @@ import {
   type AllocationWithNames
 } from '@cio/db/queries/allocation';
 import { getOrganizationUsers } from '@cio/db/queries/organization';
+import { archiveThreadForPair } from '@cio/db/queries/comms';
 
 // Tutor↔learner allocation management (PearlLMS Phase 3). Manager/Admin only — enforced at the route
 // (requireManagerOrAdmin). Every mutation validates roles against the org membership (never trust the
@@ -108,6 +109,15 @@ export async function removeTutorAllocation(orgId: string, actor: Actor, allocat
   }
 
   const deleted = await deleteAllocationById(allocationId);
+
+  // Phase 6 (D4): de-allocation flips the pair's message thread READ-ONLY (archived), preserving history
+  // without deleting it — the participants can still read it, but not write, and a new tutor starts a fresh
+  // thread. Best-effort: a messaging failure must not fail the allocation removal.
+  try {
+    await archiveThreadForPair(existing.tutorId, existing.learnerId);
+  } catch (error) {
+    console.error('[allocation] failed to archive message thread on de-allocation (allocation still removed):', error);
+  }
 
   await recordAudit({
     actor,

@@ -67,3 +67,6 @@ export function emailDefaultForCategory(category: NotificationCategory): boolean
  * the app is not silenced forever.
  */
 export const NOTIFICATION_COALESCE_WINDOW_MS = 30 * 60 * 1000;
+
+/** Max length of a single message body (docs/COMMS-MODEL.md §8 — messages are TEXT ONLY, no attachments). */
+export const MESSAGE_MAX_LENGTH = 4000;

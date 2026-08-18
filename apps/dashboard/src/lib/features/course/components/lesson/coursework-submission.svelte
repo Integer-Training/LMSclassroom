@@ -76,7 +76,13 @@
 </script>
 
 <section class="mt-8 border-t pt-6">
-  <h2 class="mb-1 text-lg font-semibold">Coursework</h2>
+  <div class="mb-1 flex items-center justify-between gap-3">
+    <h2 class="text-lg font-semibold">Coursework</h2>
+    <!-- PearlLMS Phase 6 Step 4 — message the allocated tutor (empty state handled on /messages). -->
+    <a href="/messages" class="ui:text-primary inline-flex items-center gap-1 text-sm font-medium hover:underline">
+      Message your tutor →
+    </a>
+  </div>
   <p class="text-muted-foreground mb-4 text-sm">
     Upload your work for this unit. Each upload is saved as a new version — your tutor sees the latest.
   </p>

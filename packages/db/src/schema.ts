@@ -4089,3 +4089,93 @@ export const notificationPreference = pgTable(
     index('idx_notification_preference_user').on(table.userId)
   ]
 );
+
+// PearlLMS Phase 6 Step 4 — one message thread per allocated tutor↔learner PAIR (docs/COMMS-MODEL.md §4, D4).
+// Bound by the (tutor_id, learner_id) pair, NOT a FK to tutor_allocation.id — reallocation DELETEs the
+// allocation row and a cascade off it would wipe the conversation. Writability is re-checked live via
+// isAllocatedTutor; archived_at makes a thread read-only after reallocation without deleting it (a re-
+// allocated same pair reactivates by clearing archived_at). UNIQUE(tutor, learner) mirrors tutor_allocation.
+export const messageThread = pgTable(
+  'message_thread',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    organizationId: uuid('organization_id').notNull(),
+    tutorId: uuid('tutor_id').notNull(),
+    learnerId: uuid('learner_id').notNull(),
+    archivedAt: timestamp('archived_at', { withTimezone: true, mode: 'string' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.organizationId],
+      foreignColumns: [organization.id],
+      name: 'message_thread_organization_id_fkey'
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.tutorId],
+      foreignColumns: [profile.id],
+      name: 'message_thread_tutor_id_fkey'
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.learnerId],
+      foreignColumns: [profile.id],
+      name: 'message_thread_learner_id_fkey'
+    }).onDelete('cascade'),
+    unique('message_thread_pair_unique').on(table.tutorId, table.learnerId),
+    index('idx_message_thread_tutor').on(table.tutorId),
+    index('idx_message_thread_learner').on(table.learnerId)
+  ]
+);
+
+// A single TEXT message in a thread. There is NO attachment column — messages are text only (coursework
+// travels only through the submission flow). Rows are append-only (never edited/deleted in MVP).
+export const message = pgTable(
+  'message',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    threadId: uuid('thread_id').notNull(),
+    senderId: uuid('sender_id').notNull(),
+    body: text().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.threadId],
+      foreignColumns: [messageThread.id],
+      name: 'message_thread_id_fkey'
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.senderId],
+      foreignColumns: [profile.id],
+      name: 'message_sender_id_fkey'
+    }).onDelete('cascade'),
+    index('idx_message_thread').on(table.threadId),
+    index('idx_message_thread_created').on(table.threadId, table.createdAt)
+  ]
+);
+
+// Per-participant read cursor for a thread (cheaper than per-message rows for a 2-party conversation).
+// Unread = message.created_at > last_read_at AND sender_id != me.
+export const messageRead = pgTable(
+  'message_read',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    threadId: uuid('thread_id').notNull(),
+    profileId: uuid('profile_id').notNull(),
+    lastReadAt: timestamp('last_read_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.threadId],
+      foreignColumns: [messageThread.id],
+      name: 'message_read_thread_id_fkey'
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.profileId],
+      foreignColumns: [profile.id],
+      name: 'message_read_profile_id_fkey'
+    }).onDelete('cascade'),
+    unique('message_read_thread_profile_unique').on(table.threadId, table.profileId),
+    index('idx_message_read_profile').on(table.profileId)
+  ]
+);

@@ -26,7 +26,8 @@ export const EMAIL_IDS = [
   'verifyEmail',
   'welcome',
   'courseworkSubmitted',
-  'courseworkResulted'
+  'courseworkResulted',
+  'messageReceived'
 ] as const;
 
 // Fallback sender identity (branding — see docs/TODO-BRANDING.md). Both the from

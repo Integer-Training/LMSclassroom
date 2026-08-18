@@ -23,6 +23,7 @@ import { courseRouter } from '@api/routes/course';
 import { dashAnalyticsRouter } from '@api/routes/dash';
 import { reportsRouter } from '@api/routes/reports/reports';
 import { notificationsRouter } from '@api/routes/comms/notifications';
+import { messagesRouter } from '@api/routes/comms/messages';
 import { domainRouter } from '@api/routes/domain/domain';
 import { internalRouter } from '@api/routes/internal';
 import { inviteRouter } from '@api/routes/invite';
@@ -258,6 +259,7 @@ export const app = new Hono()
   .route('/dash', dashAnalyticsRouter)
   .route('/reports', reportsRouter)
   .route('/notifications', notificationsRouter)
+  .route('/messages', messagesRouter)
   .route('/community', communityRouter)
   .route('/invite', inviteRouter)
   .route('/org-site/course', publicCourseRouter)
