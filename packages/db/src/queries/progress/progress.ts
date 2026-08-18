@@ -32,17 +32,24 @@ export interface CourseProgress {
   currentPosition: CurrentPosition | null;
 }
 
+export interface OrderedUnitLite {
+  lessonId: string;
+  unitType: string | null;
+  title: string | null;
+}
+
 /**
- * Compute one learner's progress in one course. passed = non-exempt units passed; total = non-exempt count;
- * currentPosition = the first non-exempt unit not yet passed (1-based index among non-exempt units), null
- * when complete; completedAt from the course_completion row. Reads via `client` so a report can batch it.
+ * The PURE metrics core — the ONE rule/metrics implementation. Given the course's ordered units, a
+ * per-unit passed predicate, and the completion date, it computes passed/total/currentPosition/completed
+ * over the NON-EXEMPT units. Both the learner self-view AND the Manager/Admin report call THIS (the report
+ * feeds it a batched passed-predicate, so there is no second implementation and no per-learner N+1).
  */
-export async function computeLearnerCourseProgress(
-  learnerId: string,
+export function computeProgress(
   courseId: string,
-  client: DbOrTxClient = db
-): Promise<CourseProgress> {
-  const units = await getOrderedUnitsForCourse(courseId, client);
+  units: OrderedUnitLite[],
+  isUnitPassed: (lessonId: string) => boolean,
+  completedAt: string | null
+): CourseProgress {
   const nonExempt = units.filter((u) => !isExemptUnitType(u.unitType));
   const total = nonExempt.length;
 
@@ -50,7 +57,7 @@ export async function computeLearnerCourseProgress(
   let currentPosition: CurrentPosition | null = null;
   for (let i = 0; i < nonExempt.length; i++) {
     const u = nonExempt[i];
-    if (await hasLearnerPassedUnit(learnerId, u.lessonId, client)) {
+    if (isUnitPassed(u.lessonId)) {
       passed++;
     } else if (!currentPosition) {
       currentPosition = { lessonId: u.lessonId, title: u.title, index: i + 1 };
@@ -58,16 +65,26 @@ export async function computeLearnerCourseProgress(
   }
 
   const completed = total > 0 && passed === total;
-  if (completed) currentPosition = null;
+  return { courseId, passed, total, completed, completedAt, currentPosition: completed ? null : currentPosition };
+}
 
+/**
+ * Compute one learner's progress in one course. Fetches the ordered units, resolves each non-exempt unit's
+ * passed state (Phase-3 helper), and the completion date, then defers to the pure `computeProgress` core.
+ * Reads via `client` so it can run inside a transaction.
+ */
+export async function computeLearnerCourseProgress(
+  learnerId: string,
+  courseId: string,
+  client: DbOrTxClient = db
+): Promise<CourseProgress> {
+  const units = await getOrderedUnitsForCourse(courseId, client);
+  const passed = new Set<string>();
+  for (const u of units) {
+    if (!isExemptUnitType(u.unitType) && (await hasLearnerPassedUnit(learnerId, u.lessonId, client))) {
+      passed.add(u.lessonId);
+    }
+  }
   const completionRow = await getCourseCompletion(learnerId, courseId, client);
-
-  return {
-    courseId,
-    passed,
-    total,
-    completed,
-    completedAt: completionRow?.completedAt ?? null,
-    currentPosition
-  };
+  return computeProgress(courseId, units, (lessonId) => passed.has(lessonId), completionRow?.completedAt ?? null);
 }
