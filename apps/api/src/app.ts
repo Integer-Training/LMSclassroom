@@ -22,6 +22,7 @@ import { communityRouter } from '@api/routes/community';
 import { courseRouter } from '@api/routes/course';
 import { dashAnalyticsRouter } from '@api/routes/dash';
 import { reportsRouter } from '@api/routes/reports/reports';
+import { notificationsRouter } from '@api/routes/comms/notifications';
 import { domainRouter } from '@api/routes/domain/domain';
 import { internalRouter } from '@api/routes/internal';
 import { inviteRouter } from '@api/routes/invite';
@@ -256,6 +257,7 @@ export const app = new Hono()
   .route('/sso', ssoDiscoveryRouter)
   .route('/dash', dashAnalyticsRouter)
   .route('/reports', reportsRouter)
+  .route('/notifications', notificationsRouter)
   .route('/community', communityRouter)
   .route('/invite', inviteRouter)
   .route('/org-site/course', publicCourseRouter)

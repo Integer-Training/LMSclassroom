@@ -1,6 +1,6 @@
 import * as schema from '@db/schema';
 
-import { and, db, desc, eq, gte, isNull, ne, sql, type DbOrTxClient } from '@db/drizzle';
+import { and, db, desc, eq, gte, inArray, isNull, ne, sql, type DbOrTxClient } from '@db/drizzle';
 
 // PearlLMS Phase 6 — in-app notification centre queries (docs/COMMS-MODEL.md §4-5). The centre is strictly
 // SELF-scoped: every read/mutation is filtered by user_id at the query layer; there is no cross-user path.
@@ -114,4 +114,21 @@ export async function hasRecentUnreadForEntity(
       )
     );
   return Number(row?.n ?? 0) > 0;
+}
+
+/**
+ * Resolve lesson entity ids → their course + title, so the notification centre can build a deep link
+ * (`/courses/{courseId}/lessons/{lessonId}`) and a subject line. Batched (one query for the whole page).
+ * The link is a convenience — the target surface's own guards remain the access control.
+ */
+export async function getLessonLinkTargets(
+  lessonIds: string[],
+  client: DbOrTxClient = db
+): Promise<Map<string, { courseId: string; title: string | null }>> {
+  if (lessonIds.length === 0) return new Map();
+  const rows = await client
+    .select({ id: schema.lesson.id, courseId: schema.lesson.courseId, title: schema.lesson.title })
+    .from(schema.lesson)
+    .where(inArray(schema.lesson.id, lessonIds));
+  return new Map(rows.map((r) => [r.id, { courseId: r.courseId as string, title: r.title ?? null }]));
 }
