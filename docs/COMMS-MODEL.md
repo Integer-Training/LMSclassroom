@@ -18,7 +18,13 @@ marking / unlock / completion behaviour.**
 
 ---
 
-## ⚠️ OWNER DECISIONS — confirm all four before Step 2
+## ⚠️ OWNER DECISIONS — ✅ ALL FOUR CONFIRMED 2026-08-18 ("do all recommended")
+
+> **D1 → confirmed:** announcement posters = Admin + Manager (wide) / course staff (scoped); tutors don't broadcast.
+> **D2 → confirmed:** Admin can read any thread (silent oversight, never posts); Manager excluded.
+> **D3 → confirmed:** one message email per thread while unread (+ config window); email defaults coursework/message ON, announcement/session OFF (in-app always).
+> **D4 → confirmed:** pair-bound threads; a new tutor = a fresh thread, the old goes read-only; same pair reactivates.
+> Step 2 proceeds on these.
 
 **D1. Announcement posters = Admin + Manager (RECOMMENDED).** Provider-wide announcements → **Admin or
 Manager** (`requireManagerOrAdmin`); course-scoped announcements → **course staff** (Admin/Tutor,
