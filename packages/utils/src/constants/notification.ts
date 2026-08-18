@@ -60,6 +60,14 @@ export function emailDefaultForCategory(category: NotificationCategory): boolean
   return NOTIFICATION_EMAIL_DEFAULTS[category];
 }
 
+/** Human labels for the per-category email toggles on the settings surface (single config source). */
+export const NOTIFICATION_CATEGORY_LABELS: Record<NotificationCategory, string> = {
+  coursework: 'Coursework — submissions & feedback',
+  messaging: 'Messages from your tutor',
+  announcement: 'Announcements',
+  session: 'New sessions unlocked'
+};
+
 /**
  * Coalescing backstop window for per-thread message emails (docs/COMMS-MODEL.md D3): while a thread already
  * has an unread message notification newer than this window, a further message does not re-email (in-app

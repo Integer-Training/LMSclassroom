@@ -14,6 +14,7 @@
   import { orgApi } from '$features/org/api/org.svelte';
   import * as Field from '@cio/ui/base/field';
   import { Switch } from '@cio/ui/base/switch';
+  import CommsPreferences from '$features/notifications/components/comms-preferences.svelte';
   import BellIcon from '@lucide/svelte/icons/bell';
   import Building2Icon from '@lucide/svelte/icons/building-2';
 
@@ -284,4 +285,9 @@
       </div>
     </Field.Set>
   {/if}
+
+  <Field.Separator />
+
+  <!-- PearlLMS Phase 6 comms preferences: auto-saves per toggle, independent of the save bar above. -->
+  <CommsPreferences />
 </Field.Group>

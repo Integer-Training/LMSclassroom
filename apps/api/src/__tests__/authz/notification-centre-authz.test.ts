@@ -10,6 +10,12 @@ vi.mock('@api/services/comms/notification-centre', () => ({
   markOwnNotificationRead: vi.fn(async () => ({ marked: 1 })),
   markAllOwnNotificationsRead: vi.fn(async () => ({ marked: 2 }))
 }));
+// The router also mounts the preference handlers (Phase 6 Step 6); mock that service so loading the router
+// here does not pull the real @cio/db subpath it depends on.
+vi.mock('@api/services/comms/preferences', () => ({
+  getMyPreferences: vi.fn(async () => []),
+  setMyPreference: vi.fn(async () => ({}))
+}));
 
 import { getNotificationCentre } from '@api/services/comms/notification-centre';
 import { notificationsRouter } from '@api/routes/comms/notifications';

@@ -113,6 +113,7 @@ they do NOT pass it, so those emails bypass preferences — `notifications.ts:48
 | **Messaging / DMs** | **New** | No private-thread primitive exists anywhere. `lesson_comment`, newsfeed comments, community answers are all **public-broadcast, `groupmember`-authored, no participant/recipient/read-state/privacy**. `aiChatConversation` is learner↔LLM. Build the tutor↔learner thread fresh. |
 | **In-app notification centre / bell** | **New** (reuse email-prefs) | **No `notification` table, no bell feature** — email-only today; the "notifications" screen is just email toggles and `BellIcon` is decorative. Build the in-app table + centre new; **reuse** `@cio/db/queries/notifications` (`shouldSendEmail`/`EmailPreferenceLookupCache`) as the "also email?" gate. |
 | **Preferences** (`organizationmember_email_notifications` + `email-toggles.ts` + `notifications.svelte`) | **Reuse + extend** | A per-user, per-category, self-only email-toggle system **already exists and is mounted on BOTH surfaces** (`routes/(app)/lms/settings/notifications`, `…/org/[slug]/settings/notifications`). Phase 6 **extends** it with the new categories (message, announcement, session, coursework) rather than adding a parallel `notification_preference` table — new toggle keys in `email-toggles.ts` + `EMAIL_TOGGLE_MAP` + the columns they need, and they render automatically in the existing panel. |
+| — **AS-BUILT (Phase 6 Steps 2 + 6)** | **Superseded** | The Step-2/Step-6 prompt packs (authoritative) directed a **dedicated `notification_preference` table** keyed by the framework's own `NOTIFICATION_CATEGORIES` (coursework/messaging/announcement/session), resolved by the **single** `getCategoryEmailEnabled(userId, category) = row ?? config default` in `services/comms/notify.ts` — the same function the send path uses (no second resolver). The settings surface is a dedicated **`comms-preferences.svelte`** section rendered inside the existing `notifications.svelte` page, so it appears on BOTH surfaces unchanged; it auto-saves per toggle and carries an "in-app notifications always arrive" note. The pre-implementation "reuse email-toggles.ts / no new table" verdict above is retained for history but does **not** describe the shipped system. |
 | **Realtime transport** | **None — stay poll/refresh** | No WebSocket/SSE/Supabase-realtime in the app (`CODEMAP.md:230`); the only SSE is AI-token streaming. The centre refreshes on load + on navigation + after actions; the brief forbids new realtime infra. |
 
 ## 4. Schema (Step 2 migration `0014`, repo-exact style)
@@ -120,7 +121,9 @@ they do NOT pass it, so those emails bypass preferences — `notifications.ts:48
 New tables (Phase-3/4/5 conventions: `pgTable`, `uuid().defaultRandom().primaryKey()`, named
 `foreignKey(...).onDelete(...)`, `unique(...)`, `index(...)`, `timestamp(withTimezone, mode:'string')`;
 authorship FKs are nullable `set null`; short enum-ish values are `varchar` with the set in config, never a pg
-enum). **No `notification_preference` table** — preferences reuse the existing email-toggle machinery (§3).
+enum). **AS-BUILT:** a dedicated **`notification_preference`** table (Step-2 migration `0014`) backs comms
+preferences, resolved by the single `getCategoryEmailEnabled` (§3 as-built note) — not the older email-toggle
+machinery.
 
 - **`message_thread`** — one per **pair**: `id`, `organization_id→organization` (cascade), `tutor_id→profile`
   (cascade), `learner_id→profile` (cascade), `archived_at` (null = active; set = read-only after
@@ -166,10 +169,12 @@ columns stay plain varchars so the set extends in config with no migration.
 - **Announcements — read** (learner): `lms/pages/dashboard.svelte` (a banner/section, ~:199-200 or the grid at
   :314). **Compose** (staff): new route `routes/(app)/org/[slug]/announcements/` (peer of `community`,
   `allocation`) + nav in `ui/navigation/org-navigation.ts` (people group).
-- **Notification preferences** — already at `routes/(app)/lms/settings/notifications/+page.svelte` and
-  `…/org/[slug]/settings/notifications/+page.svelte` (shared `settings/pages/notifications.svelte`); extend the
-  toggle keys in `packages/utils/src/notifications/email-toggles.ts` and the new categories render
-  automatically.
+- **Notification preferences** — at `routes/(app)/lms/settings/notifications/+page.svelte` and
+  `…/org/[slug]/settings/notifications/+page.svelte` (shared `settings/pages/notifications.svelte`). **AS-BUILT
+  (Step 6):** a dedicated `features/notifications/components/comms-preferences.svelte` section is rendered inside
+  that shared page (so it lives on BOTH surfaces), backed by `features/notifications/api/preferences.svelte.ts`
+  → `GET/PUT /notifications/preferences[/:category]`. Effective values come from the single
+  `getCategoryEmailEnabled` resolver; it auto-saves per toggle and notes that in-app notifications always arrive.
 
 ## 6. Audit
 
@@ -192,7 +197,7 @@ columns stay plain varchars so the set extends in config with no migration.
 | Compose announcement | `POST /announcements` | provider-wide → `requireManagerOrAdmin` (D1); course → `requireStaff` | Admin/Manager (wide), course staff (scoped) |
 | Read announcements | `GET /announcements` | `requireActor` + scope filter (provider-wide to all; else `isEnrolledLearner`) | Enrolment-scoped + provider-wide; staff see all |
 | Notification centre | `GET /notifications`, `POST /notifications/:id/read`, `POST /notifications/read-all` | `requireActor` + `user_id = actor.userId` | **Self only** — no `userId` param exists |
-| Preferences | existing `/…/settings/notifications` (self, `requireActor`) | self-only | Self only |
+| Preferences | `GET /notifications/preferences`, `PUT /notifications/preferences/:category` (self, `requireActor`) | self-only — actor from session, only the category is a path value | Self only |
 
 ## 8. No-attachments invariant (product integrity)
 
