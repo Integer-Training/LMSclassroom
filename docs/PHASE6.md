@@ -147,9 +147,11 @@ vitest. **Zero assertion failures; zero new load-failures.** The comms suites sp
 The comms centre is stable. Production (`learn.epearlacademy.com`, DO droplet) is currently
 **held at the Phase-0 commit** pending AWS SES SMTP (to be routed via the Pearl Email Engine), per
 the owner's earlier HOLD. Redeploying now would advance the droplet to `origin/main` HEAD
-(`e09b2d138`, all of Phases 1–6). **Question put to the owner** — hold vs redeploy (see the chat
-message accompanying this report). If the owner approves a redeploy, update `docs/DEPLOY.md`'s
-verified live-hash note to the deployed commit.
+(`e09b2d138`, all of Phases 1–6). **Question put to the owner** — hold vs redeploy.
+
+**Owner decision (2026-08-18): HOLD** — keep production on the Phase-0 build until AWS SES SMTP is
+wired up via the Pearl Email Engine. No redeploy now; `docs/DEPLOY.md` is unchanged (the droplet is
+not advanced). This reaffirms the earlier HOLD and remains the standing state until the owner lifts it.
 
 ## 9. Independent static review
 
