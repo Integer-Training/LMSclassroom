@@ -21,6 +21,11 @@ decisions below need the owner's confirmation before Step 2.
 | **D4** | Spam controls | **Honeypot field + per-IP rate limit from config; no third-party CAPTCHA** | Config-light: a hidden honeypot (bots fill it → silently drop) + a per-client-IP submission limit. No external CAPTCHA service (scope fence; Phase 10 may harden). |
 | **D5** | Signup closure | **Keep the current invite-only posture; the registration form becomes the sole public entrance; gate the two inert net-new-account plugins self-hosted-off** | Signup is already closed (§2, live-verified §1). The only residual doors — `tokenExchange()` + `sso()` JIT — are inert-by-empty-table; gating them behind `PUBLIC_IS_SELFHOSTED` stops them being enabled by a config row. |
 
+> **✅ All five confirmed by the owner on 2026-08-18 ("all recommended").** Steps 2–5 build to these decisions
+> as settled: no rejection email (D1), no document storage (D2), Manager/Admin + allocated Tutor record ID
+> checks (D3), honeypot + per-IP rate limit (D4), signup stays invite-only with the two inert plugins gated
+> self-hosted-off (D5).
+
 ---
 
 ## 1. Current signup behaviour — from a LIVE attempt (2026-08-18, api :3002)
@@ -216,4 +221,4 @@ phase.
   (§5), notification/audit additions (§6/§7), access rows (§8), duplicate rules (§9), integrations groundwork
   (§10). ✅
 - Current signup behaviour documented from a **live** attempt (§1), not assumption. ✅
-- Owner confirms D1–D5 before Step 2 begins. ⏳ (put to the owner on commit)
+- Owner confirms D1–D5 before Step 2 begins. ✅ (confirmed 2026-08-18, "all recommended")
