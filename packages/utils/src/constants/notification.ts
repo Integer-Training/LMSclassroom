@@ -1,0 +1,69 @@
+/**
+ * Notification framework config (PearlLMS Phase 6). The single CONFIG source for the comms centre — the DB
+ * `notification.type` and `notification_preference.category` columns are plain varchars whose allowed set
+ * lives HERE (not a Postgres enum requiring a migration to extend), mirroring UNIT_TYPES / RESULT_VALUES.
+ *
+ * See docs/COMMS-MODEL.md §1 (event catalogue) + §4 (config). Every event always writes an in-app
+ * notification; email is sent only when the recipient's per-category preference is on (these defaults when
+ * no preference row exists).
+ */
+
+/** The five notification event types (docs/COMMS-MODEL.md §1). */
+export const NOTIFICATION_TYPES = [
+  'submission.created',
+  'result.recorded',
+  'message.received',
+  'announcement.published',
+  'session.unlocked'
+] as const;
+
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+export function isAllowedNotificationType(value: unknown): value is NotificationType {
+  return typeof value === 'string' && (NOTIFICATION_TYPES as readonly string[]).includes(value);
+}
+
+/** Preference categories — email toggles are per-category, not per-type. */
+export const NOTIFICATION_CATEGORIES = ['coursework', 'messaging', 'announcement', 'session'] as const;
+
+export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
+
+export function isAllowedNotificationCategory(value: unknown): value is NotificationCategory {
+  return typeof value === 'string' && (NOTIFICATION_CATEGORIES as readonly string[]).includes(value);
+}
+
+/** Which category each event type belongs to (drives the email preference lookup). */
+export const NOTIFICATION_TYPE_CATEGORY: Record<NotificationType, NotificationCategory> = {
+  'submission.created': 'coursework',
+  'result.recorded': 'coursework',
+  'message.received': 'messaging',
+  'announcement.published': 'announcement',
+  'session.unlocked': 'session'
+};
+
+export function categoryForNotificationType(type: NotificationType): NotificationCategory {
+  return NOTIFICATION_TYPE_CATEGORY[type];
+}
+
+/**
+ * Per-category email default when the recipient has NO preference row (docs/COMMS-MODEL.md D3, owner-confirmed):
+ * coursework + messaging emails ON, announcement + session emails OFF (in-app always fires regardless).
+ */
+export const NOTIFICATION_EMAIL_DEFAULTS: Record<NotificationCategory, boolean> = {
+  coursework: true,
+  messaging: true,
+  announcement: false,
+  session: false
+};
+
+export function emailDefaultForCategory(category: NotificationCategory): boolean {
+  return NOTIFICATION_EMAIL_DEFAULTS[category];
+}
+
+/**
+ * Coalescing backstop window for per-thread message emails (docs/COMMS-MODEL.md D3): while a thread already
+ * has an unread message notification newer than this window, a further message does not re-email (in-app
+ * still fires). Past the window, an email is sent again even if still unread — so a learner who never opens
+ * the app is not silenced forever.
+ */
+export const NOTIFICATION_COALESCE_WINDOW_MS = 30 * 60 * 1000;

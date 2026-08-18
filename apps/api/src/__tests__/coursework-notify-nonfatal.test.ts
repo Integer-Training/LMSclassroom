@@ -37,6 +37,9 @@ vi.mock('@cio/db/drizzle', async (importOriginal) => ({
   runInTransaction: (fn: (tx: unknown) => unknown) => fn({})
 }));
 vi.mock('@cio/db/queries/completion', () => ({ recordCompletionIfComplete: vi.fn(async () => null) }));
+// Phase 6: recordResult emits session.unlocked on a Pass — inert mocks keep this non-fatal test hermetic.
+vi.mock('@api/services/gating/unlock', () => ({ getUnitsUnlockedByPass: vi.fn(async () => []) }));
+vi.mock('@api/services/comms/notify', () => ({ emitNotification: vi.fn() }));
 
 import {
   createSubmission,

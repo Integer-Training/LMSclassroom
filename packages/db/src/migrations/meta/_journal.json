@@ -99,6 +99,13 @@
       "when": 1786972941851,
       "tag": "0013_unusual_namorita",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1787049849337,
+      "tag": "0014_panoramic_micromacro",
+      "breakpoints": true
     }
   ]
 }

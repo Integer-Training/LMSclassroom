@@ -4038,3 +4038,54 @@ export const courseCompletion = pgTable(
     index('idx_course_completion_learner').on(table.learnerId)
   ]
 );
+
+// PearlLMS Phase 6 — the in-app notification centre (docs/COMMS-MODEL.md §4). One row per recipient per
+// event; ALWAYS written (email is separately gated by notification_preference). `type` is a config-driven
+// varchar (NOTIFICATION_TYPES, no pg enum). Subject is a polymorphic (entity_type, entity_id) pair — FK-less
+// so one table serves every source without a column per source; the reader resolves/skips dangling refs.
+export const notification = pgTable(
+  'notification',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    userId: uuid('user_id').notNull(),
+    type: varchar().notNull(),
+    entityType: varchar('entity_type'),
+    entityId: uuid('entity_id'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    readAt: timestamp('read_at', { withTimezone: true, mode: 'string' })
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [profile.id],
+      name: 'notification_user_id_fkey'
+    }).onDelete('cascade'),
+    index('idx_notification_user').on(table.userId),
+    index('idx_notification_user_unread').on(table.userId, table.readAt)
+  ]
+);
+
+// PearlLMS Phase 6 — per-user, per-category email preference for the comms framework. One row per
+// (user, category); ABSENCE means "use the config default" (NOTIFICATION_EMAIL_DEFAULTS) — rows are only
+// written when a user changes a toggle. Separate from the stock organizationmember_email_notifications
+// (which stays for the stock course/cohort emails); this table owns the Phase-6 comms categories.
+export const notificationPreference = pgTable(
+  'notification_preference',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    userId: uuid('user_id').notNull(),
+    category: varchar().notNull(),
+    emailEnabled: boolean('email_enabled').default(true).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [profile.id],
+      name: 'notification_preference_user_id_fkey'
+    }).onDelete('cascade'),
+    unique('notification_preference_user_category_unique').on(table.userId, table.category),
+    index('idx_notification_preference_user').on(table.userId)
+  ]
+);

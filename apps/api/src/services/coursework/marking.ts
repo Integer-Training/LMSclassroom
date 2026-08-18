@@ -14,6 +14,8 @@ import {
 import { recordCompletionIfComplete, type CompletionRow } from '@cio/db/queries/completion';
 import { isAllocatedTutor } from '@api/middlewares/guards';
 import { notifyCourseworkResulted } from '@api/services/coursework/notifications';
+import { getUnitsUnlockedByPass } from '@api/services/gating/unlock';
+import { emitNotification } from '@api/services/comms/notify';
 
 // Tutor marking (PearlLMS Phase 3 Step 5). The tutor assesses OFF-platform; this records the outcome
 // only — one result value (from config) + one free-text feedback field — against ONE submission version.
@@ -128,6 +130,26 @@ export async function recordResult(
     });
   } catch (error) {
     console.error('[coursework] result notification failed (result still recorded):', error);
+  }
+
+  // session.unlocked (Phase 6) — a PASS may open the next gated session(s) for this learner. Determine which
+  // unit(s) this Pass newly unblocks by composing the SAME Phase-4 unlock rule (no duplicate chain logic),
+  // and notify the learner in-app (no email by default — session category). Fire-and-forget; never on a Refer.
+  if (isPassingResult(input.result)) {
+    try {
+      const opened = await getUnitsUnlockedByPass(submission.courseId, submission.lessonId);
+      for (const unit of opened) {
+        await emitNotification({
+          type: 'session.unlocked',
+          recipients: [{ userId: submission.learnerId }],
+          entityType: 'lesson',
+          entityId: unit.lessonId
+          // no emailTemplateId → in-app only (session email default is off)
+        });
+      }
+    } catch (error) {
+      console.error('[coursework] session-unlocked notification failed (result still recorded):', error);
+    }
   }
 
   return row;

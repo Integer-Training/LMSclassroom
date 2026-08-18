@@ -54,3 +54,29 @@ export async function getCourseUnlockMap(actor: Actor, courseId: string): Promis
   }
   return map;
 }
+
+/**
+ * The non-exempt unit(s) that a Pass on `passedLessonId` NEWLY opens for the learner (PearlLMS Phase 6 —
+ * the session.unlocked event). A unit gates on its nearest preceding non-exempt unit (the SAME shared
+ * `findGatePredecessorIndex` chain walk as isUnitUnlocked — no duplicate logic); so the units whose gate
+ * predecessor IS the just-passed unit are exactly the ones this Pass unblocks. Empty when the course's
+ * sequential unlock is off (nothing was locked to open). Caller emits only for a passing result.
+ */
+export async function getUnitsUnlockedByPass(
+  courseId: string,
+  passedLessonId: string
+): Promise<{ lessonId: string; title: string | null }[]> {
+  if (!(await getCourseSequentialUnlock(courseId))) return [];
+  const units = await getOrderedUnitsForCourse(courseId);
+  const passedIndex = units.findIndex((u) => u.lessonId === passedLessonId);
+  if (passedIndex < 0) return [];
+
+  const opened: { lessonId: string; title: string | null }[] = [];
+  for (let i = 0; i < units.length; i++) {
+    if (isExemptUnitType(units[i].unitType)) continue; // exempt units are always open — never "newly unlocked"
+    if (findGatePredecessorIndex(units, i) === passedIndex) {
+      opened.push({ lessonId: units[i].lessonId, title: units[i].title ?? null });
+    }
+  }
+  return opened;
+}
