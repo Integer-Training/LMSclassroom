@@ -133,6 +133,12 @@ deployed by this step. If approved: follow `docs/DEPLOY.md`, update its deployed
 and have the owner repeat the §3 learner journey once on the DigitalOcean URL (onboard → set credential →
 first login → coursework → Refer → resubmit → Pass → completion → progress → report).
 
+**Owner decision (2026-08-18): HOLD.** The prod redeploy stays held until AWS SES SMTP is ready, then the
+rebuild is done in one bundled step (set `SMTP_*` on the droplet `.env` → `git pull` →
+`docker compose -f docker-compose.deploy.yaml up -d --build` → update `docs/DEPLOY.md` deployed-hash → owner
+walks the §3 journey + the 3 email smoke flows on the live URL). Until then prod remains on the Phase-0 build;
+Phases 1–5 are pushed to `origin/main` (`0ed4ccac0`) but not live.
+
 _Test-first statement: the completion rule + progress metrics were authored as failing tests before the
 implementation (Steps 2–3); the reviewer independently re-derived the guarantees from the code, and the
 adversarial pass + whole-MVP E2E confirm them end-to-end._
