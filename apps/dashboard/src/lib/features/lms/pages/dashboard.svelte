@@ -20,6 +20,8 @@
   import * as ResourceListRow from '@cio/ui/custom/resource-list-row';
   import { CourseListRow } from '$features/course/components';
   import UpcomingSessionsCard from '$features/lms/components/upcoming-sessions-card.svelte';
+  import AnnouncementsList from '$features/announcements/components/announcements-list.svelte';
+  import { announcementsApi } from '$features/announcements/api/announcements.svelte';
   import CoursePublicBadge from '$features/course/components/course-public-badge.svelte';
   import CoursePreviewModal from '$features/lms/components/course-preview-modal.svelte';
   import type { RecommendedCourses } from '$features/course/types';
@@ -89,6 +91,8 @@
 
     coursesApi.getEnrolledCourses();
     coursesApi.getRecommendedCourses({ limit: 3 });
+    // Phase 6 Step 5 — the learner's announcement feed (provider-wide + their enrolled courses').
+    announcementsApi.loadFeed();
   });
 
   $effect(() => {
@@ -199,6 +203,13 @@
 <div class="space-y-6 pb-8">
   {#if upcomingSessions.length}
     <UpcomingSessionsCard sessions={upcomingSessions} />
+  {/if}
+
+  {#if announcementsApi.items.length}
+    <section>
+      <h2 class="mb-3 text-base font-semibold text-[#040F2D] dark:text-white">Announcements</h2>
+      <AnnouncementsList items={announcementsApi.items} showScope={false} />
+    </section>
   {/if}
 
   <BlurFade delay={0.05} once>

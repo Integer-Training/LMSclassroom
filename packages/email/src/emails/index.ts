@@ -31,9 +31,11 @@ export * from './student-limit-approaching';
 export * from './coursework-submitted';
 export * from './coursework-resulted';
 export * from './message-received';
+export * from './announcement-published';
 
 import type { newsfeedCommentEmail, newsfeedPostEmail } from './newsfeed';
 import type { messageReceivedEmail } from './message-received';
+import type { announcementPublishedEmail } from './announcement-published';
 
 // Import types for schema mapping (must be after exports to avoid circular dependency)
 import type { forgotPasswordEmail } from './forgot-password';
@@ -94,4 +96,5 @@ export type EmailSchemas = {
   courseworkSubmitted: typeof courseworkSubmittedEmail.template.schema;
   courseworkResulted: typeof courseworkResultedEmail.template.schema;
   messageReceived: typeof messageReceivedEmail.template.schema;
+  announcementPublished: typeof announcementPublishedEmail.template.schema;
 };

@@ -17,7 +17,9 @@ export const AUDIT_ACTIONS = {
   // Phase 3 — tutor marking (submission id + version + result value only; NEVER the feedback text).
   RESULT_ENTERED: 'result.entered',
   // Phase 5 — durable course completion (learner id + course id + completion id only; no names/PII).
-  COMPLETION_RECORDED: 'completion.recorded'
+  COMPLETION_RECORDED: 'completion.recorded',
+  // Phase 6 — a staff announcement is published (announcement id + scope only; never the title/body).
+  ANNOUNCEMENT_PUBLISHED: 'announcement.published'
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS] | (string & {});

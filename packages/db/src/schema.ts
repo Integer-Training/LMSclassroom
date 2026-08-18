@@ -4179,3 +4179,41 @@ export const messageRead = pgTable(
     index('idx_message_read_profile').on(table.profileId)
   ]
 );
+
+// PearlLMS Phase 6 Step 5 — a staff announcement (docs/COMMS-MODEL.md §4). course_id NULL = PROVIDER-WIDE;
+// non-null = scoped to that course's enrolment. Publish-immediate (no drafts/scheduling). Slim by design —
+// no reactions, no comments (the stock newsfeed's baggage is deliberately not inherited). author_id is
+// nullable set-null so the row survives the author's deletion.
+export const announcement = pgTable(
+  'announcement',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    organizationId: uuid('organization_id').notNull(),
+    authorId: uuid('author_id'),
+    courseId: uuid('course_id'),
+    title: varchar().notNull(),
+    body: text().notNull(),
+    publishedAt: timestamp('published_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.organizationId],
+      foreignColumns: [organization.id],
+      name: 'announcement_organization_id_fkey'
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.authorId],
+      foreignColumns: [profile.id],
+      name: 'announcement_author_id_fkey'
+    }).onDelete('set null'),
+    foreignKey({
+      columns: [table.courseId],
+      foreignColumns: [course.id],
+      name: 'announcement_course_id_fkey'
+    }).onDelete('cascade'),
+    index('idx_announcement_org').on(table.organizationId),
+    index('idx_announcement_course').on(table.courseId),
+    index('idx_announcement_published').on(table.publishedAt)
+  ]
+);

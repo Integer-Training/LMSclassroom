@@ -20,7 +20,7 @@ marking / unlock / completion behaviour.**
 
 ## ⚠️ OWNER DECISIONS — ✅ ALL FOUR CONFIRMED 2026-08-18 ("do all recommended")
 
-> **D1 → confirmed:** announcement posters = Admin + Manager (wide) / course staff (scoped); tutors don't broadcast.
+> **D1 → confirmed (refined at Step 5):** announcement posters = **Admin + Manager only, for BOTH provider-wide AND course-scoped** (`requireManagerOrAdmin`). **Tutors are denied entirely** — a course-scoped announcement still broadcasts to ALL enrolled learners of that course (not just a tutor's allocated ones), which is against the tutor-scoping principle; a tutor's outreach channel is messaging their allocated learners. Announcements are **publish-immediate** — no drafts, no scheduling (noted as possible later requests). A course announcement's notification goes to the learners enrolled **at publish time**, but the announcement itself stays visible on the course surface to anyone who enrols later.
 > **D2 → confirmed:** Admin can read any thread (silent oversight, never posts); Manager excluded.
 > **D3 → confirmed:** one message email per thread while unread (+ config window); email defaults coursework/message ON, announcement/session OFF (in-app always).
 > **D4 → confirmed:** pair-bound threads; a new tutor = a fresh thread, the old goes read-only; same pair reactivates.
