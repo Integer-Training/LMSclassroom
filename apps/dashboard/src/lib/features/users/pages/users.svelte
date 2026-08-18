@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { page } from '$app/state';
   import * as Table from '@cio/ui/base/table';
   import * as Dialog from '@cio/ui/base/dialog';
   import * as Select from '@cio/ui/base/select';
@@ -120,6 +121,35 @@
     const ok = await usersApi.setStatus(statusTarget.memberId, next);
     if (ok) statusOpen = false;
   }
+
+  // Lite onboarding (Phase 5 Step 5) — create learner + enrol + issue credential in one flow.
+  let onboardOpen = $state(false);
+  let oName = $state('');
+  let oEmail = $state('');
+  let oCourseId = $state('');
+  const slug = $derived(page.params.slug ?? '');
+
+  async function openOnboard() {
+    usersApi.onboardResult = null;
+    oName = '';
+    oEmail = '';
+    oCourseId = '';
+    onboardOpen = true;
+    await usersApi.loadOnboardingCourses();
+    if (!oCourseId && usersApi.onboardingCourses[0]) oCourseId = usersApi.onboardingCourses[0].courseId;
+  }
+  async function submitOnboard() {
+    if (!oName.trim() || !oEmail.trim() || !oCourseId) return;
+    // On success the store sets usersApi.onboardResult → the dialog switches to the success state.
+    await usersApi.onboardLearner({ name: oName.trim(), email: oEmail.trim(), courseId: oCourseId });
+  }
+  function closeOnboard() {
+    onboardOpen = false;
+    usersApi.onboardResult = null;
+  }
+  const courseLabel = $derived(
+    usersApi.onboardingCourses.find((c) => c.courseId === oCourseId)?.title ?? 'Select a course'
+  );
 </script>
 
 <div class="mx-auto w-full max-w-5xl p-6">
@@ -128,7 +158,10 @@
       <h1 class="text-xl font-semibold">Users</h1>
       <p class="text-muted-foreground text-sm">Create, role, and deactivate accounts. Admin only.</p>
     </div>
-    <Button onclick={() => (createOpen = true)}>Create user</Button>
+    <div class="flex items-center gap-2">
+      <Button variant="outline" onclick={openOnboard}>Onboard learner</Button>
+      <Button onclick={() => (createOpen = true)}>Create user</Button>
+    </div>
   </div>
 
   <div class="mb-4">
@@ -255,6 +288,85 @@
         </Button>
       </div>
     </div>
+  </Dialog.Content>
+</Dialog.Root>
+
+<!-- Onboard learner (Phase 5 Step 5): create + enrol + credential in one flow -->
+<Dialog.Root bind:open={onboardOpen}>
+  <Dialog.Content class="w-full max-w-md">
+    {#if usersApi.onboardResult}
+      <Dialog.Header>
+        <Dialog.Title>Learner onboarded</Dialog.Title>
+        <Dialog.Description>
+          {usersApi.onboardResult.learnerName} was created and enrolled in
+          {usersApi.onboardResult.courseTitle ?? 'the course'}. A set-password invite was emailed — they set their own
+          login from the link.
+        </Dialog.Description>
+      </Dialog.Header>
+      <div class="space-y-3">
+        <div class="ui:border-border ui:bg-muted/40 rounded-md border p-3 text-sm">
+          <p class="font-medium">Next: allocate a tutor</p>
+          <p class="ui:text-muted-foreground mt-1 text-xs">
+            Assign this learner to a tutor so their coursework can be marked.
+          </p>
+          <a
+            href={`/org/${slug}/allocation`}
+            class="ui:text-primary mt-2 inline-block text-sm font-medium hover:underline"
+          >
+            Go to tutor allocation →
+          </a>
+        </div>
+        <p class="ui:text-muted-foreground text-xs">
+          Add enrolment details (date of birth, address, etc.) any time from the Users table — “Edit profile”.
+        </p>
+        <div class="flex justify-end gap-2 pt-1">
+          <Button variant="outline" onclick={openOnboard}>Onboard another</Button>
+          <Button onclick={closeOnboard}>Done</Button>
+        </div>
+      </div>
+    {:else}
+      <Dialog.Header>
+        <Dialog.Title>Onboard learner</Dialog.Title>
+        <Dialog.Description>
+          Create a learner account, enrol them into a course, and send their set-password invite — in one step.
+        </Dialog.Description>
+      </Dialog.Header>
+      <div class="space-y-3">
+        <div class="space-y-1">
+          <label for="onboard-name" class="text-sm font-medium">Full name</label>
+          <Input id="onboard-name" bind:value={oName} placeholder="Jane Doe" />
+        </div>
+        <div class="space-y-1">
+          <label for="onboard-email" class="text-sm font-medium">Email</label>
+          <Input id="onboard-email" type="email" bind:value={oEmail} placeholder="jane@example.com" />
+        </div>
+        <div class="space-y-1">
+          <label for="onboard-course" class="text-sm font-medium">Course</label>
+          {#if usersApi.onboardingCourses.length === 0}
+            <p class="ui:text-muted-foreground text-xs">No published courses to enrol into.</p>
+          {:else}
+            <Select.Root type="single" bind:value={oCourseId}>
+              <Select.Trigger id="onboard-course" class="ui:w-full">{courseLabel}</Select.Trigger>
+              <Select.Content>
+                {#each usersApi.onboardingCourses as course (course.courseId)}
+                  <Select.Item value={course.courseId}>{course.title ?? 'Untitled course'}</Select.Item>
+                {/each}
+              </Select.Content>
+            </Select.Root>
+          {/if}
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <Button variant="outline" onclick={() => (onboardOpen = false)} disabled={usersApi.isLoading}>Cancel</Button>
+          <Button
+            onclick={submitOnboard}
+            loading={usersApi.isLoading}
+            disabled={!oName.trim() || !oEmail.trim() || !oCourseId}
+          >
+            Create, enrol &amp; invite
+          </Button>
+        </div>
+      </div>
+    {/if}
   </Dialog.Content>
 </Dialog.Root>
 

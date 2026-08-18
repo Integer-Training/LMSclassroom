@@ -20,6 +20,15 @@ import type { Actor } from '@cio/db/actor';
 import { handleError } from '@api/utils/errors';
 import { requireAdmin } from '@api/middlewares/guards';
 import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
+import { listOnboardingCourses, onboardLearner } from '@api/services/onboarding/onboarding';
+
+// PearlLMS Phase 5 Step 5 — lite onboarding payload. Name + email + a published course id.
+const ZOnboardLearner = z.object({
+  name: z.string().trim().min(1),
+  email: z.string().trim().email(),
+  courseId: z.string().uuid()
+});
 
 // Admin user management (Phase 1 Step 7). ADMIN-only across the board (Manager/Tutor/Learner denied
 // by requireAdmin — actor-based, fresh per request). Every mutation audits via recordAudit (in the
@@ -44,6 +53,27 @@ export const usersRouter = new Hono()
       return c.json({ success: true, data }, 201);
     } catch (error) {
       return handleError(c, error, 'Failed to create user');
+    }
+  })
+  // Lite onboarding — published-course picker for the form. Static path before any param route.
+  .get('/onboard/courses', requireAdmin, async (c) => {
+    try {
+      const actor = c.get('actor') as Actor;
+      const data = await listOnboardingCourses(actor);
+      return c.json({ success: true, data }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to list onboarding courses');
+    }
+  })
+  // Lite onboarding — create the learner account, enrol into the chosen course, issue the credential invite.
+  .post('/onboard', requireAdmin, zValidator('json', ZOnboardLearner), async (c) => {
+    try {
+      const actor = c.get('actor') as Actor;
+      const input = c.req.valid('json');
+      const data = await onboardLearner(actor, input);
+      return c.json({ success: true, data }, 201);
+    } catch (error) {
+      return handleError(c, error, 'Failed to onboard learner');
     }
   })
   .put(

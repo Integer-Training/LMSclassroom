@@ -72,3 +72,17 @@ from the `Actor`; pass `organizationId` to override.
 | `profile.updated` | a profile is edited | `profile` | `{ fields: ["fullname", "locale"] }` |
 
 Call-sites are added by the steps that own each action — Step 3 only ships the table + helper.
+
+## Phase 3–5 actions (wired)
+
+| Action | When | Entity | Example metadata |
+|---|---|---|---|
+| `allocation.created` | manager/admin allocates a tutor to a learner | `tutor_allocation` | `{ tutorId, learnerId }` (ids only) |
+| `allocation.removed` | manager/admin removes an allocation | `tutor_allocation` | `{ allocationId }` |
+| `coursework.submitted` | a learner submits coursework | `coursework_submission` | `{ submissionId, version, fileCount }` |
+| `result.entered` | a tutor records a Pass/Refer | `coursework_result` | `{ submissionId, version, result }` — NEVER the feedback text |
+| `completion.recorded` | the final required Pass completes a course (Phase 5) | `course_completion` | `{ learnerId, courseId, completionId }` (ids only) |
+
+**Lite onboarding (Phase 5 Step 5) adds NO new audit action.** It composes Phase 1's `createOrgUser`, so the
+account creation is recorded by the existing **`user.created`** (id-only metadata). The enrolment write is not
+independently audited (it mirrors the existing course-enrolment path, which is unaudited).

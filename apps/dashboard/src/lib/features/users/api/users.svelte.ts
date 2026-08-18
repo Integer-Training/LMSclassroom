@@ -87,6 +87,43 @@ class UsersApi extends BaseApiWithErrors {
     });
   }
 
+  // ── Lite onboarding (Phase 5 Step 5) — create learner + enrol + issue credential in one flow ──────
+  onboardingCourses = $state<{ courseId: string; title: string | null }[]>([]);
+  onboardResult = $state<{ userId: string; courseId: string; courseTitle: string | null; learnerName: string } | null>(
+    null
+  );
+
+  async loadOnboardingCourses() {
+    return this.execute<typeof classroomio.organization.users.onboard.courses.$get>({
+      requestFn: () => classroomio.organization.users.onboard.courses.$get(),
+      logContext: 'loading onboarding courses',
+      onSuccess: (result) => {
+        this.onboardingCourses = result.data as { courseId: string; title: string | null }[];
+      },
+      onError: (result) => {
+        if (typeof result === 'string') snackbar.error(result);
+      }
+    });
+  }
+
+  async onboardLearner(input: { name: string; email: string; courseId: string }) {
+    this.onboardResult = null;
+    const res = await this.execute<typeof classroomio.organization.users.onboard.$post>({
+      requestFn: () => classroomio.organization.users.onboard.$post({ json: input }),
+      logContext: 'onboarding learner',
+      onSuccess: (result) => {
+        this.onboardResult = result.data as UsersApi['onboardResult'];
+        snackbar.success('Learner onboarded — a set-password invite was sent');
+        this.list({ page: 1 });
+      },
+      onError: (result) => {
+        if (typeof result === 'string') snackbar.error(result);
+        else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
+      }
+    });
+    return res?.data;
+  }
+
   async changeRole(memberId: number, roleId: number) {
     return this.execute<(typeof classroomio.organization.users)[':memberId']['role']['$put']>({
       requestFn: () =>
