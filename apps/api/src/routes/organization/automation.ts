@@ -16,9 +16,13 @@ import { Hono } from '@api/utils/hono';
 import { authMiddleware } from '@api/middlewares/auth';
 import { handleError } from '@api/utils/errors';
 import { orgAdminMiddleware } from '@api/middlewares/org-admin';
+import { blockWhenSelfHosted } from '@api/middlewares/self-hosted';
 import { zValidator } from '@hono/zod-validator';
 
+// PearlLMS Phase 7 Step 5 — automation-key management (the keys feeding the public API / MCP / Zapier) is
+// DISABLED on the self-hosted deployment (docs/INTEGRATIONS.md W2): the owner does not use it.
 export const automationRouter = new Hono()
+  .use('*', blockWhenSelfHosted)
   .get(
     '/usage',
     authMiddleware,

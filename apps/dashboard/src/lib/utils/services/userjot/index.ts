@@ -1,97 +1,29 @@
-import { dev } from '$app/environment';
-import { PUBLIC_IS_SELFHOSTED } from '$env/static/public';
-import { get } from 'svelte/store';
-import { globalStore } from '$lib/utils/store/app';
+// PearlLMS Phase 7 Step 5 (docs/INTEGRATIONS.md T4) — UserJot is DISABLED. It transmitted id/email/name/avatar
+// to cdn.userjot.com and was only flag-gated off; per the owner-signed register it is now inert. These are
+// no-op stubs (the same exports the callers import) — NO SDK script is ever injected, NO identity is ever sent,
+// and there is no reference to cdn.userjot.com anywhere. Mirrors the Phase-0 PostHog/Umami neutering.
 
-const USERJOT_APP_ID = 'cm4a6vcmp00jpmdb5n66rmkzz';
-
-let isInitialized = false;
-
-function isWidgetAllowed(): boolean {
-  if (dev) return false;
-  if (PUBLIC_IS_SELFHOSTED === 'true') return false;
-  if (get(globalStore).isOrgSite) return false;
-
-  return true;
-}
-
-function ensureSdkLoaded(): void {
-  if (window.uj) return;
-
-  window.$ujq = window.$ujq || [];
-  window.uj =
-    window.uj ||
-    (new Proxy({} as Window['uj'], {
-      get:
-        (_, prop) =>
-        (...args: unknown[]) =>
-          window.$ujq.push([prop, ...args])
-    }) as Window['uj']);
-
-  const script = document.createElement('script');
-  script.type = 'module';
-  script.async = true;
-  script.src = 'https://cdn.userjot.com/sdk/v2/uj.js';
-  // Browsers hide the nonce attribute in the DOM; read via the IDL property.
-  const nonceSource = document.querySelector('script[nonce]') as HTMLScriptElement | null;
-  const nonce = nonceSource?.nonce || nonceSource?.getAttribute('nonce');
-  if (nonce) script.setAttribute('nonce', nonce);
-  document.head.appendChild(script);
-}
-
-export function initUserJot(): void {
-  if (isInitialized) return;
-  if (!isWidgetAllowed()) return;
-
-  ensureSdkLoaded();
-
-  window.uj.init(USERJOT_APP_ID, {
-    trigger: 'custom',
-    position: 'right',
-    theme: 'auto'
-  });
-
-  isInitialized = true;
-}
-
-type UserJotIdentity = {
+export type UserJotIdentity = {
   id: string;
   email?: string;
   fullname?: string | null;
   avatarUrl?: string | null;
 };
 
-export function identifyUserJotUser({ id, email, fullname, avatarUrl }: UserJotIdentity): void {
-  if (!isWidgetAllowed()) return;
+export type UserJotWidgetSection = 'feedback' | 'roadmap' | 'updates';
 
-  ensureSdkLoaded();
+export function initUserJot(): void {
+  /* disabled — no-op */
+}
 
-  const [firstName, ...rest] = (fullname ?? '').trim().split(/\s+/);
-  const lastName = rest.join(' ');
-
-  window.uj.identify({
-    id,
-    email,
-    firstName: firstName || undefined,
-    lastName: lastName || undefined,
-    avatar: avatarUrl ?? undefined
-  });
+export function identifyUserJotUser(_identity: UserJotIdentity): void {
+  /* disabled — no-op; no learner identity ever leaves */
 }
 
 export function clearUserJotUser(): void {
-  if (!isWidgetAllowed()) return;
-
-  ensureSdkLoaded();
-
-  window.uj.identify(null);
+  /* disabled — no-op */
 }
 
-export type UserJotWidgetSection = 'feedback' | 'roadmap' | 'updates';
-
-export function showUserJotWidget(section: UserJotWidgetSection): void {
-  if (!isWidgetAllowed()) return;
-
-  ensureSdkLoaded();
-
-  window.uj.showWidget({ section });
+export function showUserJotWidget(_section: UserJotWidgetSection): void {
+  /* disabled — no-op */
 }

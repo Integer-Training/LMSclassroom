@@ -272,3 +272,34 @@ needed.
   the most visible one.
 - **Test:** `packages/email/tests/sender-identity.test.ts` asserts `EMAIL_FROM`/`EMAIL_REPLY_TO`
   follow `SMTP_SENDER`/`SMTP_REPLY_TO`. Email suite 12 pass (was 10).
+
+## Egress re-audit (Phase 7 Step 5 — after the integrations register) — 2026-08-19
+
+Re-ran the Phase-0 egress-audit method (same rigour) after the owner-signed disablements in
+docs/INTEGRATIONS.md (Public API v1 + automation-key management gated self-hosted-off; the 4
+`/api/polar/*` Polar commerce routes removed; UserJot neutered to no-ops). **Result: PASS —
+the live egress set matches the register's keeps exactly; no surprise endpoints.**
+
+Swept set = the Phase-0 domains extended with the key-gated hosts (`api.tinybird.co`,
+`cdn.userjot.com`, `widget.senja.io`, `*.sentry.io`, `r.jina.ai`, `api.polar.sh`,
+`api.openai.com`, `api.unsplash.com`, `api.cloudflare.com`, AI-provider hosts).
+
+- **Method 1 — server-side runtime probe (API + jobs).** undici `request:create` diagnostics
+  subscriber + global `fetch` wrapper via `NODE_OPTIONS --import`, while exercising the server
+  paths (public registration → DB write + Manager/Admin notification enqueue; approval-queue read;
+  course picker; learner ID-verification read). **ZERO outbound HTTP origins** logged. (Postgres +
+  Redis + SMTP are raw TCP to our own infra, not undici HTTP.)
+- **Method 2 — built client-bundle grep** (`.svelte-kit/output/client`, `.js` only, `.map`
+  excluded). Only `widget.senja.io` present (Senja — kept, gated-off marketing widget). **`cdn.userjot.com`
+  gone** (UserJot neutering confirmed); no posthog/umami/tinybird/sentry/polar/phone-home strings.
+- **Method 3 — phone-home unit test** (`no-phone-home.test.ts`) — PASS.
+- **Method 4 — repo-wide source grep.** Deployed apps (dashboard/api/jobs) all inert
+  (comments / neutered no-ops / gated-off constants / plan-gated dead UI referencing the now-removed
+  local `/api/polar/*` routes). Remaining live external-host strings only in **non-deployed** apps
+  (`apps/website`, `apps/tenant-router`) + a dormant `@cio/db` Polar-subscription maintenance script.
+
+**Live egress == register keeps:** Supabase Postgres + Storage, the SMTP mailer, and (learner-browser
+only, if a staff member embeds one) an external media host. Everything else removed or inert-without-a-key;
+Public API / automation / Polar disabled. Disabled-surface checks: `/public-api/v1` +
+`/organization/automation` → 404 self-hosted (`blockWhenSelfHosted`, unit-tested); `/api/polar/*` routes
+deleted; UserJot exports are no-op stubs.

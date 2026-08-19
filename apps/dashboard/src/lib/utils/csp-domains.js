@@ -7,7 +7,7 @@ const saasDefaults = {
     'https://assets.cdn.clsrio.com',
     'https://embed.classroomio.com',
     'https://cdnjs.cloudflare.com',
-    'https://cdn.userjot.com',
+    // PearlLMS Phase 7 Step 5 — UserJot removed (INTEGRATIONS.md T4); its CSP entry dropped.
     'https://*.senja.io',
     'https://www.youtube.com',
     'https://youtube.com',

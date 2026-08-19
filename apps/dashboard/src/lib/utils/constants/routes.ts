@@ -42,7 +42,9 @@ export const PUBLIC_ROUTES = [
   '^/csp-report$'
 ];
 
-export const PUBLIC_API_ROUTES = ['/api/polar/webhook', '/api/lmz', '/api/verify'];
+// PearlLMS Phase 7 Step 5 — the Polar commerce routes (incl. /api/polar/webhook) were removed
+// (docs/INTEGRATIONS.md C1); a closed provisioned LMS has no commerce.
+export const PUBLIC_API_ROUTES = ['/api/lmz', '/api/verify'];
 
 export const ROUTES_TO_HIDE_NAV = [
   `^${ROUTE.LOGIN}$`,
