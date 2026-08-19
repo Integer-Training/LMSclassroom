@@ -19,7 +19,11 @@ export const AUDIT_ACTIONS = {
   // Phase 5 — durable course completion (learner id + course id + completion id only; no names/PII).
   COMPLETION_RECORDED: 'completion.recorded',
   // Phase 6 — a staff announcement is published (announcement id + scope only; never the title/body).
-  ANNOUNCEMENT_PUBLISHED: 'announcement.published'
+  ANNOUNCEMENT_PUBLISHED: 'announcement.published',
+  // Phase 7 — registration decisions (registration id + course id only; the decision NOTE lives on the row,
+  // NEVER in audit metadata, and the applicant's name/email are never recorded here).
+  REGISTRATION_APPROVED: 'registration.approved',
+  REGISTRATION_REJECTED: 'registration.rejected'
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS] | (string & {});

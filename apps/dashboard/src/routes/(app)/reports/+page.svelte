@@ -27,6 +27,8 @@
   <Page.Header>
     <Page.HeaderContent>
       <Page.Title>Learner progress</Page.Title>
+      <!-- PearlLMS Phase 7 — Manager/Admin reach the approval queue from their landing. -->
+      <a href="/registrations" class="ui:text-primary text-sm underline">Registrations →</a>
     </Page.HeaderContent>
   </Page.Header>
 

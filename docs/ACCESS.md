@@ -593,7 +593,14 @@ dropped from the plugin list when `PUBLIC_IS_SELFHOSTED === 'true'` (defense-in-
 |---|---|---|---|
 | Public register (create pending) | `POST /register` (via dashboard `(auth)/register` action) | `apiKeyMiddleware` + honeypot + per-IP rate limit (in service) | **Anonymous**, rate-limited; writes ONLY a `registration` row — no user/member/session. Duplicate existing-member OR open-pending email → neutral 409 (no enumeration); honeypot-filled → silent drop |
 | Register course picker | `GET /register/courses` | `apiKeyMiddleware` | Published courses (id + title) for the form; sole-org resolved |
+| Approval queue (list) | `GET /organization/registrations?status=` | `requireManagerOrAdmin` + org-bound | **Manager/Admin**; oldest-first; Tutor/Learner 403, anon 401 (Step 3) |
+| Approve course picker | `GET /organization/registrations/courses` | `requireManagerOrAdmin` | **Manager/Admin**; published courses for the approve selector |
+| Registration detail | `GET /organization/registrations/:id` | `requireManagerOrAdmin` + org-bound | **Manager/Admin** |
+| Approve | `POST /organization/registrations/:id/approve` | `requireManagerOrAdmin` | **Manager/Admin**; composes Phase-5 `onboardLearner` (user+enrol+invite); one-way + race-safe (atomic `WHERE status='pending'` claim); audited `registration.approved` |
+| Reject | `POST /organization/registrations/:id/reject` | `requireManagerOrAdmin` | **Manager/Admin**; note required; nothing created; audited `registration.rejected` (note on the row, never in metadata) |
 
 `registration.submitted` notifies every Manager + Admin through the Phase-6 framework (new `registration`
-category, email default ON). The approval-queue, approve/reject, and ID-verification rows land with their
-Step-3/4 features.
+category, email default ON). Approve/reject are **one-way** (a decided row is refused, 409) and race-safe (a
+double-fire approval yields exactly one account). The dashboard queue is a top-level `(app)/registrations` route
+(`requireManagerOrAdmin`), reachable from the Manager landing (`/reports`) and the staff email link. The
+ID-verification rows land with the Step-4 feature.
