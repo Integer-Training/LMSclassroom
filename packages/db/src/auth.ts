@@ -98,6 +98,11 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
   },
   advanced: {
     cookiePrefix: 'classroomio',
+    // PearlLMS Phase-10 HP/SA-2 — make Secure cookies explicit in production (better-auth would infer this, but
+    // pinning it removes the footgun where a mis-set baseURL/NODE_ENV drops the Secure flag). Local http dev
+    // must NOT set Secure or the cookie is silently dropped, hence the env gate. httpOnly + SameSite=Lax remain
+    // better-auth's defaults for the session cookie (verified) — first-party auth, no cross-origin cookie send.
+    useSecureCookies: process.env.NODE_ENV === 'production',
     // Browser auth is first-party through tenant-router or the dashboard proxy,
     // so cookies should stay host-only on the dashboard/public-site origin.
     crossSubDomainCookies: { enabled: false },

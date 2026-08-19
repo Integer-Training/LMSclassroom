@@ -1,6 +1,7 @@
 import { getSessionData } from '$lib/utils/services/auth/session';
 import { getHasCioCookies } from '$lib/utils/functions/cookies';
 import { applyCspExtensions } from '$lib/utils/csp';
+import { applySecurityHeaders } from '$lib/utils/security-headers';
 import { proxyRequestToApi, shouldForwardToApi } from '$lib/utils/proxy-api-request';
 import { type Handle, type HandleServerError, redirect } from '@sveltejs/kit';
 import { isPublicApiRoute, isPublicRoute } from '$lib/utils/functions/routes/isPublicRoute';
@@ -69,7 +70,10 @@ export const handle: Handle = async (args) => {
     response.headers.set('Cache-Control', 'private, no-cache, must-revalidate');
   }
 
-  return applyCspExtensions(response);
+  // PearlLMS Phase-10 HP/SA-1 — baseline security headers (defense-in-depth; also set at the Caddy proxy in
+  // prod). HSTS only when the request is genuinely https (direct or via the proxy's X-Forwarded-Proto).
+  const isSecure = event.url.protocol === 'https:' || event.request.headers.get('x-forwarded-proto') === 'https';
+  return applySecurityHeaders(applyCspExtensions(response), isSecure);
 };
 
 const handlePagesRoutes: Handle = async ({ event, resolve }) => {

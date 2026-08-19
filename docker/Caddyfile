@@ -5,5 +5,18 @@
 
 {$APP_DOMAIN} {
 	encode zstd gzip
+
+	# PearlLMS Phase-10 HP/SA-1 — baseline security headers on every response (defense-in-depth alongside the
+	# SvelteKit CSP applied in the dashboard). HSTS is safe here because Caddy auto-provisions TLS for
+	# {$APP_DOMAIN}; the two-year max-age + preload is the standard hardened value.
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(), microphone=(), payment=(), usb=()"
+		-Server
+	}
+
 	reverse_proxy dashboard:3082
 }

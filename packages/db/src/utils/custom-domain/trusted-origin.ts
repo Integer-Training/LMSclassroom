@@ -83,7 +83,11 @@ export function resolveTrustedBrowserOrigin(
 
   const hostname = parsed.hostname;
 
-  if (isClassroomioHost(hostname)) {
+  // PearlLMS Phase-10 HP/SA-3 — the ClassroomIO first-party brand wildcard (`*.classroomio.com` /
+  // `*.myclassroomio.com`) is a CLOUD multitenancy artifact. A self-hosted closed instance does not own those
+  // domains, so trusting ANY such origin for CORS / Better-Auth is a cross-origin trust leak. When self-hosted
+  // we trust ONLY the explicitly-configured TRUSTED_ORIGINS (matched above) and verified custom domains (below).
+  if (process.env.PUBLIC_IS_SELFHOSTED !== 'true' && isClassroomioHost(hostname)) {
     return origin;
   }
 

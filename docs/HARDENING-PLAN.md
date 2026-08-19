@@ -276,8 +276,31 @@ SW confirms: **SA-6/O1** session 30d no idle (`auth.ts:109`) · **SA-6/O2** rese
   rule it is surfaced for the owner rather than edited. **→ owner: pick a link-invite expiry (recommend 90 days),
   or keep 100y and rely on revoke + the Phase-7 approval gate.**
 
-_Remaining Step-3 groups (open): SW-15/16/17 other XSS,
-SA-1/1b headers+CSP, SA-2 cookies, SA-3 CSRF origins, SA-4/D14 rate-limits,
+**Group 6 — headers / cookies / CSRF-origins (committed):**
+- **SA-3 brand-wildcard CSRF-origin leak** — ✅ FIXED (highest-value of the group). `resolveTrustedBrowserOrigin`
+  trusted ANY `*.classroomio.com` / `*.myclassroomio.com` origin (hardcoded ClassroomIO cloud roots) for CORS +
+  Better-Auth. A self-hosted deploy owns neither domain, so any such Origin was treated as trusted — a
+  cross-origin (CSRF/CORS) leak. Now gated: when `PUBLIC_IS_SELFHOSTED==='true'` the brand-wildcard branch is
+  skipped; only explicit `TRUSTED_ORIGINS` + verified custom domains are trusted.
+  `packages/db/src/utils/custom-domain/trusted-origin.ts`. 3 regression tests
+  (`__tests__/config/trusted-origin-selfhosted.test.ts`, run from the api suite over @cio/db dist).
+- **SA-1 baseline security headers** — ✅ FIXED. Added HSTS (2y + preload), `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: strict-origin-when-cross-origin`, and a restrictive
+  `Permissions-Policy` (geolocation/microphone/payment/usb denied) at the Caddy reverse proxy (`docker/Caddyfile`,
+  prod) AND, defense-in-depth for dev / non-Caddy paths, in the dashboard via a set-if-absent helper
+  (`apps/dashboard/src/lib/utils/security-headers.ts`, wired in `hooks.server.ts`; HSTS only when the request is
+  genuinely https). _No automated test — the dashboard's jest runner is BASELINE-D2 broken; the helper is a
+  pure set-if-absent and the Caddy header block is declarative._
+- **SA-2 explicit Secure cookies** — ✅ FIXED. `advanced.useSecureCookies = NODE_ENV==='production'` pinned
+  (removes the mis-set-baseURL footgun; env-gated so local http dev still receives the cookie). httpOnly +
+  SameSite=Lax confirmed as better-auth's session-cookie defaults. `packages/db/src/auth.ts`.
+- **SA-1b CSP `unsafe-eval` / `unsafe-inline`** — ⏸ DEFERRED (rationale). The base SvelteKit CSP
+  (`svelte.config.js`) carries `script-src … 'unsafe-eval' 'unsafe-hashes'` and `style-src 'unsafe-inline'`.
+  Removing them is not a smallest-safe edit — it risks breaking Svelte hydration, HLS/video, and third-party
+  widgets, and can only be validated by browser E2E, which the dashboard has no harness for right now. Recorded
+  as a dedicated follow-up (CSP tightening pass with real browser verification) rather than a blind edit.
+
+_Remaining Step-3 groups (open): SW-15/16/17 other XSS, SA-4/D14 rate-limits,
 SW-14 admin-plugin review, SW-18-24 minors/config._
 
 ## 6. Adversarial re-run (Phases 1–7 authz + adversarial suites)
