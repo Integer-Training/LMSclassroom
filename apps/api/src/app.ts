@@ -121,6 +121,10 @@ export const app = new Hono()
   .use('*', rateLimiter)
 
   // Routes
+  // HP/RUN-2 — unauthenticated liveness probe for the DO uptime check. 200 = the api process is up and serving.
+  // Deliberately dependency-free (no DB/Redis call) so a transient dep blip doesn't page on liveness; readiness
+  // of Supabase/Redis is covered by their own dashboards. No PII, no secrets. See docs/RUNBOOK.md §Health.
+  .get('/health', (c) => c.json({ status: 'ok', service: 'api', timestamp: new Date().toISOString() }))
   .get('/', (c) =>
     c.json({
       message: `"Welcome to Classroomio.com API - docs are at ${API_SERVER_URL}/docs"`

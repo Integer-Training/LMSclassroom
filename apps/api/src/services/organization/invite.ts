@@ -291,7 +291,7 @@ export async function inviteTeamMembers(orgId: string, emails: string[], roleId:
         });
       }
     } catch (error) {
-      console.error(`Failed to create org invite for ${email}:`, error);
+      console.error('Failed to create org invite (recipient redacted, HP/LOG-1):', error);
     }
   }
 

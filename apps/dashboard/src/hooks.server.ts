@@ -51,9 +51,8 @@ export const handle: Handle = async (args) => {
     return proxyRequestToApi(event.request);
   }
 
-  const cookieString = event.cookies.getAll().map((c) => `${c.name}=${c.value}`);
-  console.log('event.cookies', cookieString);
-  console.log('page path', event.url.pathname);
+  // PearlLMS Phase-10 HP/LOG-1 — removed debug logs that printed every cookie name=value (the session token is a
+  // SECRET) and the page path. Never log raw cookies.
   const sessionData = await getSessionData(event.cookies);
 
   if (sessionData) {

@@ -242,7 +242,7 @@ export async function addMembers(courseId: string, members: TAddCourseMembers) {
             idempotencyKey: `teacher-course-welcome:${courseId}:${email}`,
             preference: { organizationId: courseOrgData.orgId }
           }).catch((emailError) => {
-            console.error(`Failed to enqueue welcome email to ${email}:`, emailError);
+            console.error('Failed to enqueue welcome email (recipient redacted, HP/LOG-1):', emailError);
             return [];
           })
         );

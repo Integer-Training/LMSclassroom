@@ -229,7 +229,10 @@ async function enrollAudienceStudentProfilesInCourses(
           });
           emailsSent++;
         } catch (emailError) {
-          console.error(`enrollAudienceStudentProfilesInCourses enqueue error for ${email}:`, emailError);
+          console.error(
+            'enrollAudienceStudentProfilesInCourses enqueue error (recipient redacted, HP/LOG-1):',
+            emailError
+          );
         }
       });
 
@@ -313,7 +316,10 @@ async function enrollAudienceStudentProfilesInCohorts(
             });
             emailsSent++;
           } catch (emailError) {
-            console.error(`enrollAudienceStudentProfilesInCohorts enqueue error for ${email}:`, emailError);
+            console.error(
+              'enrollAudienceStudentProfilesInCohorts enqueue error (recipient redacted, HP/LOG-1):',
+              emailError
+            );
           }
         })
     );
