@@ -8,6 +8,7 @@
   import MessageSquareIcon from '@lucide/svelte/icons/message-square';
   import { RESULT_LABELS, isPassingResult } from '@cio/utils/constants';
   import MarkingForm from '$features/caseload/components/marking-form.svelte';
+  import IdVerificationControl from '$features/registrations/components/id-verification-control.svelte';
   import { caseloadApi, type DetailFile } from '$features/caseload/api/caseload.svelte';
   import { messagingApi } from '$features/messaging/api/messaging.svelte';
 
@@ -69,6 +70,11 @@
       <Button variant="outline" size="sm" onclick={messageLearner} loading={openingThread}>
         <MessageSquareIcon class="size-4" /> Message
       </Button>
+    </div>
+
+    <!-- PearlLMS Phase 7 Step 4 — record this learner's ID check (allocated tutor / staff). No document stored. -->
+    <div class="mb-6">
+      <IdVerificationControl {learnerId} />
     </div>
 
     {#if caseloadApi.detail.courses.length === 0}

@@ -602,5 +602,19 @@ dropped from the plugin list when `PUBLIC_IS_SELFHOSTED === 'true'` (defense-in-
 `registration.submitted` notifies every Manager + Admin through the Phase-6 framework (new `registration`
 category, email default ON). Approve/reject are **one-way** (a decided row is refused, 409) and race-safe (a
 double-fire approval yields exactly one account). The dashboard queue is a top-level `(app)/registrations` route
-(`requireManagerOrAdmin`), reachable from the Manager landing (`/reports`) and the staff email link. The
-ID-verification rows land with the Step-4 feature.
+(`requireManagerOrAdmin`), reachable from the Manager landing (`/reports`) and the staff email link.
+
+### ID verification (Step 4 LIVE, 2026-08-19)
+
+Staff record that a learner's identity was checked — status/method/who/when + an optional note. **No identity
+document is stored, uploaded or attached anywhere** (D2, diff-swept). Informational only — it gates nothing
+(Phase-4 unlock untouched).
+
+| Surface | Endpoint | Live guard | Access |
+|---|---|---|---|
+| Record / read a learner's ID check | `PUT` / `GET /organization/id-verification/learner/:learnerId` | `requireActor` + in-service `isRole(ADMIN\|MANAGER) OR isAllocatedTutor` | **Manager/Admin OR the learner's allocated Tutor** (D3); a non-allocated tutor + any learner → 403 |
+| Own status (self) | `GET /organization/id-verification/me` | `requireActor` + self (actor.userId) | **Self only** — no learner id in the call, so no one sees another's status; shown on id-check-typed units as plain info |
+
+Audited `id_verification.recorded` with `{learnerId, status, method}` — **never the note text** and never any
+document. Recording surfaces: the allocated tutor's caseload learner-detail view; the learner-facing status
+line renders on id-check units in the lesson view.

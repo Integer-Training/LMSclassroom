@@ -127,6 +127,13 @@
       "when": 1787060167315,
       "tag": "0017_low_dragon_man",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1787131439021,
+      "tag": "0018_solid_sebastian_shaw",
+      "breakpoints": true
     }
   ]
 }

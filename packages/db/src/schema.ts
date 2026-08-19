@@ -4255,3 +4255,34 @@ export const registration = pgTable(
     index('idx_registration_org_status_created').on(table.organizationId, table.status, table.createdAt)
   ]
 );
+
+// PearlLMS Phase 7 Step 4 — a learner's identity-verification record (docs/ONBOARDING-MODEL.md §3, D2). ONE
+// current state per learner (unique learner_id, upserted). Records WHO verified, WHEN, by what METHOD, plus an
+// optional staff note — and NOTHING ELSE: there is no document/file/upload column anywhere. Informational only;
+// it gates nothing (Phase-4 unlock is untouched).
+export const idVerification = pgTable(
+  'id_verification',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    learnerId: uuid('learner_id').notNull(),
+    status: varchar().default('not_verified').notNull(), // ID_VERIFICATION_STATUS config
+    method: varchar(), // ID_VERIFICATION_METHODS config; null until verified
+    verifiedBy: uuid('verified_by'),
+    verifiedAt: timestamp('verified_at', { withTimezone: true, mode: 'string' }),
+    note: text(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.learnerId],
+      foreignColumns: [profile.id],
+      name: 'id_verification_learner_id_fkey'
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.verifiedBy],
+      foreignColumns: [profile.id],
+      name: 'id_verification_verified_by_fkey'
+    }).onDelete('set null'),
+    unique('id_verification_learner_id_key').on(table.learnerId)
+  ]
+);

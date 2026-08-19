@@ -23,7 +23,10 @@ export const AUDIT_ACTIONS = {
   // Phase 7 — registration decisions (registration id + course id only; the decision NOTE lives on the row,
   // NEVER in audit metadata, and the applicant's name/email are never recorded here).
   REGISTRATION_APPROVED: 'registration.approved',
-  REGISTRATION_REJECTED: 'registration.rejected'
+  REGISTRATION_REJECTED: 'registration.rejected',
+  // Phase 7 — a staff ID-verification recording (learner id + status + method label only; NEVER the note text
+  // and NEVER any document — no document is stored anywhere).
+  ID_VERIFICATION_RECORDED: 'id_verification.recorded'
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS] | (string & {});

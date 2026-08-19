@@ -60,6 +60,7 @@
   import StudentContentLockedNotice from '$features/course/components/student-content-locked-notice.svelte';
   import LiveSessionCard from '$features/course/components/lesson/live-session-card.svelte';
   import CourseworkSubmission from '$features/course/components/lesson/coursework-submission.svelte';
+  import IdVerificationStatus from '$features/registrations/components/id-verification-status.svelte';
 
   interface Props {
     courseId: string;
@@ -509,6 +510,12 @@
                   variant="default"
                   class="text-center"
                 />
+              {/if}
+
+              <!-- PearlLMS Phase 7 Step 4 — on an id-check unit, the learner sees their OWN verification
+                   status (informational only; gates nothing). Self-only via the /me endpoint. -->
+              {#if lessonApi.lesson?.unitType === 'id-check'}
+                <IdVerificationStatus />
               {/if}
 
               <!-- Learner coursework upload (PearlLMS Phase 3 Step 4): self-only; guarded read/download. -->

@@ -93,7 +93,7 @@ Index `(organization_id, status, created_at)` for the oldest-first queue.
 | `id` | uuid PK | |
 | `learner_id` | uuid → profile | cascade, **unique** — one row per learner, upserted |
 | `status` | varchar | config set `ID_VERIFICATION_STATUS = ['not_verified','verified','failed']`, default `'not_verified'` |
-| `method` | varchar | config set `ID_VERIFICATION_METHODS = ['in_person','document_sighted','other']` |
+| `method` | varchar | config set `ID_VERIFICATION_METHODS = ['passport','driving_licence','other']` (the ID sighted; labels in config) |
 | `verified_by` | uuid → profile | nullable, set null |
 | `verified_at` | timestamptz | nullable |
 | `note` | text | nullable |

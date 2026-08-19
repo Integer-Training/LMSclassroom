@@ -76,6 +76,7 @@ import { searchRouter } from '@api/routes/organization/search';
 import { usersRouter } from '@api/routes/organization/users';
 import { allocationsRouter } from '@api/routes/organization/allocations';
 import { registrationsRouter } from '@api/routes/organization/registrations';
+import { idVerificationRouter } from '@api/routes/organization/id-verification';
 import { tagsRouter } from '@api/routes/organization/tags';
 import { widgetsRouter } from '@api/routes/organization/widgets';
 import { zValidator } from '@hono/zod-validator';
@@ -777,4 +778,5 @@ export const organizationRouter = new Hono()
   .route('/users', usersRouter)
   .route('/allocations', allocationsRouter)
   .route('/registrations', registrationsRouter)
+  .route('/id-verification', idVerificationRouter)
   .route('/:orgId/quiz', quizRouter);
