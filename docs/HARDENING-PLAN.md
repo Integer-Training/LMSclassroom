@@ -300,8 +300,23 @@ SW confirms: **SA-6/O1** session 30d no idle (`auth.ts:109`) · **SA-6/O2** rese
   widgets, and can only be validated by browser E2E, which the dashboard has no harness for right now. Recorded
   as a dedicated follow-up (CSP tightening pass with real browser verification) rather than a blind edit.
 
-_Remaining Step-3 groups (open): SW-15/16/17 other XSS, SA-4/D14 rate-limits,
-SW-14 admin-plugin review, SW-18-24 minors/config._
+**Group 7 — rate limits (committed):**
+- **SA-4 credential-endpoint throttles** — ✅ FIXED. Login/reset ran on better-auth's generic default; added
+  `rateLimit.customRules` for `/sign-in/email` (O3: **10 / 15 min**), `/forget-password` + `/request-password-reset`
+  (O3: **5 / hour**), config-driven from `@cio/utils` LOGIN_RATE_LIMIT / PASSWORD_RESET_RATE_LIMIT.
+  `packages/db/src/auth.ts`. (better-auth enables rate-limiting in production.)
+- **SW-19 upload throttle** — ✅ FIXED. Per-user cap (O3: **30 / hour**) on the presigned UPLOAD grants
+  (`/video/upload`, `/document/upload`) via the api Redis limiter, keyed by actor → IP fallback.
+  `apps/api/src/routes/course/presign.ts`.
+- **D14 unauth outbound-email / proxy DoS** — ✅ FIXED. The public `POST /course/:courseId/payment-request`
+  (sends email to an attacker-suppliable address) is now per-IP limited (**5 / hour**); the public
+  `POST /unsplash` third-party proxy is per-IP limited (**20 / hour**). `routes/course/payment-request.ts`,
+  `routes/unsplash/unsplash.ts`.
+- Config values are pinned + regression-tested in `__tests__/config/rate-limits.test.ts` (the limiters
+  themselves are prod-only Redis, so the tests lock the confirmed O3 numbers against drift rather than exercising
+  the Redis path).
+
+_Remaining Step-3 groups (open): SW-15/16/17 other XSS, SW-14 admin-plugin review, SW-18-24 minors/config._
 
 ## 6. Adversarial re-run (Phases 1–7 authz + adversarial suites)
 

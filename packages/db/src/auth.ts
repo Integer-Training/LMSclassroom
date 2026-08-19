@@ -1,6 +1,8 @@
 import * as CONSTANTS from './constants';
 import * as schema from '@db/schema';
 
+import { LOGIN_RATE_LIMIT, PASSWORD_RESET_RATE_LIMIT } from '@cio/utils/constants';
+
 import { admin } from 'better-auth/plugins';
 import { APIError } from 'better-auth/api';
 import { sendChangeEmailConfirmation, sendVerificationEmail } from './auth/email-verification';
@@ -112,6 +114,17 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
   },
   account: {
     storeAccountCookie: true
+  },
+  // PearlLMS Phase-10 HP/SA-4 (O3) — per-IP throttles on the credential endpoints (was better-auth's generic
+  // default). Values are config-driven from @cio/utils LOGIN_RATE_LIMIT / PASSWORD_RESET_RATE_LIMIT. better-auth
+  // enables rate-limiting in production by default; the customRules pin the sensitive paths tighter than the
+  // global bucket. Path keys are relative to the auth base (no /api/auth prefix).
+  rateLimit: {
+    customRules: {
+      '/sign-in/email': { window: LOGIN_RATE_LIMIT.window, max: LOGIN_RATE_LIMIT.max },
+      '/forget-password': { window: PASSWORD_RESET_RATE_LIMIT.window, max: PASSWORD_RESET_RATE_LIMIT.max },
+      '/request-password-reset': { window: PASSWORD_RESET_RATE_LIMIT.window, max: PASSWORD_RESET_RATE_LIMIT.max }
+    }
   },
   session: {
     // PearlLMS Phase-10 O1 — shortened from 30d to a 7-day rolling session (idle >7d → re-auth). Better-auth's

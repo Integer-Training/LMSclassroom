@@ -6,6 +6,7 @@ export * from './unit-type';
 export * from './result';
 export * from './notification';
 export * from './registration';
+export * from './rate-limits';
 export * from './id-verification';
 export * from './submission-state';
 export * from './domains';

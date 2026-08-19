@@ -16,9 +16,24 @@ import type { Actor } from '@cio/db/actor';
 import { requireActor, assertCourseMaterialDownloadAccess } from '@api/middlewares/guards';
 import { isRole } from '@cio/utils/auth';
 import { getCourseOrgId } from '@cio/db/queries/reports';
+import { createRateLimiter } from '@api/middlewares/rate-limiter';
+import { extractClientIp } from '@api/utils/redis/key-generators';
+import { UPLOAD_RATE_LIMIT } from '@cio/utils/constants';
 import { generateFileKey, generateMaterialFileKey } from '@cio/core/utils/upload';
 import { AppError, handleError } from '@api/utils/errors';
 import { MAX_DOCUMENT_SIZE, MAX_FILE_SIZE } from '@api/constants/upload';
+
+// PearlLMS Phase-10 HP/SW-19 (O3) — per-user cap on presigned UPLOAD grants (30/hour). Bounds storage-abuse /
+// cost from a compromised or scripted session minting unbounded upload URLs (prod-only, like the base limiter).
+const uploadRateLimit = createRateLimiter({
+  windowMs: UPLOAD_RATE_LIMIT.windowMs,
+  maxRequests: UPLOAD_RATE_LIMIT.maxPerWindow,
+  message: 'Upload limit reached. Please try again later.',
+  keyGenerator: (c) => {
+    const actor = c.get('actor') as Actor | undefined;
+    return `upload:${actor?.userId ?? extractClientIp(c)}`;
+  }
+});
 
 /**
  * Advisory check on client-reported `fileSize`. Upload bytes go directly to object storage
@@ -60,6 +75,7 @@ export const presignRouter = new Hono()
   .post(
     '/video/upload',
     requireActor(),
+    uploadRateLimit,
     describeRoute({
       description: 'Generate a pre-signed URL for video upload',
       responses: {
@@ -107,6 +123,7 @@ export const presignRouter = new Hono()
   .post(
     '/document/upload',
     requireActor(),
+    uploadRateLimit,
     describeRoute({
       description: 'Generate a pre-signed URL for document upload',
       responses: {
