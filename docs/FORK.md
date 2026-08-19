@@ -42,6 +42,32 @@ posture:
 4. **License and notices preserved.** The upstream LICENSE file and copyright
    notices are kept intact; our modifications are themselves AGPL-3.0.
 
+## Modifications summary (all phases)
+
+What we changed from the `upstream-baseline`, by category. Each phase's full detail is in its `docs/PHASE{n}.md`;
+this is the map.
+
+- **Phase 0 — de-vendor / privacy.** Removed telemetry egress: PostHog/Umami → inert no-op shims + deps removed;
+  license phone-home to `enterprise-api.classroomio.dev` **deleted** (`getLicenseStatus` returns all-features
+  locally; locked by `no-phone-home.test.ts`); UserJot neutered. Repointed DB + storage to **our** Supabase.
+  Env-driven SMTP + AGPL "Source code" link. (PHASE0.md)
+- **Phase 1 — roles & access.** Four-role model (Admin/Manager/Tutor/Learner) + `MEMBER_STATUS`; single
+  `resolveActor` authz boundary (fresh role+status); central guard layer (`middlewares/guards/`) + dashboard
+  server guards; `audit_event`; **closed registration** (no public signup / org self-onboarding); admin user
+  management + deactivation; isolated PII `learner_profile` (Admin-only). (PHASE1.md, ACCESS.md)
+- **Phase 2 — authoring.** Course/unit/materials model on the stock tables; authoring made **Admin-only**;
+  published-gate on learner content reads; material-download key binding. (PHASE2.md, COURSE-MODEL.md, AUTHORING.md)
+- **Phase 3 — the loop.** New `tutor_allocation` / `coursework_submission` / `coursework_result` tables (Pass/Refer
+  config, not the quiz-bound stock grading); allocation-scoped marking. (PHASE3.md, LOOP-MODEL.md)
+- **Phase 4 — sequential unlock.** Live gating authority (`isUnitUnlocked`), no stored lock bit. (UNLOCK-MODEL.md)
+- **Phases 5–6 — reports/caseload + comms.** Manager/Tutor surfaces; announcements/newsfeed/preferences.
+- **Phase 7 — governed onboarding + integrations.** Approval queue, ID-verification recording, INTEGRATIONS.md
+  register + egress re-audit. (PHASE7.md, ONBOARDING-MODEL.md, INTEGRATIONS.md)
+- **Phase 10 — hardening.** Security sweep + fixes (IDORs, XSS, SQLi-surface, deactivation gate, CSRF-origins,
+  rate limits), web/auth baseline (CSP, headers, cookies, session/token policy, error hygiene + correlation ids),
+  dependency + toolchain updates (this doc §Dependency), operational runbook + restore drill. (HARDENING-PLAN.md,
+  RUNBOOK.md, PHASE10.md)
+
 ## Upstream security cherry-picks
 
 Per the hard-fork policy, only **security** fixes are cherry-picked, each recorded here (upstream commit → our

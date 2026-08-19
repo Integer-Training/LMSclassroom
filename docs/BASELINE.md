@@ -64,25 +64,25 @@ No CI runs tests; suites are per-package. Results as run on this checkout:
 are pre-existing harness/config issues, not assertion failures — documented below,
 not fixed (per Step 3 instruction to record, not fix, pre-existing failures).
 
-### Pre-existing failures (NOT introduced by our changes)
+### Pre-existing failures — RETIRED in Phase 10 Step 7 (fix/accept per owner O6)
 
-- **F1 — `@cio/api` 6 test files fail to load** with
-  `Failed to load url @cio/core/services/… (Does the file exist?)` for subpaths
-  like `@cio/core/services/course/go-live-readiness`,
-  `@cio/core/services/agent/question-update`, `@cio/db/queries/notifications`.
-  The target files **exist** in `dist/` and the full `pnpm build` is green; this
-  is a vite/vitest resolver quirk with `@cio/core`'s wildcard subpath exports
-  (`"./services/*"`). Independent of our work — our only build-side change (F4)
-  made `@cio/core` build at all, which is what lets the other 72 api tests run.
-- **F2 — `@cio/dashboard` jest suite cannot start**:
-  `jest.config.ts(10,1): TS1295 … verbatimModuleSyntax` — ts-node cannot compile
-  the TS jest config under the repo's TS settings. Zero tests execute. Pre-existing
-  toolchain mismatch.
-- **F3 — the stock `test` script for `@cio/api` is `vitest NODE_ENV=test`**, which
-  passes `NODE_ENV=test` to vitest as a positional **filter**, so `pnpm --filter
-  @cio/api test` reports "No test files found, exiting with code 1". Running vitest
-  with `NODE_ENV` as an actual env var yields the 72-pass result above. Pre-existing
-  script defect.
+The known-failures list is now **empty or owner-signed**. Dispositions:
+
+- **F1 — `@cio/api` 6 test files failed to load** (`Failed to load url @cio/core/services/…`,
+  `@cio/db/queries/notifications`) — ✅ **FIXED** (Step 7). Root cause: the target subpaths are
+  **directories** (`dist/queries/notifications/index.js`, `dist/services/agent/*`), which the packages' `exports`
+  wildcards (`"./queries/*"` → `"./dist/queries/*.js"`) can't resolve directory→index; the app runtime worked
+  only because tsx honours tsconfig `paths` (`@cio/db/*` → `dist/*`). Fix: mirror those paths as vitest regex
+  aliases in `apps/api/vitest.config.ts` (test-only; the package public `exports` are untouched). **Result: all
+  67 api test files load, 523 tests pass, 0 failures.**
+- **F3 — stock `@cio/api` `test` script `vitest NODE_ENV=test`** (NODE_ENV passed as a filename filter) — ✅
+  **FIXED** (Step 7): changed to `vitest run`. `pnpm --filter @cio/api test` now runs the whole suite.
+- **F2 — `@cio/dashboard` jest suite cannot start** (`jest.config.ts` TS1295 / malformed mixed ESM+CJS config) —
+  ⚖️ **ACCEPTED, owner-signed** (O6 "fix-or-accept"). The dashboard has **no runnable unit suite**; it is verified
+  throughout the build by **`svelte-check` + the production build (`vite build` boots) + live per-role E2E
+  matrices** run at every phase's exit review (four-fixture URL/authz walkthroughs). The 3 stray `.test.ts` files
+  + the broken jest config are non-load-bearing. **Recommended future cleanup:** migrate those 3 tests to vitest
+  (the runner used everywhere else) — recorded in PHASE10.md's future-decisions list, not blocking.
 
 ## Windows / local-dev fixes applied this step (minimal, documented)
 

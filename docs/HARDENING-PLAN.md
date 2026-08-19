@@ -26,7 +26,13 @@ re-verifies.
 
 ## 1. Register
 
-Severity: **blocker / major / minor**. Sec = security-relevant. Every row **open** until a step stamps it.
+Severity: **blocker / major / minor**. Sec = security-relevant.
+
+> **FINAL DISPOSITIONS (Phase-10 close):** the "Disposition" columns in the §1 tables below are the **Step-1 seed
+> state** ("open") and are intentionally left as the historical record of what the sweep started from. The
+> **authoritative final disposition of every finding** is recorded in **§5d** (Step-3 fix log, per commit-group),
+> **§5c/§5e** (Step-2 sweep results + Step-4 baseline), the owner-decisions block after §5e, and the closing
+> summary in **`docs/PHASE10.md` §2–§3**. Read those for the resolved state; §1 is the point-in-time inventory.
 
 ### Step 2 — whole-codebase sweep (find-don't-fix) re-examines these + surfaces new
 | ID | Description | Source | Sec | Sev | Disposition |
