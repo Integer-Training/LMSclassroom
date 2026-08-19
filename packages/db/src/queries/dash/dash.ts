@@ -150,7 +150,8 @@ export function getDashOrgStats(orgId: string) {
  * "most active day," not raw login volume.
  */
 export function getOrgStudentLoginsByDayOfWeek(orgId: string, days: number) {
-  const since = sql`CURRENT_DATE - ${sql.raw(`${days}`)}::int`;
+  // PearlLMS Phase-10 HP/SW-9 — `days` is now a BOUND parameter (was sql.raw string-interpolation).
+  const since = sql`CURRENT_DATE - ${days}::int`;
 
   return db
     .select({

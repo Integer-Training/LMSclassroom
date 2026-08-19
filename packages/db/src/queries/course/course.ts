@@ -988,8 +988,9 @@ export const getEnrolledCourses = async ({
           JOIN ${schema.lesson} as l ON l.id = lc.lesson_id
           WHERE ${eq(sql`l.course_id`, schema.course.id)}
           AND lc.is_complete = true
-          AND lc.profile_id = ${sql.raw(`'${profileId}'::uuid`)}
+          AND lc.profile_id = ${profileId}::uuid
         )`.as('progress_rate'),
+        // PearlLMS Phase-10 HP/SW-9 — profileId is now a BOUND parameter (was sql.raw string-interpolation).
         exerciseCount: sql<number>`(
           SELECT COUNT(*)::bigint
           FROM ${schema.exercise} as ex

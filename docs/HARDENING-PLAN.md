@@ -216,7 +216,15 @@ SW confirms: **SA-6/O1** session 30d no idle (`auth.ts:109`) · **SA-6/O2** rese
   (teacher `customMessage`, student/org/course names). Regression test `tests/xss-escaping.test.ts` (4) — a
   `<script>` payload renders escaped, never raw.
 
-_Remaining Step-3 groups (open): SW-4 login-link gate, SW-5/6/7 storage, SW-15/16/17 other XSS, SW-9/25 raw-SQL,
+**Group 3 — raw SQL (committed):**
+- **SW-9 raw-SQL interpolation** — ✅ FIXED. Replaced `sql.raw(\`'${profileId}'::uuid\`)` (course.ts
+  getEnrolledCourses) and `sql.raw(\`${days}\`)::int` (dash.ts getOrgStudentLoginsByDayOfWeek) with BOUND
+  params (`${profileId}::uuid`, `${days}::int`). Live smoke: both queries return correctly; a malicious
+  profileId is bound as data (no injection, tables intact).
+- **SW-25 progression `sql.raw(exerciseAlias)`** — ✅ ACCEPTED. `exerciseAlias` is a compile-time literal
+  union (`'exercise'` | …), never user-controllable — no injection surface.
+
+_Remaining Step-3 groups (open): SW-4 login-link gate, SW-5/6/7 storage, SW-15/16/17 other XSS,
 SA-1/1b headers+CSP, SA-2 cookies, SA-3 CSRF origins, SA-4/D14 rate-limits, SA-6/O1/O2/D6 session+tokens, D29
 split-env, SW-13 password policy, SW-14 admin-plugin review, SW-18-24 minors/config._
 
