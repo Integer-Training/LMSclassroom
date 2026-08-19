@@ -144,3 +144,64 @@ import · **third-party penetration test** (recommended as an optional external 
 No tests. Reconciliation: every "debt / deviation / accepted / deferred / known / pre-existing / PARTIAL /
 follow-up / gap" mention across `docs/PHASE*.md`, `BASELINE.md`, `ACCESS.md`, `INTEGRATIONS.md`, `FORK.md` maps to
 a register row above (D#/SA#/DEP#/O#). Owner values O1–O6 confirmed 2026-08-19.
+
+---
+
+## 5. Step-2 whole-codebase sweep — findings (2026-08-19)
+
+A `/workflows` fan-out ran **8 READ-ONLY lanes** (find-don't-fix). **57 findings — 0 blockers, 12 major, 30
+minor, 15 info; 35 NEW, 22 confirm existing register items.** All dispositioned **open**. Per-lane:
+auth-session 11 · api-vs-access 5 · dashboard 6 · storage-files 9 · jobs 9 · templates-xss 7 · query-sql 3 ·
+secrets-config 7. Adversarial re-run in §6.
+
+### 5a. NEW majors — Step 3/4 fixes (highest value)
+| ID | Finding | File:line | Fix class → step |
+|---|---|---|---|
+| SW-1 | **Progress IDOR** — `GET /course/:courseId/progress` guarded only by `courseMemberMiddleware` + a REQUIRED client `?profileId` passed straight to `getCourseProgress` with no self/staff check → any enrolled learner reads any classmate's per-unit completion/grades. The stock endpoint Phase 5 superseded with self-only `/learner-progress` but **left live**; contradicts ACCESS.md §9. | `apps/api/src/routes/course/course.ts:438` | add-guard (self-or-staff, or retire) → **Step 3** |
+| SW-2 | **Course-clone authz hole** — `POST /course/:courseId/clone` `orgMemberMiddleware` only: (a) a STUDENT can clone + is added as ROLE.TUTOR to the new group; (b) source `getCourseById` has NO org filter → cross-org content read/copy; (c) destination `organizationId` from the request body → plant a course into an arbitrary org. | `apps/api/src/routes/course/course.ts:607` | add-guard (requireAdmin + org-bind source & dest) → **Step 3** |
+| SW-3 | **Tutor PII leak via search** — `GET /organization/search` (`orgTeamMemberMiddleware`, TUTOR+) returns STUDENT name + email + avatar; `/team` + `/audience` were re-guarded to requireAdmin but search was missed, re-opening the Admin-only PII (ACCESS §1.3). | `apps/api/src/routes/organization/search.ts:12` | add-guard (requireAdmin, or strip PII) → **Step 3** |
+| SW-4 | **login-link bypasses the deactivation gate** — mints a session via raw `db.insert(schema.session)`, skipping `databaseHooks.session.create.before` (DEACTIVATED) + admin ban-check. A deactivated/banned user with a valid ≤10-min login-link token gets a live session (mitigated: resolveActor/customSession re-read status). | `packages/db/src/auth/plugins/login-link.ts:77` | add-guard (route session-create through the gate) → **Step 3** |
+| SW-5 | **Presign uploads unbounded** — `generateUploadPresignedUrl` sets no `Content-Length` condition and no bucket max-object-size; `assertWithinSize` is advisory on an OPTIONAL client `fileSize` (omit it → bypass); HLS batch presign has NO size check → storage exhaustion / cost DoS on every upload path. | `packages/core/src/utils/s3.ts:138` | storage-policy max-object-size + presign size condition → **Step 3** |
+| SW-6 | **Document-presign key from unvalidated courseId** — `/course/presign` builds `materials/${courseId}/…` from a `courseId` validated only `z.string().min(1)` (not uuid, no ownership) under bare `requireActor()` → cross-course/arbitrary-key writes. | `apps/api/src/routes/course/presign.ts:139` | validate uuid + bind ownership → **Step 3** |
+| SW-7 | **Material-download guard only checks `materials/` keys** — `assertCourseMaterialDownloadAccess` applies currency + unit-lock checks ONLY to keys starting `materials/`; any other key shape bypasses the lock/currency check. | `apps/api/src/middlewares/guards/ownership.ts:247` | default-deny non-materials keys → **Step 3** |
+| SW-8 | **Email-template stored-XSS** — `newsfeed.ts` interpolates author fullname + course title + post/comment body raw into HTML; `student-course-welcome.ts` + `student-course-completion.ts` interpolate a teacher-supplied `customMessage` raw into the learner's email → stored XSS rendered in another user's inbox. | `packages/email/src/emails/newsfeed.ts:22`, `student-course-welcome.ts:27`, `student-course-completion.ts:29` | escape-output (HTML-escape all interpolated user/org text) → **Step 3** |
+| SW-9 | **Raw-SQL interpolation (SQLi surface)** — `getEnrolledCourses` splices `sql.raw(\`'${profileId}'::uuid\`)` inside a correlated subquery; `getOrgStudentLoginsByDayOfWeek` splices `sql.raw(\`${days}\`)::int`. Both currently receive server-typed values, but `sql.raw` of any variable is the wrong pattern (breaks param binding). | `packages/db/src/queries/course/course.ts:991`, `queries/dash/dash.ts:153` | param-query (bind, drop sql.raw) → **Step 3** |
+| SW-10 | **Exercise authoring is student-reachable** — `DELETE /course/:courseId/exercise/:exerciseId` uses `courseMemberMiddleware` (an enrolled STUDENT passes) with no team check; `POST …/exercise` human path is course-member too → a student can create/delete exercises. (Worse than the D5 premise.) | `apps/api/src/routes/course/exercise.ts:272,152` | add-guard (team/admin) → **Step 3**; confirms **D5** |
+| SW-11 | **PII in logs** — the email processor logs the recipient address on every send; notification fan-out logs recipient emails on failure; the quiz-assigned idempotency key embeds the recipient email in the Redis keyspace. | `apps/jobs/src/processors/emails/send.ts:33`, `notifications/notify-course-exercise.ts:65,61` | redact/hash → **Step 6 (LOG-1)** |
+| SW-12 | **PII persisted at rest with no retention** — on retry-exhaustion every worker writes `job.data` verbatim (emails/names) into `dead_letter_job`; the maintenance worker schedules no retention reap for it. | `apps/jobs/src/workers/emails.ts:57`, `workers/maintenance.ts:94` | redact payload + retention reap → **Step 6** |
+
+### 5b. NEW minors / info — Step 3/4 or accept
+| ID | Finding | File:line | → |
+|---|---|---|---|
+| SW-13 | No password policy (`minPasswordLength` unset → better-auth default 8). | `auth/email-password.ts:12` | config (set explicit 8+) → Step 3 |
+| SW-14 | `admin()` plugin enabled config-less → exposes `/api/auth/admin/*` (create-user/set-role/ban/impersonate); relies on better-auth `user.role==='admin'` (which our org-role users lack) — **verify no non-admin reach**. | `auth.ts:169` | review/gate → Step 3 |
+| SW-15 | AI-assistant chat `{@html renderMarkdown(text)}` — `marked.parse` without sanitise → XSS if AI/mention output injects (AI off by default). | `dashboard …/ai-assistant/message-bubble.svelte:166` | sanitise (DOMPurify) → Step 3 |
+| SW-16 | Lesson version-history assigns stored content via raw `innerHTML`. | `dashboard …/lesson-version-history.svelte:152` | sanitise → Step 3 |
+| SW-17 | Email branding `themeColor` interpolated raw inside a `<style>` block. | `email/src/templates/default.ts:92` | escape/validate → Step 3 |
+| SW-18 | Upload type validation is by client MIME string only, not content/magic-byte sniffing. | `services/coursework/coursework.ts:31` | content-sniff or accept → Step 3 |
+| SW-19 | No dedicated rate limiter on any presign/upload endpoint. | `routes/course/presign.ts:57` | rate-limit → Step 3; confirms **SA-4** |
+| SW-20 | Presigned download URLs cached in Redis 50 min keyed only by `bucket:key` (shared across users). | `packages/core/src/config/storage.ts:54` | review lifetime/scope → Step 3 |
+| SW-21 | Media/HLS job + asset mutations open to any org member incl. STUDENT. | `routes/jobs/jobs.ts:91`, `organization/assets.ts:125` | add-guard → Step 3; confirms **D10** |
+| SW-22 | Orphaned BullMQ queues `course-imports`, `onboarding-bootstrap` (defaults defined, no worker/producer). | `packages/jobs/src/queues/names.ts:11,13` | remove/document → Step 4; with **D40** |
+| SW-23 | Hardcoded ClassroomIO strings — newsfeed reply-to `noreply@classroomio.com` + `${org} - ClassroomIO` From-name (bypasses env sender); OG fallback vendor CDN image; widget default base `classroomio.com`. | `services/newsfeed/newsfeed.ts:488`, `services/org/og.ts:12`, `services/widget-payload.ts:21` | config/env → Step 3; with **D35** |
+| SW-24 | Undocumented env vars used in code but absent from ENV.md — `AI_TUTOR_CAP_ENFORCED`, `FFMPEG_PATH`/`FFPROBE_PATH`, embed-script `CLOUDFLARE_API_TOKEN` (a secret). | `services/agent/tutor-usage.ts:28`, `jobs/utils/ffmpeg.ts:14`, `apps/embeds/scripts/upload-embeds.ts:54` | ENV.md + review → Step 3 |
+| SW-25 | Progression `sql.raw(exerciseAlias)` splices a table alias — currently a typed literal union (safe), noted for the param-query sweep. | `queries/course/progression.ts:25` | verify/accept → Step 3 |
+
+### 5c. Confirms of existing register items (reinforced with concrete file:line)
+SW confirms: **SA-6/O1** session 30d no idle (`auth.ts:109`) · **SA-6/O2** reset+verify 1h fallback (`email-password.ts:12`)
+· **D6/SA-6** 100-yr reusable link-invite (`invite.ts:469`) · **D8** token-exchange raw-session bypass
+(`token-exchange.ts:86`) · **SA-3** wildcard `*.classroomio.com` trusted-origins (`constants.ts:12`, api
+`constants/index.ts:9`) · **SA-2** `useSecureCookies`/sameSite (`auth.ts:96`) · **D29** split-env plugin gating
+(`auth.ts:52`) · **D7** hooks cookie-presence gate + silent-empty-on-403 + slug-cookie
+(`hooks.server.ts:83`, `org/[slug]/…`) · **D4** flat nanoid keys (`upload.ts:25`) · **D37** public media bucket
+(`routes/media/media.ts:8`) · **D10** HLS/asset org-member scope · **D40** dead webhooks queue
+(`queues/names.ts:10`) · **D30** ffmpeg failure path (`jobs/utils/ffmpeg.ts:55`).
+
+## 6. Adversarial re-run (Phases 1–7 authz + adversarial suites)
+
+`pnpm vitest run` (apps/api) — **448 passed, ZERO regressions.** All 21 authz/adversarial test files pass:
+guard-layer, ownership-predicates, route-wiring, allocation-access, caseload-access/routes, coursework-access/
+routes, materials-access, enrolment-content-access, unlock-enforcement, progress-self, authoring-admin-only, and
+every phase's `*-authz` (announcements, messaging, notification-centre, onboarding, reports, registrations,
+id-verification, preferences). The only failures are the **6 pre-existing BASELINE load-failures (D1)** — retired
+in Step 7. No new regression to register.
