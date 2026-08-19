@@ -2,6 +2,7 @@ import { Hono } from '@api/utils/hono';
 import { authMiddleware } from '@api/middlewares/auth';
 import { handleError } from '@api/utils/errors';
 import { orgMemberMiddleware } from '@api/middlewares/org-member';
+import { orgTeamMemberMiddleware } from '@api/middlewares/org-team-member';
 import { zValidator } from '@hono/zod-validator';
 import { ZAssetJobsParam, ZJobBatchQuery, ZJobIdParam } from '@cio/utils/validation/jobs';
 import {
@@ -89,9 +90,11 @@ export const jobsRouter = new Hono()
     }
   )
   .post(
+    // PearlLMS Phase-10 HP/SW-21 — media processing is an authoring action; gate to staff (was any org member,
+    // incl STUDENT, who could enqueue transcription/thumbnail jobs on org assets).
     '/media/asset/:assetId/transcribe',
     authMiddleware,
-    orgMemberMiddleware,
+    orgTeamMemberMiddleware,
     zValidator('param', ZAssetJobsParam),
     async (c) => {
       try {
@@ -110,9 +113,10 @@ export const jobsRouter = new Hono()
     }
   )
   .post(
+    // HP/SW-21 — staff-only media mutation (was any org member incl STUDENT).
     '/media/asset/:assetId/regenerate-thumbnail',
     authMiddleware,
-    orgMemberMiddleware,
+    orgTeamMemberMiddleware,
     zValidator('param', ZAssetJobsParam),
     async (c) => {
       try {
@@ -131,9 +135,10 @@ export const jobsRouter = new Hono()
     }
   )
   .post(
+    // HP/SW-21 — staff-only media mutation (was any org member incl STUDENT).
     '/media/:jobId/cancel',
     authMiddleware,
-    orgMemberMiddleware,
+    orgTeamMemberMiddleware,
     zValidator('param', ZJobIdParam.pick({ jobId: true })),
     async (c) => {
       try {

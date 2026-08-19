@@ -316,7 +316,51 @@ SW confirms: **SA-6/O1** session 30d no idle (`auth.ts:109`) · **SA-6/O2** rese
   themselves are prod-only Redis, so the tests lock the confirmed O3 numbers against drift rather than exercising
   the Redis path).
 
-_Remaining Step-3 groups (open): SW-15/16/17 other XSS, SW-14 admin-plugin review, SW-18-24 minors/config._
+**Group 8 — minors / config (committed) — Step-3 fix wave COMPLETE:**
+- **SW-17 email themeColor CSS-injection** — ✅ FIXED. Org-supplied `themeColor` was interpolated raw into a
+  `<style>` block (a `red;}</style><script>…` value = stored XSS into every recipient). Added `sanitizeCssColor`
+  (strict hex / rgb(a) allowlist → default fallback); also escaped org-supplied `logoUrl` in its `src` attribute
+  (same class). `packages/email/src/templates/default.ts`. 3 regression tests
+  (`packages/email/tests/theme-color-injection.test.ts`).
+- **SW-21 media/HLS mutations reachable by STUDENT** — ✅ FIXED. Media-job mutations (`transcribe`,
+  `regenerate-thumbnail`, `cancel`) and HLS authoring mutations (`hls/init`, `hls/presign`, `hls/finalize`,
+  1080 variants, `DELETE hls`, `DELETE hls/1080`) ran on `orgMemberMiddleware` (any org member incl STUDENT) —
+  a learner could enqueue media jobs, mint HLS upload URLs, and DELETE video variants. Gated to
+  `orgTeamMemberMiddleware` (staff). The playback path (`/hls/cookie`) stays member-accessible so learners can
+  watch. `routes/jobs/jobs.ts`, `routes/organization/assets.ts`. (Mirrors the SW-10 member→team swap
+  live-verified in Group 1.)
+- **SW-24 undocumented env vars** — ✅ FIXED (docs). `AI_TUTOR_CAP_ENFORCED`, `FFMPEG_PATH`/`FFPROBE_PATH`, and
+  the build-only secret `CLOUDFLARE_API_TOKEN` documented in `docs/ENV.md §11`.
+- **SW-14 admin() plugin reach** — ✅ VERIFIED-SAFE (no code change). Provisioning creates users with better-auth
+  `role: 'user'` (never `'admin'`) via a header-less trusted server call from an already-`requireAdmin` route
+  (`services/organization/users.ts:62-66`). No user carries the better-auth admin role, so the HTTP
+  `/api/auth/admin/*` endpoints (set-role/ban/impersonate) are unreachable — every such request is forbidden.
+  (Escalating a user to `role:'admin'` requires direct DB access = already-compromised; not an app vector.)
+
+### Accepted-with-rationale (minors — recorded, not code-fixed this step)
+- **SW-15 / SW-16 dashboard `{@html}` XSS** — ACCEPTED for now. The AI-assistant markdown render (AI is OFF by
+  default) and the lesson version-history `innerHTML` (admin-authored content) are low-likelihood; the dashboard
+  ships no HTML sanitiser dependency and no unit-test harness (BASELINE-D2), so adding one blind is not a
+  smallest-safe edit. Folded into the **SA-1b CSP-tightening follow-up** (a strict `script-src` neutralises these
+  render sinks) — done as one browser-verified pass rather than an untested dep addition.
+- **SW-18 upload MIME by client string** — ACCEPTED. Validation is client-MIME + extension only, not magic-byte
+  sniffing. Objects land in PRIVATE buckets served via authz-gated presigned URLs (never executed inline), and
+  content-sniffing every upload is a disproportionate lift for the residual risk. `X-Content-Type-Options:
+  nosniff` (SA-1) further blunts MIME confusion on download.
+- **SW-20 presigned-download Redis cache keyed by `bucket:key`** — ACCEPTED. The cache only avoids re-signing; the
+  **authorization is enforced at the endpoint before a URL is ever returned** (SW-7 now default-denies non-material
+  keys), so sharing a signed URL for the same key across callers who each pass authz is safe. URLs are short-lived
+  (~50 min).
+
+### Deferred to later Phase-10 steps (owner / other steps)
+- **SW-22 orphaned BullMQ queues** (`course-imports`, `onboarding-bootstrap`) → **Step 4** (deps/cleanup, with D40).
+- **SW-23 hardcoded ClassroomIO email strings** (newsfeed reply-to / From-name bypass the env sender; OG + widget
+  vendor defaults) → tied to **D35 rebrand + D33 SES**: the sender identity is set when AWS SES lands (owner,
+  end-of-project). Recorded, owner-owned.
+
+**Step-3 fix wave is COMPLETE.** All blockers/majors fixed with regression tests (or verified-safe); minors fixed,
+accepted-with-rationale, or deferred to a named later step. Two items require an owner decision (D6 link-invite
+expiry; SW-23/D35 sender identity) — surfaced above.
 
 ## 6. Adversarial re-run (Phases 1–7 authz + adversarial suites)
 

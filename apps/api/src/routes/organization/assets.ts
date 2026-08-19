@@ -47,6 +47,10 @@ import { authMiddleware } from '@api/middlewares/auth';
 import { handleError } from '@api/utils/errors';
 import { orgAdminMiddleware } from '@api/middlewares/org-admin';
 import { orgMemberMiddleware } from '@api/middlewares/org-member';
+// PearlLMS Phase-10 HP/SW-21 — HLS authoring mutations (init / presign / finalize / delete) are staff-only; a
+// STUDENT was previously able to mint HLS upload URLs, finalize, and DELETE video variants via orgMemberMiddleware.
+// The playback path (`/hls/cookie`) stays member-accessible so learners can watch.
+import { orgTeamMemberMiddleware } from '@api/middlewares/org-team-member';
 import { requireAdmin } from '@api/middlewares/guards';
 import { zValidator } from '@hono/zod-validator';
 import { setCookie } from 'hono/cookie';
@@ -106,7 +110,7 @@ export const assetsRouter = new Hono()
    * Reserve an assetId for an HLS upload. Returns the asset id and the
    * key prefix the browser encoder should write segments under.
    */
-  .post('/hls/init', authMiddleware, orgMemberMiddleware, zValidator('json', ZInitHlsAsset), async (c) => {
+  .post('/hls/init', authMiddleware, orgTeamMemberMiddleware, zValidator('json', ZInitHlsAsset), async (c) => {
     try {
       const orgId = c.req.header('cio-org-id')!;
       const user = c.get('user')!;
@@ -125,7 +129,7 @@ export const assetsRouter = new Hono()
   .post(
     '/:assetId/hls/presign',
     authMiddleware,
-    orgMemberMiddleware,
+    orgTeamMemberMiddleware,
     zValidator('param', ZAssetGetParam),
     zValidator('json', ZBatchPresignHls),
     async (c) => {
@@ -149,7 +153,7 @@ export const assetsRouter = new Hono()
   .post(
     '/:assetId/hls/finalize',
     authMiddleware,
-    orgMemberMiddleware,
+    orgTeamMemberMiddleware,
     zValidator('param', ZAssetGetParam),
     zValidator('json', ZFinalizeHlsAsset),
     async (c) => {
@@ -173,7 +177,7 @@ export const assetsRouter = new Hono()
   .post(
     '/:assetId/hls/1080/presign',
     authMiddleware,
-    orgMemberMiddleware,
+    orgTeamMemberMiddleware,
     zValidator('param', ZAssetGetParam),
     zValidator('json', ZBatchPresignHls1080),
     async (c) => {
@@ -196,7 +200,7 @@ export const assetsRouter = new Hono()
   .post(
     '/:assetId/hls/1080/finalize',
     authMiddleware,
-    orgMemberMiddleware,
+    orgTeamMemberMiddleware,
     zValidator('param', ZAssetGetParam),
     zValidator('json', ZFinalizeHls1080),
     async (c) => {
@@ -219,7 +223,7 @@ export const assetsRouter = new Hono()
    * when it errors or is aborted mid-upload, so we don't leak stale
    * `processing` rows + partial segment trees.
    */
-  .delete('/:assetId/hls', authMiddleware, orgMemberMiddleware, zValidator('param', ZAssetGetParam), async (c) => {
+  .delete('/:assetId/hls', authMiddleware, orgTeamMemberMiddleware, zValidator('param', ZAssetGetParam), async (c) => {
     try {
       const orgId = c.req.header('cio-org-id')!;
       const { assetId } = c.req.valid('param');
@@ -235,17 +239,23 @@ export const assetsRouter = new Hono()
    * Drop a failed manual p1080 rendition: delete partial segments, restore
    * the master manifest, and reset rendition metadata.
    */
-  .delete('/:assetId/hls/1080', authMiddleware, orgMemberMiddleware, zValidator('param', ZAssetGetParam), async (c) => {
-    try {
-      const orgId = c.req.header('cio-org-id')!;
-      const { assetId } = c.req.valid('param');
-      const updated = await abortHls1080RenditionService(orgId, assetId);
+  .delete(
+    '/:assetId/hls/1080',
+    authMiddleware,
+    orgTeamMemberMiddleware,
+    zValidator('param', ZAssetGetParam),
+    async (c) => {
+      try {
+        const orgId = c.req.header('cio-org-id')!;
+        const { assetId } = c.req.valid('param');
+        const updated = await abortHls1080RenditionService(orgId, assetId);
 
-      return c.json({ success: true, data: updated }, 200);
-    } catch (error) {
-      return handleError(c, error, 'Failed to abort 1080p HLS rendition');
+        return c.json({ success: true, data: updated }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to abort 1080p HLS rendition');
+      }
     }
-  })
+  )
   /**
    * POST /organization/assets/:assetId/hls/cookie
    * After entitlement check, set a 15-minute HMAC-signed cookie scoped to

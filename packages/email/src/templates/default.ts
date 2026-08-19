@@ -7,15 +7,27 @@ function escapeHtmlAttr(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// PearlLMS Phase-10 HP/SW-17 — org-supplied `themeColor` is interpolated raw inside a `<style>` block, so a
+// value like `red;}</style><script>…` would break out of the stylesheet (stored XSS into every recipient's
+// inbox). Accept ONLY a strict CSS color literal (hex, or rgb/rgba with digits/commas/%/space) and fall back to
+// the default otherwise — no `;`, `}`, `<`, `(`-with-letters, etc. can survive.
+const SAFE_CSS_COLOR = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$|^rgba?\(\s*[\d.,%\s]+\)$/;
+function sanitizeCssColor(value: string | undefined, fallback: string): string {
+  const trimmed = value?.trim();
+  return trimmed && SAFE_CSS_COLOR.test(trimmed) ? trimmed : fallback;
+}
+
 function buildMasthead(branding: EmailBranding): string {
   const logoUrl = branding?.logoUrl;
   const orgName = branding?.orgName ? escapeHtmlAttr(branding.orgName) : '';
 
   if (logoUrl) {
+    // HP/SW-17 (same class) — logoUrl is org-supplied and lands in an attribute; escape it so it can't break out.
+    const safeLogoUrl = escapeHtmlAttr(logoUrl);
     const nameHtml = orgName
       ? `<span style="margin-left:10px;font-size:16px;font-weight:600;color:#111827;vertical-align:middle;">${orgName}</span>`
       : '';
-    return `<img src="${logoUrl}" alt="${orgName || 'Logo'}" style="max-height:40px;width:auto;display:inline-block;vertical-align:middle;" />${nameHtml}`;
+    return `<img src="${safeLogoUrl}" alt="${orgName || 'Logo'}" style="max-height:40px;width:auto;display:inline-block;vertical-align:middle;" />${nameHtml}`;
   }
 
   if (orgName) {
@@ -28,7 +40,7 @@ function buildMasthead(branding: EmailBranding): string {
 }
 
 export const getDefaultTemplate = (content: string, branding?: EmailBranding): string => {
-  const buttonColor = branding?.themeColor || DEFAULT_BUTTON_COLOR;
+  const buttonColor = sanitizeCssColor(branding?.themeColor, DEFAULT_BUTTON_COLOR);
   const masthead = buildMasthead(branding);
 
   return `<!DOCTYPE html>

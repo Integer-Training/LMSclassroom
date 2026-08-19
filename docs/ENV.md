@@ -200,3 +200,11 @@ Set on the droplet only (see `docs/DEPLOY.md`); not used in local dev.
 
 The Supabase, storage, SMTP, secrets, and `PUBLIC_SOURCE_REPO_URL` values on the droplet
 are the same vars documented in §1–§9 above.
+
+## 11. Operational / build vars (Phase-10 HP/SW-24 — were used in code but undocumented)
+
+| Var | Purpose | Ours |
+|---|---|---|
+| `AI_TUTOR_CAP_ENFORCED` | Enforces the AI-tutor per-org usage cap (`services/agent/tutor-usage.ts:28`). AI is off by default here, so this is inert until AI features are enabled. | _unset (AI disabled)_ |
+| `FFMPEG_PATH` / `FFPROBE_PATH` | Absolute paths to the ffmpeg/ffprobe binaries the media worker shells out to (`packages/jobs/src/utils/ffmpeg.ts:14`). Only needed on the host running the media/HLS worker; falls back to the binaries on `PATH`. | _unset (uses PATH)_ |
+| `CLOUDFLARE_API_TOKEN` | **Secret.** Used only by the one-off embed-upload build script (`apps/embeds/scripts/upload-embeds.ts:54`) to publish the embed bundle to Cloudflare — a build/release tool, NOT read by the running app. Keep out of the runtime env. | _not set in app runtime_ |
