@@ -158,8 +158,8 @@ write), so it is **not** an audit action.
 | Public register (create pending) | `POST /register` (via dashboard `(auth)/register` action) | `apiKeyMiddleware` + honeypot + per-IP rate limit | **Anonymous**, rate-limited; writes ONLY a `registration` row — never the auth stack |
 | Approval queue (list) | `GET /organization/registrations?status=pending` | `requireManagerOrAdmin` + org-bound | **Manager/Admin**; oldest-first |
 | Approve / reject | `POST /organization/registrations/:id/{approve,reject}` | `requireManagerOrAdmin` | **Manager/Admin**; one-way; audited |
-| Record ID check | `PUT /organization/learners/:learnerId/id-verification` | `requireManagerOrAdmin` OR `isAllocatedTutor` (D3) | **Manager/Admin + allocated Tutor** |
-| ID status (self) | `GET …/id-verification/me` (surfaced on the ID-check session) | `requireActor` + self | **Learner, self only** — informational |
+| Record ID check | `PUT /organization/id-verification/learner/:learnerId` (as-built) | `requireActor` + in-service `isRole(ADMIN\|MANAGER)` OR `isAllocatedTutor` (D3) | **Manager/Admin + allocated Tutor** |
+| ID status (self) | `GET /organization/id-verification/me` (surfaced on the ID-check session) | `requireActor` + self | **Learner, self only** — informational |
 
 **Spam-control placement (Step 2):** the honeypot + per-IP rate limit apply at the **SvelteKit form-action
 boundary**, where `getClientAddress()` sees the real visitor IP and the API key stays server-side; the API
