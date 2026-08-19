@@ -9,7 +9,11 @@ import { ROUTE } from '$lib/utils/constants/routes';
 
 export const handleError: HandleServerError = ({ error, event, status, message }) => {
   const err = error as Error;
+  // HP/SA-5 — full detail (stack/url) stays in the server log, keyed by a correlation id; the client only ever
+  // sees a generic message + that id (returned below → $page.error), never the stack or internal path.
+  const correlationId = crypto.randomUUID();
   console.error('[handleError]', {
+    correlationId,
     status,
     message,
     method: event.request.method,
@@ -18,6 +22,11 @@ export const handleError: HandleServerError = ({ error, event, status, message }
     msg: err?.message,
     stack: err?.stack
   });
+
+  return {
+    message: 'Something went wrong. Please try again, and quote this reference if it persists.',
+    correlationId
+  };
 };
 
 const ANALYTICS_SESSION_COOKIE = 'cio_aid';

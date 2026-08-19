@@ -18,6 +18,7 @@ export interface ErrorResponse {
   error: string;
   code: string;
   field?: string;
+  correlationId?: string;
 }
 
 function getZodErrorField(error: ZodError): string | undefined {
@@ -63,11 +64,16 @@ export const handleError = (
   fallbackMessage: string = 'An unexpected error occurred',
   fallbackCode?: string
 ) => {
-  console.error('Error in route:', error);
+  // HP/SA-5 — the correlation id ties this (server-side) full-error log line to the sanitised client response.
+  const correlationId = (c.get('correlationId') as string | undefined) ?? undefined;
+  console.error('[error in route]', { correlationId, error });
 
   if (error instanceof AppError) {
     const isServerError = error.statusCode >= 500;
     const responseCode = isServerError ? (fallbackCode ?? error.code) : error.code;
+    // For a 5xx the message is genericised (fallbackMessage) so no internal detail leaks; deliberate 4xx
+    // AppError messages are developer-authored user-facing text and are preserved. The correlation id is only
+    // surfaced on server errors — the class that a user would report.
     const responseMessage = isServerError ? fallbackMessage : error.message;
 
     return c.json<ErrorResponse>(
@@ -75,7 +81,8 @@ export const handleError = (
         success: false,
         error: responseMessage,
         code: responseCode,
-        field: isServerError ? undefined : error.field
+        field: isServerError ? undefined : error.field,
+        correlationId: isServerError ? correlationId : undefined
       },
       error.statusCode as ContentfulStatusCode
     );
@@ -96,7 +103,8 @@ export const handleError = (
     {
       success: false,
       error: fallbackMessage,
-      code: fallbackCode ?? ErrorCodes.INTERNAL_ERROR
+      code: fallbackCode ?? ErrorCodes.INTERNAL_ERROR,
+      correlationId
     },
     500
   );

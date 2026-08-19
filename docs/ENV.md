@@ -208,3 +208,21 @@ are the same vars documented in §1–§9 above.
 | `AI_TUTOR_CAP_ENFORCED` | Enforces the AI-tutor per-org usage cap (`services/agent/tutor-usage.ts:28`). AI is off by default here, so this is inert until AI features are enabled. | _unset (AI disabled)_ |
 | `FFMPEG_PATH` / `FFPROBE_PATH` | Absolute paths to the ffmpeg/ffprobe binaries the media worker shells out to (`packages/jobs/src/utils/ffmpeg.ts:14`). Only needed on the host running the media/HLS worker; falls back to the binaries on `PATH`. | _unset (uses PATH)_ |
 | `CLOUDFLARE_API_TOKEN` | **Secret.** Used only by the one-off embed-upload build script (`apps/embeds/scripts/upload-embeds.ts:54`) to publish the embed bundle to Cloudflare — a build/release tool, NOT read by the running app. Keep out of the runtime env. | _not set in app runtime_ |
+
+## 12. Web & auth hardening baseline (Phase 10 Step 4) — which control lives at which layer
+
+The baseline controls and where each is enforced (so a future maintainer edits the right layer):
+
+| Control | Layer / file | Notes |
+|---|---|---|
+| **HSTS** | **Caddy** (`docker/Caddyfile`) | Only the TLS-terminating proxy should assert HSTS. 2y + `includeSubDomains; preload`. |
+| **X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy** | Caddy (`docker/Caddyfile`) + dashboard `hooks.server.ts` (`security-headers.ts`, set-if-absent) | Defense-in-depth: Caddy in prod, the SvelteKit hook covers dev / any non-Caddy path. |
+| **CSP** | dashboard `svelte.config.js` (build-time base) + `hooks.server.ts` (`applyCspExtensions`, runtime env allow-lists) | Self-hosted base = `default-src 'self'` + empty external lists; operators add real hosts via the `CSP_*_DOMAINS` vars (§8). Enforced `script-src` = `'self' … 'unsafe-eval'` (PDF.js-forced), `style-src` = `'self' 'unsafe-inline'` (Svelte-forced). `unsafe-hashes` removed. A **report-only canary** (stricter: no `unsafe-eval`) runs alongside → `/csp-report`. |
+| **API response headers** | api `app.ts` (Hono `secureHeaders()`) | The api sets its own `X-Content-Type-Options`/frame headers; `crossOriginResourcePolicy: 'cross-origin'` is deliberate (it's an API consumed cross-origin; CORS gates readers). |
+| **Cookies** | Better Auth (`packages/db/src/auth.ts`) | `useSecureCookies` pinned in production; session cookie httpOnly + SameSite=Lax (better-auth defaults — SameSite=Lax is the primary CSRF defense for the cookie-authed JSON API). |
+| **CSRF** | SvelteKit `kit.csrf` (default `checkOrigin: true`, not disabled) + Better Auth `trustedOrigins`/`csrf_token` for `/api/auth/*` + `sessionCors` | Native form POSTs → SvelteKit origin check; auth endpoints → better-auth token; app JSON API → SameSite=Lax cookie + CORS. Verified, no gap. |
+| **Rate limits** | api (`middlewares/rate-limiter.ts`, prod-only Redis) + better-auth `rateLimit.customRules` | Values config-driven from `@cio/utils` (`LOGIN_RATE_LIMIT` etc.). Login 10/15min, reset 5/hr, upload 30/hr, unauth email 5/hr, proxy 20/hr. |
+| **Session / token policy** | Better Auth (`auth.ts`, `email-password.ts`) | Session 7d rolling; email-verify 24h; reset 1h; invite 7d; minPasswordLength 10. |
+| **Error hygiene** | api (`middlewares/correlation-id.ts`, `utils/errors.ts`, `app.ts` onError) + dashboard `hooks.server.ts` handleError | Client gets a generic message + `correlationId` (echoed in `x-correlation-id`); full detail stays in the server log keyed by the same id. |
+
+**CSP click-through checklist (owner, browser + console open — the SA-1b tightening evidence).** Load a production build; with DevTools console open, exercise: login → dashboard → a course → a lesson with **rich text + an uploaded file + a video** (HLS and an external embed if used) → coursework upload → PDF/docx preview → admin authoring (create/edit a lesson) → org settings. Watch for **`Content-Security-Policy-Report-Only` violation** lines (the strict canary). If the ONLY report-only violations are `script-src`/`eval` from PDF.js, `unsafe-eval` can later be moved behind a worker-scoped exception; if there are **zero** report-only violations, remove `unsafe-eval` from the enforced `script-src` too. Any **enforced** (not report-only) CSP error means a real break — capture the directive + URL and it becomes a register entry.

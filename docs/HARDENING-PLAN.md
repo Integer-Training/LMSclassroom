@@ -369,6 +369,39 @@ accepted-with-rationale, or deferred to a named later step.
 - **SW-23 hardcoded email sender** — ACCEPTED / deferred to **D35 rebrand + D33 AWS SES** (owner: leave until SES
   lands, when the sender identity is configured). No code change now.
 
+## 5e. Step 4 — web & auth hardening baseline (completion)
+
+Step 3 landed most of this baseline (SA-1 headers, SA-2 cookies, SA-3 CSRF-origins, SA-4/SW-19/D14 rate limits,
+O1/O2/SW-13 session+token policy). Step 4 closes the two deferred/outstanding controls and records the
+verification of the rest. Layer map is in **ENV.md §12**.
+
+- **SA-1b honest CSP** — ✅ RESOLVED (was DEFERRED in Group 6). The self-hosted CSP is confirmed a real control,
+  not an all-`unsafe-*` policy: `default-src 'self'`, `object-src 'none'`, `base-uri 'self'`, `form-action
+  'self'`, `frame-ancestors 'self'`, and EMPTY external allow-lists (operators add only what they use via the
+  `CSP_*_DOMAINS` runtime vars — the sole learner-browser external fetch that survives is INTEGRATIONS.md **M1**
+  video embeds). Enforced `script-src` **dropped `'unsafe-hashes'`** (SvelteKit binds via addEventListener, no
+  inline `on*=`); retains `'unsafe-eval'` (bundled-dep-forced, PDF.js worker) and `style-src 'unsafe-inline'`
+  (Svelte scoped-style injection) — both documented, minimal, justified. The previously-redundant **report-only
+  policy is now a strict canary** (no `'unsafe-eval'`/`'unsafe-hashes'`) reporting to `/csp-report`, so the owner
+  click-through gathers evidence to remove `'unsafe-eval'` from the enforced policy next. `svelte.config.js`.
+  Verified: dashboard production build succeeds under the new policy; browser click-through is the owner manual
+  step (checklist in ENV.md §12).
+- **SA-5 error hygiene + correlation ids** — ✅ DONE. Every request gets a correlation id
+  (`middlewares/correlation-id.ts` → `x-correlation-id` header); the api's `handleError` + global `onError` and
+  the dashboard's `hooks.server.ts` `handleError` return a GENERIC message + the id and log the full error
+  (stack/path) server-side keyed by that id. 5xx/unexpected errors never leak a stack, DSN, or internal path;
+  deliberate 4xx messages are preserved. 5 regression tests (`__tests__/error-hygiene.test.ts`) assert generic
+  message + no-secret-leak + id-in-body-matches-header for server/unexpected/denied/validation classes.
+- **Verified (already implemented, no gap):** headers live at Caddy + `security-headers.ts` + Hono
+  `secureHeaders()`; cookies `useSecureCookies`(prod) + httpOnly + SameSite=Lax (better-auth); **CSRF** covered on
+  both surfaces — SvelteKit `kit.csrf` default `checkOrigin:true` (not disabled) for native forms, better-auth
+  `trustedOrigins`/`csrf_token` for `/api/auth/*`, SameSite=Lax + `sessionCors` for the JSON API; rate limits +
+  session/token policy at the Step-1 confirmed values, config-driven (`@cio/utils` constants, tests in
+  `__tests__/config/`). No CSRF gap found → no new register entry.
+
+**Manual verification owned by the owner (per the Step-4 spec):** the CSP console click-through (ENV.md §12
+checklist) and the cookie flags over HTTPS at the Step-7 smoke.
+
 ## 6. Adversarial re-run (Phases 1–7 authz + adversarial suites)
 
 `pnpm vitest run` (apps/api) — **448 passed, ZERO regressions.** All 21 authz/adversarial test files pass:

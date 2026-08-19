@@ -48,6 +48,7 @@ import { registrationRouter } from '@api/routes/registration/registration';
 import { publicCourseRouter, orgSiteOgRouter } from '@api/routes/org-site';
 import { publicWidgetsRouter } from '@api/routes/widgets';
 import rateLimiter from '@api/middlewares/rate-limiter';
+import { correlationId } from '@api/middlewares/correlation-id';
 import { secureHeaders } from 'hono/secure-headers';
 import { signupGuard } from '@api/middlewares/signup-guard';
 import { ssoDiscoveryRouter } from '@api/routes/sso/discovery';
@@ -58,6 +59,8 @@ import { v1Router } from '@api/routes/v1';
 export const app = new Hono()
   // Middleware
   .use('*', logger())
+  // HP/SA-5 — assign a correlation id first so every downstream log line + error response can reference it.
+  .use('*', correlationId())
   .use('*', prettyJSON())
   // `Cross-Origin-Resource-Policy: same-origin` (Hono's default) blocks the
   // dashboard from embedding api-served media (e.g. HLS segments via
@@ -276,11 +279,13 @@ export const app = new Hono()
   .route('/internal', internalRouter)
   .route('/agent', agentRouter)
 
-  // Error handling
+  // Error handling — HP/SA-5: the client gets a GENERIC message + the correlation id only; the full error
+  // (stack/path/query) stays server-side in the log, keyed by the same id so support can trace it.
   .onError((err, c) => {
     Sentry.captureException(err);
-    console.error('Error:', err);
-    return c.json({ error: 'Internal Server Error' }, 500);
+    const correlationId = (c.get('correlationId') as string | undefined) ?? 'unknown';
+    console.error('[error]', { correlationId, error: err });
+    return c.json({ success: false, error: 'Internal Server Error', code: 'INTERNAL_ERROR', correlationId }, 500);
   });
 
 // Dev-only BullMQ dashboard at /admin/queues. Mounted after the typed RPC
