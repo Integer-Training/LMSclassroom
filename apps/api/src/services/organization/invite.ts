@@ -466,7 +466,11 @@ export async function acceptOrganizationInvite(token: string, user: TAuthUser, c
 
 // ─── Link Invite ────────────────────────────────────────────────────────────
 
-const LINK_INVITE_FAR_FUTURE_MS = 100 * 365 * 24 * 60 * 60 * 1000;
+// PearlLMS Phase-10 HP/D6 (owner-approved 2026-08-19) — link invites expire after 90 days (was an effectively
+// unbounded ~100-year window, so a leaked share-link stayed valid forever until manually revoked). Expiry is
+// enforced downstream: the invite status resolves to EXPIRED once past `expiresAt`, and acceptLinkInvite throws
+// 'This invite has expired'. Existing link rows keep their stored expiry; only newly-minted links get 90 days.
+const LINK_INVITE_EXPIRY_MS = 90 * 24 * 60 * 60 * 1000;
 
 /**
  * Returns the current org link invite if one already exists, otherwise creates one.
@@ -486,7 +490,7 @@ export async function getOrCreateLinkInvite(orgId: string, roleId: number, profi
 
   const token = generateToken();
   const tokenHash = hashToken(token);
-  const expiresAt = new Date(Date.now() + LINK_INVITE_FAR_FUTURE_MS).toISOString();
+  const expiresAt = new Date(Date.now() + LINK_INVITE_EXPIRY_MS).toISOString();
 
   const invite = await createLinkInvite({
     organizationId: orgId,

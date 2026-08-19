@@ -359,8 +359,15 @@ SW confirms: **SA-6/O1** session 30d no idle (`auth.ts:109`) · **SA-6/O2** rese
   end-of-project). Recorded, owner-owned.
 
 **Step-3 fix wave is COMPLETE.** All blockers/majors fixed with regression tests (or verified-safe); minors fixed,
-accepted-with-rationale, or deferred to a named later step. Two items require an owner decision (D6 link-invite
-expiry; SW-23/D35 sender identity) — surfaced above.
+accepted-with-rationale, or deferred to a named later step.
+
+**Owner decisions RESOLVED (2026-08-19, "do recommended"):**
+- **D6 link-invite expiry** — ✅ FIXED to **90 days** (was ~100 years). `LINK_INVITE_FAR_FUTURE_MS` →
+  `LINK_INVITE_EXPIRY_MS = 90d` in `services/organization/invite.ts`. Expiry is already enforced downstream
+  (status→EXPIRED past `expiresAt`; `acceptLinkInvite` throws 'This invite has expired'), so the bound takes
+  effect for newly-minted links; existing link rows keep their stored expiry (no live link breaks).
+- **SW-23 hardcoded email sender** — ACCEPTED / deferred to **D35 rebrand + D33 AWS SES** (owner: leave until SES
+  lands, when the sender identity is configured). No code change now.
 
 ## 6. Adversarial re-run (Phases 1–7 authz + adversarial suites)
 
