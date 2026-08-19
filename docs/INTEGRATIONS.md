@@ -70,7 +70,7 @@ embeds) and every **disable** action below. The egress re-audit (§ Egress) prov
 | T3 | **License phone-home** (`enterprise-api.classroomio.dev`) | Hourly-ish license check. | **disable** | **Already removed** (Phase 0 — `fetchLicenseFromApi` deleted; locked by `no-phone-home.test.ts`). | ✅ (done) |
 | T4 | **UserJot** (feedback widget) | Transmits **id / email / name / avatar** to `cdn.userjot.com`. Currently `isWidgetAllowed()` returns false when self-hosted, but the init call still ships. | **disable** | **Propose hard-remove the init call** (BASELINE-recommended): it is PII-capable and only flag-gated — removal eliminates the latent surface honestly. | ✅ |
 | T5 | **Senja** (testimonials) | Widget; gated on the paid `no-tracking` feature → off. | **keep** (inert) | Off; no learner data on our surfaces. | ✅ (inert) |
-| T6 | **Tinybird** (AI observability) | Fire-and-forget agent events; `TINYBIRD_TOKEN` unset → off. | **keep** (inert) | Off by default. | ✅ (inert) |
+| T6 | **Tinybird** (AI observability) | Fire-and-forget agent events; `TINYBIRD_TOKEN` unset → off. | **disable** (self-hosted) | **Hard-gated self-hosted-off** (`packages/core/src/utils/tinybird.ts` returns early when `PUBLIC_IS_SELFHOSTED='true'`, before the token check) — matching the neutered posthog/umami/userjot. UAT F-02. | ✅ |
 | T7 | **Sentry** (errors + replay) | DSN-gated AND not-self-hosted-gated → off. | **keep** (inert) | Off by default self-hosted. | ✅ (inert) |
 
 ---

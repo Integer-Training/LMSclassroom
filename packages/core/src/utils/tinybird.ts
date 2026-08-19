@@ -11,6 +11,10 @@ const TINYBIRD_BASE_URL = process.env.TINYBIRD_BASE_URL || 'https://api.tinybird
  * Safe to call without awaiting — errors are swallowed.
  */
 export function trackAgentEvent(eventName: string, data: Record<string, unknown>): void {
+  // PearlLMS Phase 7 / UAT F-02 — hard self-hosted gate (docs/INTEGRATIONS.md T6). Tinybird agent-observability
+  // must never egress from a self-hosted closed deployment, even if an operator later sets TINYBIRD_TOKEN —
+  // matching the neutered posthog/umami/userjot treatment (which are no-ops self-hosted).
+  if (process.env.PUBLIC_IS_SELFHOSTED === 'true') return;
   if (!TINYBIRD_TOKEN) return;
 
   fetch(`${TINYBIRD_BASE_URL}/v0/events?name=${eventName}`, {

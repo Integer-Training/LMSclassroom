@@ -8,7 +8,7 @@
  * no preference row exists).
  */
 
-/** The five notification event types (docs/COMMS-MODEL.md §1). */
+/** The notification event types (docs/COMMS-MODEL.md §1; Phase-7 adds registration.submitted). */
 export const NOTIFICATION_TYPES = [
   'submission.created',
   'result.recorded',
