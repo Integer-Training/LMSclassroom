@@ -224,4 +224,9 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
       return { user, session, orgRoles, status };
     })
   ]
-});
+  // PearlLMS Phase-10 Step-5 — better-auth ≥1.6.11 (OAuth refresh-token-replay + SSO criticals fixed) tightened
+  // the endpoint-options type (`operationId` now required), so the deeply-inferred `Auth<{…our options…}>` is no
+  // longer *assignable* to the widened, nameable `ReturnType<typeof betterAuth>` annotation (which the .d.ts
+  // build needs to avoid TS2742). The runtime object IS a valid better-auth instance — only the two deep inferred
+  // types disagree — so we cast. Revisit if better-auth reconciles the generic/`BetterAuthOptions` API types.
+}) as unknown as ReturnType<typeof betterAuth>;

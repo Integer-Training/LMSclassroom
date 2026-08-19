@@ -96,15 +96,15 @@
     "db:fix-landing-courses": "tsx src/scripts/fix-landing-page-courses-links.ts"
   },
   "dependencies": {
-    "@better-auth/sso": "^1.4.18",
+    "@better-auth/sso": "~1.6.11",
     "@cio/email": "workspace:*",
     "@cio/question-types": "workspace:*",
     "@cio/tsconfig": "workspace:*",
     "@cio/utils": "workspace:*",
     "bcrypt": "6.0.0",
-    "better-auth": "^1.4.18",
+    "better-auth": "~1.6.11",
     "drizzle-kit": "^0.31.8",
-    "drizzle-orm": "^0.44.7",
+    "drizzle-orm": "^0.45.2",
     "jose": "^6.1.3",
     "postgres": "^3.4.7"
   },
