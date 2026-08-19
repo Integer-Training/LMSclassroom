@@ -224,7 +224,28 @@ SW confirms: **SA-6/O1** session 30d no idle (`auth.ts:109`) · **SA-6/O2** rese
 - **SW-25 progression `sql.raw(exerciseAlias)`** — ✅ ACCEPTED. `exerciseAlias` is a compile-time literal
   union (`'exercise'` | …), never user-controllable — no injection surface.
 
-_Remaining Step-3 groups (open): SW-4 login-link gate, SW-5/6/7 storage, SW-15/16/17 other XSS,
+**Group 4 — storage & file handling (committed):**
+- **SW-7 material-download key IDOR** — ✅ FIXED (highest-severity of the group). `assertCourseMaterialDownloadAccess`
+  only ran the currency/lock check on `materials/…` keys and let every OTHER key shape fall through for a
+  non-staff caller — so an enrolled learner could sign a classmate's `coursework/…` key through the
+  material-download endpoint. Added a **default-deny**: a non-staff caller may sign `materials/…` keys ONLY;
+  any non-material key → 403 (coursework has its own guarded download path). Staff (Admin/Tutor/Manager) bypass
+  is unchanged. `apps/api/src/middlewares/guards/ownership.ts`. Regression tests: hardening-access.test.ts
+  (learner+coursework-key → 403; admin bypass) + updated materials-access.test.ts (the pre-existing test that
+  had encoded the insecure passthrough now asserts 403 for a learner's flat key).
+- **SW-6 material-upload courseId unbound** — ✅ FIXED. The shared `POST /course/presign/document` accepted a
+  free-string `courseId` (`z.string().min(1)`) and, when present, signed a `materials/{courseId}/…` upload key
+  with only `requireActor` — any authed user could name any courseId and write an authoring key into another
+  org's namespace. Now: validator requires a **UUID** courseId; the handler binds the material path to
+  `getCourseOrgId(courseId) === actor.orgId && isRole(actor,'ADMIN')` (material authoring is admin-only, Phase 2)
+  → else 404, reusing the SW-2-verified clone-guard pattern. `packages/utils/.../course.ts` + `presign.ts`.
+- **SW-5 presign size bypass** — ◑ PARTIAL (code) + owner infra follow-up. The advisory size check skipped when
+  `fileSize` was omitted; the material-upload path now **requires** a declared `fileSize` and validates it ≤
+  `MAX_DOCUMENT_SIZE` before signing. Full byte-level enforcement of a max object size on a plain presigned PUT
+  is not expressible in code without changing the upload contract (presigned-POST) — recorded as a **Supabase
+  bucket max-object-size policy** (owner infra action, tracked into Step-5 RUNBOOK, alongside O4 backups).
+
+_Remaining Step-3 groups (open): SW-4 login-link gate, SW-15/16/17 other XSS,
 SA-1/1b headers+CSP, SA-2 cookies, SA-3 CSRF origins, SA-4/D14 rate-limits, SA-6/O1/O2/D6 session+tokens, D29
 split-env, SW-13 password policy, SW-14 admin-plugin review, SW-18-24 minors/config._
 

@@ -257,6 +257,15 @@ export async function assertCourseMaterialDownloadAccess(
   }
   if (isContentStaff(actor)) return;
 
+  // PearlLMS Phase-10 HP/SW-7 — DEFAULT-DENY for non-staff: this endpoint signs COURSE MATERIALS only. Any key
+  // that is not a `materials/…` key (e.g. another learner's `coursework/…` file) is refused here — those flow
+  // through their own guarded endpoint (assertCourseworkDownloadAccess). Previously non-material keys fell
+  // through the currency/lock filter unchecked, letting a learner sign a classmate's coursework key.
+  const nonMaterialKeys = keys.filter((key) => !key.startsWith(MATERIALS_KEY_PREFIX));
+  if (nonMaterialKeys.length > 0) {
+    throw new AppError('You do not have access to these files', ErrorCodes.FORBIDDEN, 403);
+  }
+
   const materialKeys = keys.filter((key) => key.startsWith(MATERIALS_KEY_PREFIX));
   if (materialKeys.length > 0) {
     const currentKeys = await getCourseMaterialKeys(courseId);

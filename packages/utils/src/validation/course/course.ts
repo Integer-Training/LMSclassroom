@@ -141,7 +141,9 @@ export const ZCourseDocumentPresignUrlUpload = z.object({
   // PearlLMS Phase 2 Step 4: when present, the object key is namespaced under `materials/{courseId}/…`
   // (admin-authored unit materials). Absent for non-material document uploads (e.g. exercise
   // submissions), which keep the flat legacy key — so this endpoint stays shared and non-breaking.
-  courseId: z.string().min(1).optional()
+  // Phase-10 HP/SW-6: a material courseId must be a real UUID (was `min(1)`, which let arbitrary key prefixes
+  // through); the route additionally binds it to a course the actor may author in.
+  courseId: z.string().uuid().optional()
 });
 export type TCourseDocumentPresignUrlUpload = z.infer<typeof ZCourseDocumentPresignUrlUpload>;
 

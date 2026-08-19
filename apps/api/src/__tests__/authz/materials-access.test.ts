@@ -97,11 +97,18 @@ describe('assertCourseMaterialDownloadAccess — G3 course-bound download', () =
     expect(await status(assertCourseMaterialDownloadAccess(learner, 'course-1', [OTHER_MAT]))).toBe(403);
   });
 
-  it('enrolled learner, published, non-material (flat) key → allowed (currency applies only to materials/ keys)', async () => {
+  // PearlLMS Phase-10 HP/SW-7 — previously a non-staff learner who passed the read gate could sign ANY
+  // non-`materials/` key (e.g. a classmate's coursework/submission key) through this endpoint, because the
+  // currency check only filtered `materials/` keys and let everything else fall through. It now DEFAULT-DENIES
+  // any non-material key for non-staff (coursework has its own guarded download path).
+  it('enrolled learner, published, non-material (flat) key → 403 (SW-7 default-deny)', async () => {
     mockedIsMember.mockResolvedValue(true);
     mockedGetCourse.mockResolvedValue(published);
-    expect(await status(assertCourseMaterialDownloadAccess(learner, 'course-1', [SUBMISSION]))).toBe(0);
-    expect(mockedMaterialKeys).not.toHaveBeenCalled();
+    expect(await status(assertCourseMaterialDownloadAccess(learner, 'course-1', [SUBMISSION]))).toBe(403);
+  });
+
+  it('staff, non-material (flat) key → allowed (authoring/oversight bypass, unchanged)', async () => {
+    expect(await status(assertCourseMaterialDownloadAccess(admin, 'course-1', [SUBMISSION]))).toBe(0);
   });
 });
 

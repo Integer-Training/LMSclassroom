@@ -14,6 +14,8 @@ import {
 import { Hono } from '@api/utils/hono';
 import type { Actor } from '@cio/db/actor';
 import { requireActor, assertCourseMaterialDownloadAccess } from '@api/middlewares/guards';
+import { isRole } from '@cio/utils/auth';
+import { getCourseOrgId } from '@cio/db/queries/reports';
 import { generateFileKey, generateMaterialFileKey } from '@cio/core/utils/upload';
 import { AppError, handleError } from '@api/utils/errors';
 import { MAX_DOCUMENT_SIZE, MAX_FILE_SIZE } from '@api/constants/upload';
@@ -133,6 +135,21 @@ export const presignRouter = new Hono()
         const { fileName, fileType, fileSize, courseId } = body;
 
         assertPresignFileSizeWithinLimit(fileSize, MAX_DOCUMENT_SIZE);
+
+        // PearlLMS Phase-10 HP/SW-6 — a material upload (courseId present) writes an authoring key under
+        // materials/{courseId}/…. Bind it: the caller must be an ADMIN of the course's own org (material
+        // authoring is admin-only, Phase 2) and must declare a size. Previously any authed actor could name
+        // any courseId and sign a material key into another org's namespace (the id was an unbound string).
+        if (courseId) {
+          const actor = c.get('actor') as Actor;
+          const sourceOrgId = await getCourseOrgId(courseId);
+          if (!sourceOrgId || sourceOrgId !== actor.orgId || !isRole(actor, 'ADMIN')) {
+            throw new AppError('Course not found', 'NOT_FOUND', 404);
+          }
+          if (fileSize == null) {
+            throw new AppError('fileSize is required for material uploads', 'BAD_REQUEST', 400);
+          }
+        }
 
         // PearlLMS Phase 2 Step 4: material uploads (courseId present) are namespaced under
         // materials/{courseId}/…; other document uploads (e.g. exercise submissions) keep the flat key.
