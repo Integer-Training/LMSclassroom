@@ -210,7 +210,13 @@ SW confirms: **SA-6/O1** session 30d no idle (`auth.ts:109`) · **SA-6/O2** rese
 - **SW-10 exercise authoring** (confirms D5) — ✅ FIXED. create / from-template / update / delete exercise →
   course-team (was course-member/student); learner submission + video routes unchanged. Live-verified: learner→403.
 
-_Remaining Step-3 groups (open): SW-4 login-link gate, SW-5/6/7 storage, SW-8/15/16/17 XSS, SW-9/25 raw-SQL,
+**Group 2 — email XSS (committed):**
+- **SW-8 email-template stored-XSS** — ✅ FIXED. Applied the existing `escapeHtml` helper to every user/org sink
+  in `newsfeed.ts` (author/title/post/comment), `student-course-welcome.ts` + `student-course-completion.ts`
+  (teacher `customMessage`, student/org/course names). Regression test `tests/xss-escaping.test.ts` (4) — a
+  `<script>` payload renders escaped, never raw.
+
+_Remaining Step-3 groups (open): SW-4 login-link gate, SW-5/6/7 storage, SW-15/16/17 other XSS, SW-9/25 raw-SQL,
 SA-1/1b headers+CSP, SA-2 cookies, SA-3 CSRF origins, SA-4/D14 rate-limits, SA-6/O1/O2/D6 session+tokens, D29
 split-env, SW-13 password policy, SW-14 admin-plugin review, SW-18-24 minors/config._
 

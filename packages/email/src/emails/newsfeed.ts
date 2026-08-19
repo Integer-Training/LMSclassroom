@@ -3,6 +3,10 @@ import * as z from 'zod';
 import { defineEmail } from '../send';
 import { getDefaultTemplate } from '../templates';
 import { ZEmailBranding } from '../core/branding';
+import { escapeHtml } from '../utils/functions/email-helpers';
+
+// PearlLMS Phase-10 HP/SW-8 — user/org-supplied text (author name, course title, post/comment body) is
+// HTML-escaped before interpolation so one user's newsfeed text cannot inject markup into another's email.
 
 export const newsfeedPostEmail = defineEmail({
   id: 'newsfeedPost',
@@ -17,8 +21,8 @@ export const newsfeedPostEmail = defineEmail({
   }),
   render: (fields) => {
     const content = `
-      <p>${fields.teacherName} made a post in a course you are taking: ${fields.courseTitle}.</p>
-      <div style="font-style: italic; margin-top: 10px;">${fields.content}</div>
+      <p>${escapeHtml(fields.teacherName)} made a post in a course you are taking: ${escapeHtml(fields.courseTitle)}.</p>
+      <div style="font-style: italic; margin-top: 10px;">${escapeHtml(fields.content)}</div>
       <div>
         <a class="button" href="${fields.postLink}">View post</a>
       </div>
@@ -41,7 +45,7 @@ export const newsfeedCommentEmail = defineEmail({
   render: (fields) => {
     const content = `
       <p>A student left you a comment on your newsfeed post</p>
-      <div style="font-style: italic; margin-top: 10px;">${fields.comment}</div>
+      <div style="font-style: italic; margin-top: 10px;">${escapeHtml(fields.comment)}</div>
       <div>
         <a class="button" href="${fields.postLink}">View comment</a>
       </div>
