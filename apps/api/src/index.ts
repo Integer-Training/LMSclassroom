@@ -8,10 +8,15 @@ import { connectRedis } from '@cio/core/utils/redis/redis';
 import { env } from '@cio/core/config/env';
 import { preloadVerifiedCustomDomainOriginsRegistry } from '@api/utils/origins';
 import { registerProcessErrorGuards } from '@api/process-error-guards';
+import { assertSelfHostedFlag } from '@api/utils/assert-selfhosted-flag';
 import { serve } from '@hono/node-server';
 import { showRoutes } from 'hono/dev';
 
 registerProcessErrorGuards();
+
+// PearlLMS Phase-10 HP/D29 — fail fast if the self-hosted flag is not explicitly set (an unset value silently
+// flips the deploy into CLOUD mode and can re-open public signup). Boots before the server binds.
+assertSelfHostedFlag(process.env.PUBLIC_IS_SELFHOSTED);
 
 // Start server
 async function startServer() {

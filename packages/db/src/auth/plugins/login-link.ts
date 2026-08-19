@@ -70,6 +70,19 @@ export function loginLink(): BetterAuthPlugin {
           return c.json({ error: 'User not found' }, { status: 404 });
         }
 
+        // PearlLMS Phase-10 HP/SW-4 — this endpoint writes the session row DIRECTLY (below), bypassing
+        // better-auth's session-creation path and therefore the `databaseHooks.session.create.before`
+        // deactivation gate. Re-assert that gate here so a DEACTIVATED profile can never mint a session from
+        // a still-live login-link token (the token stays valid up to its TTL after an admin deactivates).
+        const [profileRow] = await db
+          .select({ status: schema.profile.status })
+          .from(schema.profile)
+          .where(eq(schema.profile.id, user.id))
+          .limit(1);
+        if (profileRow?.status === 'DEACTIVATED') {
+          return c.json({ error: 'Your account has been deactivated. Contact an administrator.' }, { status: 403 });
+        }
+
         const now = new Date();
         const expiresAt = new Date(now.getTime() + SESSION_EXPIRES_IN_SEC * 1000);
         const sessionToken = generateToken();

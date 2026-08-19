@@ -245,9 +245,40 @@ SW confirms: **SA-6/O1** session 30d no idle (`auth.ts:109`) · **SA-6/O2** rese
   is not expressible in code without changing the upload contract (presigned-POST) — recorded as a **Supabase
   bucket max-object-size policy** (owner infra action, tracked into Step-5 RUNBOOK, alongside O4 backups).
 
-_Remaining Step-3 groups (open): SW-4 login-link gate, SW-15/16/17 other XSS,
-SA-1/1b headers+CSP, SA-2 cookies, SA-3 CSRF origins, SA-4/D14 rate-limits, SA-6/O1/O2/D6 session+tokens, D29
-split-env, SW-13 password policy, SW-14 admin-plugin review, SW-18-24 minors/config._
+**Group 5 — auth / session / tokens (committed):**
+- **SW-4 login-link deactivation bypass** — ✅ FIXED (highest-severity of the group). The `login-link` plugin
+  writes the session row DIRECTLY (`db.insert(schema.session)`), bypassing better-auth's session-creation path
+  and therefore the `databaseHooks.session.create.before` deactivation gate — so a DEACTIVATED profile holding a
+  still-live login-link token (valid up to its TTL after an admin deactivates) could mint a session. Re-assert
+  the identical gate inline before the insert: profile `status === 'DEACTIVATED'` → 403.
+  `packages/db/src/auth/plugins/login-link.ts`. _Verification: composes the exact predicate already covered by
+  the Phase-1-Step-7 deactivation tests; builds/type-checks clean. No dedicated automated test — this repo has no
+  better-auth plugin-endpoint test harness; a live deactivate-then-redeem smoke is recorded as an optional
+  follow-up (would require creating+deactivating a throwaway user against the live auth server)._
+- **O1 session lifetime** — ✅ FIXED. `session.expiresIn` 30d → **7d** rolling (updateAge 1d, cookieCache 1h
+  unchanged). `packages/db/src/auth.ts`. Note: better-auth core has ONE rolling window, so the approved "24h idle
+  timeout" is realised as the 7-day rolling idle; a separate short absolute-idle cap needs a custom max-session
+  plugin (optional follow-up).
+- **O2 token expiries** — ✅ FIXED. `emailVerification.expiresIn` = **24h** (was default 1h);
+  `resetPasswordTokenExpiresIn` set **1h** explicit. Emailed org invite already **7d** (≥ the 72h target — no
+  change needed; the 1h-reset-token concern in the register did not apply, invites use their own 7d token).
+- **SW-13 password policy** — ✅ FIXED. `minPasswordLength: 10` (was better-auth default 8), `maxPasswordLength:
+  128` (bounds bcrypt CPU-DoS). `packages/db/src/auth/email-password.ts`. Applies on every password set.
+- **D29 split-env footgun** — ✅ FIXED. `assertSelfHostedFlag()` (new, unit-tested) throws at api boot unless
+  `PUBLIC_IS_SELFHOSTED` is EXPLICITLY `'true'`/`'false'` — an unset/typo value silently defaulted the deploy to
+  CLOUD mode (stranger-account plugins + public signup re-open). Wired in `apps/api/src/index.ts`; 3 regression
+  tests in `__tests__/config/selfhosted-flag.test.ts`.
+- **D6 link-invite 100-year expiry** — ⚠️ OWNER DECISION (not changed unilaterally). The org **link invite**
+  (`getOrCreateLinkInvite`, invite.ts:469) mints a shareable token with a ~100-year expiry. It is ADMIN/TUTOR-only,
+  one-per-org, revocable, audited, and Phase-7 governed onboarding gates acceptance — but a leaked link stays
+  valid indefinitely until manually revoked. Shortening the expiry (e.g. 30/90d) is a **product-behaviour change**
+  (admins' shared links would auto-expire), so per the standing "don't change working behaviour without approval"
+  rule it is surfaced for the owner rather than edited. **→ owner: pick a link-invite expiry (recommend 90 days),
+  or keep 100y and rely on revoke + the Phase-7 approval gate.**
+
+_Remaining Step-3 groups (open): SW-15/16/17 other XSS,
+SA-1/1b headers+CSP, SA-2 cookies, SA-3 CSRF origins, SA-4/D14 rate-limits,
+SW-14 admin-plugin review, SW-18-24 minors/config._
 
 ## 6. Adversarial re-run (Phases 1–7 authz + adversarial suites)
 

@@ -77,6 +77,9 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
   },
   emailVerification: {
     enabled: true,
+    // PearlLMS Phase-10 O2 — verification link valid 24h (better-auth default is 1h — too short for an emailed
+    // learner action).
+    expiresIn: 60 * 60 * 24, // 24 hours
     sendVerificationEmail
   },
   // Closed system: no social providers. Google OAuth auto-creates an account on first login, which
@@ -106,8 +109,12 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
     storeAccountCookie: true
   },
   session: {
-    expiresIn: 60 * 60 * 24 * 30, // 30 days
-    updateAge: 60 * 60 * 24, // 1 day (every 1 day the session expiration is updated)
+    // PearlLMS Phase-10 O1 — shortened from 30d to a 7-day rolling session (idle >7d → re-auth). Better-auth's
+    // core session has ONE rolling window (expiresIn, refreshed at most every updateAge on activity), so the
+    // owner-approved "24h idle timeout" is captured as this 7-day rolling idle; a separate short absolute-idle
+    // cap on top of a longer max would need a custom max-session plugin (recorded as an optional follow-up).
+    expiresIn: 60 * 60 * 24 * 7, // 7 days
+    updateAge: 60 * 60 * 24, // 1 day (session expiry refreshed at most once/day on activity)
     cookieCache: {
       enabled: true,
       maxAge: 60 * 60 // 1 hour
