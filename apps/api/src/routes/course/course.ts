@@ -60,6 +60,8 @@ import { markRouter } from '@api/routes/course/mark';
 import { membersRouter } from '@api/routes/course/people';
 import { newsfeedRouter } from '@api/routes/course/newsfeed';
 import { requireAdmin } from '@api/middlewares/guards';
+import { canReadLearnerProgress } from '@api/middlewares/guards/ownership';
+import { getCourseOrgId } from '@cio/db/queries/reports';
 import { orgMemberMiddleware } from '@api/middlewares/org-member';
 import { paymentRequestRouter } from '@api/routes/course/payment-request';
 import { presignRouter } from '@api/routes/course/presign';
@@ -445,6 +447,13 @@ export const courseRouter = new Hono()
       try {
         const { courseId } = c.req.valid('param');
         const { profileId } = c.req.valid('query');
+        // PearlLMS Phase-10 HP/SW-1 — close the stock progress IDOR: `courseMemberMiddleware` let any enrolled
+        // learner read a classmate's per-unit grades by supplying their profileId. Self / Admin / Manager /
+        // allocated-Tutor only (composed predicate).
+        const actor = c.get('actor') as Actor;
+        if (!(await canReadLearnerProgress(actor, profileId))) {
+          throw new AppError("You cannot view another learner's progress", ErrorCodes.FORBIDDEN, 403);
+        }
         const progress = await getCourseProgress(courseId, profileId);
 
         return c.json(
@@ -607,19 +616,27 @@ export const courseRouter = new Hono()
   .post(
     '/:courseId/clone',
     authMiddleware,
-    orgMemberMiddleware,
+    requireAdmin,
     zValidator('param', ZCourseCloneParam),
     zValidator('json', ZCourseClone),
     async (c) => {
       try {
         const { courseId } = c.req.valid('param');
         const validatedData = c.req.valid('json');
-        const { title, description, slug, organizationId } = validatedData;
+        const { title, description, slug } = validatedData; // body organizationId IGNORED — bound to the actor's org
 
+        const actor = c.get('actor') as Actor;
         const user = c.get('user')!;
 
-        // Clone the course
-        const newCourse = await cloneCourse(courseId, title, user.id, description, slug, organizationId);
+        // PearlLMS Phase-10 HP/SW-2 — cloning is an authoring CREATE: Admin-only (was any org member, incl. a
+        // student who was then made a TUTOR of the new group). Bind the SOURCE to the actor's org (no cross-org
+        // content copy) and force the DESTINATION org to the actor's own (was taken from the request body, which
+        // let a caller plant a course into an arbitrary org).
+        const sourceOrgId = await getCourseOrgId(courseId);
+        if (!sourceOrgId || sourceOrgId !== actor.orgId) {
+          throw new AppError('Course not found', ErrorCodes.NOT_FOUND, 404);
+        }
+        const newCourse = await cloneCourse(courseId, title, user.id, description, slug, actor.orgId);
 
         return c.json(
           {

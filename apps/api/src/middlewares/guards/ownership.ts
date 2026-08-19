@@ -92,6 +92,19 @@ export async function isAllocatedTutor(actor: Actor, learnerId: string | null | 
   return isTutorAllocatedToLearner(actor.userId, learnerId);
 }
 
+/**
+ * PearlLMS Phase-10 HP/SW-1 — who may read a learner's per-unit progress: the learner THEMSELF, an
+ * Admin/Manager, or that learner's allocated Tutor. Composes isAllocatedTutor + role — no local role logic at
+ * the call site. Closes the stock `GET /course/:courseId/progress?profileId` IDOR (any enrolled learner could
+ * read a classmate's grades). Learner self-progress otherwise flows through the self-only `/learner-progress`.
+ */
+export async function canReadLearnerProgress(actor: Actor, learnerId: string): Promise<boolean> {
+  if (!actor.authenticated || !learnerId) return false;
+  if (actor.userId === learnerId) return true; // self
+  if (actor.role === 'ADMIN' || actor.role === 'MANAGER') return true;
+  return isAllocatedTutor(actor, learnerId);
+}
+
 /** 404 helper — hide existence from callers who shouldn't know the resource is there. */
 export function notFound(c: Context, message = 'Not found') {
   return c.json({ success: false, error: message, code: ErrorCodes.NOT_FOUND }, 404);

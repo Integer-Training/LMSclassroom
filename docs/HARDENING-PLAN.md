@@ -197,6 +197,23 @@ SW confirms: **SA-6/O1** session 30d no idle (`auth.ts:109`) · **SA-6/O2** rese
 (`routes/media/media.ts:8`) · **D10** HLS/asset org-member scope · **D40** dead webhooks queue
 (`queues/names.ts:10`) · **D30** ffmpeg failure path (`jobs/utils/ffmpeg.ts:55`).
 
+### 5d. Step-3 fix log (updated per commit)
+
+**Group 1 — access findings (committed):**
+- **SW-1 progress IDOR** — ✅ FIXED. Composed predicate `canReadLearnerProgress` (self / Admin / Manager /
+  allocated-Tutor) in `guards/ownership.ts`, guarding `GET /course/:courseId/progress`. Regression test
+  `__tests__/authz/hardening-access.test.ts` (5). Live-verified: learner→another 403, own 200.
+- **SW-2 course-clone** — ✅ FIXED. `requireAdmin` (was any org member) + source course bound to the actor's org
+  (no cross-org copy) + destination org forced to the actor's own (was request-body). Live-verified: learner→403.
+- **SW-3 search PII** — ✅ FIXED. `GET /organization/search` → `orgAdminMiddleware` (was `orgTeamMember`; it
+  returns learner name+email — Admin-only per ACCESS §1.3). Live-verified: tutor→403.
+- **SW-10 exercise authoring** (confirms D5) — ✅ FIXED. create / from-template / update / delete exercise →
+  course-team (was course-member/student); learner submission + video routes unchanged. Live-verified: learner→403.
+
+_Remaining Step-3 groups (open): SW-4 login-link gate, SW-5/6/7 storage, SW-8/15/16/17 XSS, SW-9/25 raw-SQL,
+SA-1/1b headers+CSP, SA-2 cookies, SA-3 CSRF origins, SA-4/D14 rate-limits, SA-6/O1/O2/D6 session+tokens, D29
+split-env, SW-13 password policy, SW-14 admin-plugin review, SW-18-24 minors/config._
+
 ## 6. Adversarial re-run (Phases 1–7 authz + adversarial suites)
 
 `pnpm vitest run` (apps/api) — **448 passed, ZERO regressions.** All 21 authz/adversarial test files pass:

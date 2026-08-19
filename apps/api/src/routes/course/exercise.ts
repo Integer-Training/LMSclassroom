@@ -36,9 +36,15 @@ import {
 import { Hono } from '@api/utils/hono';
 import { authMiddleware } from '@api/middlewares/auth';
 import { courseTeamMemberMiddleware } from '@api/middlewares/course-team-member';
+import { courseTeamMemberOrAutomationKeyMiddleware } from '@api/middlewares/course-team-member-or-automation-key';
 import { authOrAutomationKeyMiddleware } from '@api/middlewares/auth-or-automation-key';
 import { courseMemberMiddleware } from '@api/middlewares/course-member';
 import { courseMemberOrAutomationKeyMiddleware } from '@api/middlewares/course-member-or-automation-key';
+
+// PearlLMS Phase-10 HP/SW-10 (confirms D5) — exercise AUTHORING writes (create / from-template / update / delete)
+// were reachable by any enrolled course MEMBER (a student), not the course team. They now require course
+// team-membership (tutor/admin of the course) on the human path; the automation-key path keeps its scope. The
+// learner submission + video-recording routes below stay course-member (a student submitting their own work).
 import { assertMcpAutomationUsageAllowed, recordMcpAutomationUsage } from '@api/services/organization/automation-usage';
 import { createSubmissionService, listExerciseSubmissionsOverview } from '@api/services/submission';
 import { assertEnrolledStudentContentAccess } from '@api/services/course/access';
@@ -152,7 +158,7 @@ export const exerciseRouter = new Hono()
   .post(
     '/',
     authOrAutomationKeyMiddleware,
-    courseMemberOrAutomationKeyMiddleware(['course:exercise:write']),
+    courseTeamMemberOrAutomationKeyMiddleware(['course:exercise:write']),
     zValidator('json', ZExerciseCreate),
     async (c) => {
       try {
@@ -186,7 +192,7 @@ export const exerciseRouter = new Hono()
   .post(
     '/from-template',
     authOrAutomationKeyMiddleware,
-    courseMemberOrAutomationKeyMiddleware(['course:exercise:write']),
+    courseTeamMemberOrAutomationKeyMiddleware(['course:exercise:write']),
     zValidator('json', ZExerciseFromTemplate),
     async (c) => {
       try {
@@ -227,7 +233,7 @@ export const exerciseRouter = new Hono()
   .put(
     '/:exerciseId',
     authOrAutomationKeyMiddleware,
-    courseMemberOrAutomationKeyMiddleware(['course:exercise:write']),
+    courseTeamMemberOrAutomationKeyMiddleware(['course:exercise:write']),
     zValidator('param', ZExerciseGetParam),
     zValidator('json', ZExerciseUpdate),
     async (c) => {
@@ -269,17 +275,23 @@ export const exerciseRouter = new Hono()
       }
     }
   )
-  .delete('/:exerciseId', authMiddleware, courseMemberMiddleware, zValidator('param', ZExerciseGetParam), async (c) => {
-    try {
-      const courseId = c.req.param('courseId')!;
-      const { exerciseId } = c.req.valid('param');
-      const exercise = await deleteExerciseForCourseService(courseId, exerciseId);
+  .delete(
+    '/:exerciseId',
+    authMiddleware,
+    courseTeamMemberMiddleware,
+    zValidator('param', ZExerciseGetParam),
+    async (c) => {
+      try {
+        const courseId = c.req.param('courseId')!;
+        const { exerciseId } = c.req.valid('param');
+        const exercise = await deleteExerciseForCourseService(courseId, exerciseId);
 
-      return c.json({ success: true, data: exercise }, 200);
-    } catch (error) {
-      return handleError(c, error, 'Failed to delete exercise');
+        return c.json({ success: true, data: exercise }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to delete exercise');
+      }
     }
-  })
+  )
   // Exercise Submission routes
   .post(
     '/:exerciseId/submission',

@@ -4,12 +4,15 @@ import { Hono } from '@api/utils/hono';
 import { authMiddleware } from '@api/middlewares/auth';
 import { handleError } from '@api/utils/errors';
 import { orgMemberMiddleware } from '@api/middlewares/org-member';
-import { orgTeamMemberMiddleware } from '@api/middlewares/org-team-member';
+import { orgAdminMiddleware } from '@api/middlewares/org-admin';
 import { searchLmsOrganization, searchOrganization } from '@api/services/organization/search';
 import { zValidator } from '@hono/zod-validator';
 
+// PearlLMS Phase-10 HP/SW-3 — org people-search returns learner NAME + EMAIL (via searchOrgAudience); that PII is
+// Admin-only (ACCESS.md §1.3, matching /organization/team + /audience which were already re-guarded to Admin).
+// The search endpoint was left at team-member (TUTOR+), quietly re-opening the PII — tightened to Admin here.
 export const searchRouter = new Hono()
-  .get('/', authMiddleware, orgTeamMemberMiddleware, zValidator('query', ZSearchOrganization), async (c) => {
+  .get('/', authMiddleware, orgAdminMiddleware, zValidator('query', ZSearchOrganization), async (c) => {
     try {
       const orgId = c.req.header('cio-org-id')!;
       const { q, limit } = c.req.valid('query');
