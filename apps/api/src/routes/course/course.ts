@@ -627,6 +627,8 @@ export const courseRouter = new Hono()
 
         const actor = c.get('actor') as Actor;
         const user = c.get('user')!;
+        // requireAdmin above guarantees an authenticated actor; narrow so `actor.orgId` is typed (defensive).
+        if (!actor.authenticated) throw new AppError('Unauthorized', ErrorCodes.UNAUTHORIZED, 401);
 
         // PearlLMS Phase-10 HP/SW-2 — cloning is an authoring CREATE: Admin-only (was any org member, incl. a
         // student who was then made a TUTOR of the new group). Bind the SOURCE to the actor's org (no cross-org

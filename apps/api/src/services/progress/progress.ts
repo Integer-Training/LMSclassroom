@@ -7,5 +7,6 @@ import { computeLearnerCourseProgress, type CourseProgress } from '@cio/db/queri
 // courseMemberMiddleware at the route; this seam guarantees the id is the actor's.
 
 export async function getOwnCourseProgress(actor: Actor, courseId: string): Promise<CourseProgress> {
-  return computeLearnerCourseProgress(actor.userId, courseId);
+  // The route guards this for an authenticated learner (userId always present); assert for the union type.
+  return computeLearnerCourseProgress(actor.userId!, courseId);
 }

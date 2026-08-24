@@ -80,7 +80,9 @@ export async function emitNotification(input: NotifyInput): Promise<void> {
 
       await enqueueTransactionalEmail(input.emailTemplateId, {
         to: recipient.email,
-        fields: recipient.emailFields ?? {}
+        // Fields are built dynamically per notification type; the registry validates them at runtime
+        // (definition.schema.parse), so cast to the template-input type the generic expects.
+        fields: (recipient.emailFields ?? {}) as Parameters<typeof enqueueTransactionalEmail>[1]['fields']
       });
     } catch (error) {
       console.error(`[notify] email enqueue failed for ${input.type} → ${recipient.userId} (continuing):`, error);

@@ -159,6 +159,8 @@ export const presignRouter = new Hono()
         // any courseId and sign a material key into another org's namespace (the id was an unbound string).
         if (courseId) {
           const actor = c.get('actor') as Actor;
+          // requireActor above guarantees an authenticated actor; narrow so `actor.orgId` is typed (defensive).
+          if (!actor.authenticated) throw new AppError('Unauthorized', 'UNAUTHORIZED', 401);
           const sourceOrgId = await getCourseOrgId(courseId);
           if (!sourceOrgId || sourceOrgId !== actor.orgId || !isRole(actor, 'ADMIN')) {
             throw new AppError('Course not found', 'NOT_FOUND', 404);
