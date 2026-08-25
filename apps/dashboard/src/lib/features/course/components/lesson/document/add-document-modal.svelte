@@ -34,8 +34,10 @@
 
   const ALLOWED_TYPES = [
     'application/pdf',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/msword'
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+    'application/msword', // .doc
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
+    'application/vnd.ms-powerpoint' // .ppt
   ];
 
   const uploadLimits = getResolvedUploadLimits();
@@ -43,10 +45,12 @@
 
   const documentUploader = new DocumentUploader();
 
-  function getFileType(file: File): 'pdf' | 'docx' | 'doc' {
+  function getFileType(file: File): 'pdf' | 'docx' | 'doc' | 'pptx' | 'ppt' {
     if (file.type === 'application/pdf') return 'pdf';
     if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
     if (file.type === 'application/msword') return 'doc';
+    if (file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') return 'pptx';
+    if (file.type === 'application/vnd.ms-powerpoint') return 'ppt';
     return 'pdf'; // fallback
   }
 
