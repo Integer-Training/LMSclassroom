@@ -218,9 +218,6 @@ export async function requireCourseContentRead(c: Context, next: Next) {
   return next();
 }
 
-/** Object-key prefix for admin-authored unit materials (mirrors generateMaterialFileKey in core). */
-const MATERIALS_KEY_PREFIX = 'materials/';
-
 /**
  * Access decision for the standalone download (presign) endpoints. Closes gap G3 — the stock
  * download signed any caller-supplied key for any authenticated user with no course binding. Rules:
@@ -257,30 +254,25 @@ export async function assertCourseMaterialDownloadAccess(
   }
   if (isContentStaff(actor)) return;
 
-  // PearlLMS Phase-10 HP/SW-7 — DEFAULT-DENY for non-staff: this endpoint signs COURSE MATERIALS only. Any key
-  // that is not a `materials/…` key (e.g. another learner's `coursework/…` file) is refused here — those flow
-  // through their own guarded endpoint (assertCourseworkDownloadAccess). Previously non-material keys fell
-  // through the currency/lock filter unchecked, letting a learner sign a classmate's coursework key.
-  const nonMaterialKeys = keys.filter((key) => !key.startsWith(MATERIALS_KEY_PREFIX));
-  if (nonMaterialKeys.length > 0) {
+  // PearlLMS Phase-10 HP/SW-7 — DEFAULT-DENY for non-staff by CURRENCY, not by key prefix. Every requested key
+  // must be a CURRENT material of THIS course (present in a lesson's documents/videos, via getCourseMaterialKeys).
+  // This closes the original IDOR — a classmate's `coursework/…` key is not a lesson document, so it is not in
+  // the set and is refused — while correctly serving legitimate materials regardless of key shape (both the
+  // `materials/{courseId}/…` scheme AND legacy/flat keys that predate it). Removed/cross-course keys are also
+  // refused (not current). This replaces the earlier `materials/`-prefix filter, which wrongly 403'd real
+  // flat-key materials for learners.
+  const currentKeys = await getCourseMaterialKeys(courseId);
+  if (!keys.every((key) => currentKeys.has(key))) {
     throw new AppError('You do not have access to these files', ErrorCodes.FORBIDDEN, 403);
   }
 
-  const materialKeys = keys.filter((key) => key.startsWith(MATERIALS_KEY_PREFIX));
-  if (materialKeys.length > 0) {
-    const currentKeys = await getCourseMaterialKeys(courseId);
-    const allCurrent = materialKeys.every((key) => currentKeys.has(key));
-    if (!allCurrent) {
-      throw new AppError('One or more materials are not available in this course', ErrorCodes.FORBIDDEN, 403);
-    }
-    // Phase 4: a locked unit's materials are refused (this path has no lessonId, so resolve each material
-    // key → its owning unit → isUnitUnlocked). Non-staff learners only — staff returned above.
-    const keyLesson = await getMaterialKeyLessonMap(courseId);
-    for (const key of materialKeys) {
-      const lessonId = keyLesson.get(key);
-      if (lessonId && !(await isUnitUnlocked(courseId, lessonId, actor.userId))) {
-        throw new AppError(LOCKED_MESSAGE, ErrorCodes.FORBIDDEN, 403);
-      }
+  // Phase 4: a locked unit's materials are refused (this path has no lessonId, so resolve each material key →
+  // its owning unit → isUnitUnlocked). Non-staff learners only — staff returned above.
+  const keyLesson = await getMaterialKeyLessonMap(courseId);
+  for (const key of keys) {
+    const lessonId = keyLesson.get(key);
+    if (lessonId && !(await isUnitUnlocked(courseId, lessonId, actor.userId))) {
+      throw new AppError(LOCKED_MESSAGE, ErrorCodes.FORBIDDEN, 403);
     }
   }
 }

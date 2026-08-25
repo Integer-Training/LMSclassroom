@@ -12,6 +12,12 @@ vi.mock('@cio/db/queries/allocation', () => ({ isTutorAllocatedToLearner: vi.fn(
 // mocked so an enrolled learner of a published course passes the read gate and we reach the key-shape check.
 vi.mock('@cio/db/queries/group', () => ({ isCourseGroupMember: vi.fn() }));
 vi.mock('@cio/db/queries/course', () => ({ getCourseById: vi.fn() }));
+// SW-7 is now currency-based: the material-key set decides. An empty set → the coursework key is not a current
+// material → refused (IDOR closed). getMaterialKeyLessonMap only runs for keys that pass currency (none here).
+vi.mock('@cio/db/queries/lesson', () => ({
+  getCourseMaterialKeys: vi.fn(async () => new Set<string>()),
+  getMaterialKeyLessonMap: vi.fn(async () => new Map<string, string>())
+}));
 
 import { isTutorAllocatedToLearner } from '@cio/db/queries/allocation';
 import { isCourseGroupMember } from '@cio/db/queries/group';

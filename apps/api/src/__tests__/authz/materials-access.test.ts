@@ -97,14 +97,24 @@ describe('assertCourseMaterialDownloadAccess — G3 course-bound download', () =
     expect(await status(assertCourseMaterialDownloadAccess(learner, 'course-1', [OTHER_MAT]))).toBe(403);
   });
 
-  // PearlLMS Phase-10 HP/SW-7 — previously a non-staff learner who passed the read gate could sign ANY
-  // non-`materials/` key (e.g. a classmate's coursework/submission key) through this endpoint, because the
-  // currency check only filtered `materials/` keys and let everything else fall through. It now DEFAULT-DENIES
-  // any non-material key for non-staff (coursework has its own guarded download path).
-  it('enrolled learner, published, non-material (flat) key → 403 (SW-7 default-deny)', async () => {
+  // PearlLMS Phase-10 HP/SW-7 (currency-based) — a non-staff learner may download any CURRENT material of the
+  // course, INCLUDING a legacy flat key that predates the `materials/{courseId}/…` scheme. Membership in the
+  // course's material set is the authority; a key that is NOT a current material (a classmate's coursework key,
+  // a foreign key) is refused. This closes the IDOR without wrongly 403'ing real flat-key materials.
+  it('enrolled learner, published, CURRENT flat-key material → allowed (SW-7 currency, not prefix)', async () => {
     mockedIsMember.mockResolvedValue(true);
     mockedGetCourse.mockResolvedValue(published);
-    expect(await status(assertCourseMaterialDownloadAccess(learner, 'course-1', [SUBMISSION]))).toBe(403);
+    mockedMaterialKeys.mockResolvedValue(new Set([SUBMISSION])); // the flat key IS a current material of the course
+    expect(await status(assertCourseMaterialDownloadAccess(learner, 'course-1', [SUBMISSION]))).toBe(0);
+  });
+
+  it('enrolled learner, published, coursework/foreign key (not a current material) → 403 (IDOR stays closed)', async () => {
+    mockedIsMember.mockResolvedValue(true);
+    mockedGetCourse.mockResolvedValue(published);
+    mockedMaterialKeys.mockResolvedValue(new Set([MAT])); // the coursework key is NOT in the course's materials
+    expect(
+      await status(assertCourseMaterialDownloadAccess(learner, 'course-1', ['coursework/other-learner/answer.pdf']))
+    ).toBe(403);
   });
 
   it('staff, non-material (flat) key → allowed (authoring/oversight bypass, unchanged)', async () => {
