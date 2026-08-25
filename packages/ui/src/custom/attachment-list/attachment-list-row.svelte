@@ -20,6 +20,8 @@
     onView?: (file: AttachmentListFile) => void;
     onDownload?: (file: AttachmentListFile) => void | Promise<void>;
     onDelete?: (file: AttachmentListFile) => void;
+    /** Edit-mode only: toggle whether this file is downloadable by learners/tutors (admin control). */
+    onToggleDownloadable?: (file: AttachmentListFile) => void;
     class?: string;
   }
 
@@ -32,6 +34,7 @@
     onView,
     onDownload,
     onDelete,
+    onToggleDownloadable,
     class: className = ''
   }: Props = $props();
 
@@ -92,7 +95,7 @@
       </Button>
     {/if}
 
-    {#if mode === 'view' && onDownload}
+    {#if mode === 'view' && onDownload && file.downloadable !== false}
       <Button
         type="button"
         variant="outline"
@@ -103,17 +106,33 @@
       >
         <DownloadIcon class="ui:size-4" />
       </Button>
-    {:else if mode === 'edit' && onDelete}
-      <Button
-        type="button"
-        variant="outline"
-        size="icon-sm"
-        class="ui:text-destructive ui:hover:text-destructive"
-        aria-label={labels.delete}
-        onclick={() => onDelete(file)}
-      >
-        <Trash2Icon class="ui:size-4" />
-      </Button>
+    {:else if mode === 'edit'}
+      {#if onToggleDownloadable}
+        <Button
+          type="button"
+          variant={file.downloadable ? 'default' : 'outline'}
+          size="icon-sm"
+          aria-label={file.downloadable
+            ? 'Downloadable — click to make view-only'
+            : 'View-only — click to allow download'}
+          title={file.downloadable ? 'Downloadable — click to make view-only' : 'View-only — click to allow download'}
+          onclick={() => onToggleDownloadable(file)}
+        >
+          <DownloadIcon class="ui:size-4" />
+        </Button>
+      {/if}
+      {#if onDelete}
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-sm"
+          class="ui:text-destructive ui:hover:text-destructive"
+          aria-label={labels.delete}
+          onclick={() => onDelete(file)}
+        >
+          <Trash2Icon class="ui:size-4" />
+        </Button>
+      {/if}
     {/if}
   </div>
 </div>

@@ -10,7 +10,10 @@ export function toAttachmentFiles(documents: LessonDocument[]): AttachmentListFi
     id: getDocumentAttachmentId(document, index),
     name: document.name,
     size: document.size,
-    type: document.type
+    type: document.type,
+    // Admin-controlled per-file download toggle. Default OFF: downloadable only when explicitly true, so it's
+    // view-only for learners/tutors otherwise (`false` hides the row's download button).
+    downloadable: document.downloadable === true
   }));
 }
 

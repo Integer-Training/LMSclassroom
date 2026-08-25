@@ -57,7 +57,10 @@ export const ZLessonUpdate = z.object({
         link: z.string(),
         size: z.number().optional(),
         key: z.string(),
-        assetId: z.string().uuid().optional()
+        assetId: z.string().uuid().optional(),
+        // PearlLMS — admin-controlled per-file download toggle (editable any time). Default OFF (not downloadable):
+        // learners/tutors see the material view-only (no download button); an admin can turn it on per file.
+        downloadable: z.boolean().optional()
       })
     )
     .optional(),

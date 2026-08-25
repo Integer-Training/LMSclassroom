@@ -265,6 +265,15 @@
     lessonApi.updateLessonState('documents', documents);
   }
 
+  // Admin toggles whether a specific material is downloadable by learners/tutors. Changeable any time; persists
+  // through the same lesson-documents save as reorder. Matched by the file's storage key (unique per material).
+  function toggleDownloadable(doc: LessonDocument) {
+    const documents = (lessonApi.lesson?.documents ?? []).map((d) =>
+      d.key === doc.key ? { ...d, downloadable: !d.downloadable } : d
+    );
+    lessonApi.updateLessonState('documents', documents);
+  }
+
   function closePDFViewer() {
     // Cancel any ongoing render task
     if (currentRenderTask) {
@@ -356,6 +365,7 @@
   onViewDocument={handleViewDocument}
   {downloadDocument}
   {reorderDocuments}
+  {toggleDownloadable}
 />
 
 <!-- Links (labeled external links) — a distinct material kind, rendered on the guarded lesson read -->

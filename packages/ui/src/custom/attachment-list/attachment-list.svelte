@@ -25,6 +25,7 @@
     onView?: (file: AttachmentListFile) => void;
     onDownload?: (file: AttachmentListFile) => void | Promise<void>;
     onDelete?: (file: AttachmentListFile) => void;
+    onToggleDownloadable?: (file: AttachmentListFile) => void;
     onReorder?: (files: AttachmentListFile[]) => void;
     class?: string;
   }
@@ -37,6 +38,7 @@
     onView,
     onDownload,
     onDelete,
+    onToggleDownloadable,
     onReorder,
     class: className = ''
   }: Props = $props();
@@ -124,6 +126,7 @@
             {onView}
             {onDownload}
             {onDelete}
+            {onToggleDownloadable}
           />
         </div>
       {/each}
@@ -141,6 +144,7 @@
             {onView}
             {onDownload}
             {onDelete}
+            {onToggleDownloadable}
           />
         </div>
       {/each}

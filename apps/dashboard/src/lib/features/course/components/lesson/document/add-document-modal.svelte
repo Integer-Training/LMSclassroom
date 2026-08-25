@@ -24,6 +24,8 @@
   let { lessonId = '', onClose = () => {} }: Props = $props();
 
   let selectedFile: File | null = $state(null);
+  // Per-file download toggle (default OFF = view-only for learners/tutors). Admin can change it any time later.
+  let isDownloadable = $state(false);
   let errorTimeout: NodeJS.Timeout | null = $state(null);
   let successResetTimeout: ReturnType<typeof setTimeout> | null = $state(null);
   let isDisabled = $derived($lessonDocUpload.isUploading || $isFreePlan);
@@ -72,6 +74,7 @@
 
   function resetModalState() {
     selectedFile = null;
+    isDownloadable = false;
     uploadedDocument = null;
 
     if (successResetTimeout) {
@@ -206,7 +209,9 @@
         link: presignedUrls[fileKey],
         key: fileKey,
         size: selectedFile.size,
-        assetId
+        assetId,
+        // Admin-controlled per-file download toggle (default OFF = view-only for learners/tutors).
+        downloadable: isDownloadable
       };
 
       lessonApi.updateLessonState('documents', [document], { append: true });
@@ -302,10 +307,18 @@
           </div>
           <CloseButton onClick={removeSelectedFile} />
         </div>
+        <!-- Per-file download toggle (default OFF = view-only). Editable any time from the materials list. -->
+        <label class="border-border mb-4 flex items-start gap-2 rounded-lg border p-3 text-sm">
+          <input type="checkbox" bind:checked={isDownloadable} class="mt-0.5 size-4 shrink-0" />
+          <span class="ui:text-muted-foreground">
+            Allow learners &amp; tutors to <strong>download</strong> this file. Off = view-only (no download button). Slide
+            decks (.pptx/.ppt) have no on-page viewer, so they must be downloadable to be opened.
+          </span>
+        </label>
       {:else}
         <div class={isDisabled ? 'ui:opacity-50 ui:pointer-events-none' : ''}>
           <FileDropZone.Root
-            accept=".pdf,.docx,.doc,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
+            accept=".pdf,.docx,.doc,.pptx,.ppt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint"
             maxFiles={1}
             fileCount={0}
             maxFileSize={maxDocumentSize}

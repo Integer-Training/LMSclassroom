@@ -18,6 +18,7 @@
     onViewDocument: (doc: LessonDocument) => void;
     downloadDocument: (doc: LessonDocument) => Promise<void>;
     reorderDocuments: (documents: LessonDocument[]) => void;
+    toggleDownloadable?: (doc: LessonDocument) => void;
   }
 
   let {
@@ -28,7 +29,8 @@
     requestRemoveDocument,
     onViewDocument,
     downloadDocument,
-    reorderDocuments
+    reorderDocuments,
+    toggleDownloadable
   }: Props = $props();
 
   const attachmentMode = $derived(mode === MODES.edit ? 'edit' : 'view');
@@ -75,6 +77,13 @@
     const reorderedDocuments = mapAttachmentsToDocuments(displayDocuments, files);
     reorderDocuments(reorderedDocuments);
   }
+
+  function handleToggleDownloadable(file: (typeof attachmentFiles)[number]) {
+    const index = getDocumentIndexByAttachmentId(displayDocuments, file.id);
+    const document = displayDocuments[index];
+    if (!document) return;
+    toggleDownloadable?.(document);
+  }
 </script>
 
 {#if mode === MODES.edit}
@@ -94,6 +103,7 @@
     onView={handleView}
     onDownload={attachmentMode === 'view' ? handleDownload : undefined}
     onDelete={attachmentMode === 'edit' ? handleDelete : undefined}
+    onToggleDownloadable={attachmentMode === 'edit' && toggleDownloadable ? handleToggleDownloadable : undefined}
     onReorder={attachmentMode === 'edit' ? handleReorder : undefined}
   />
 {:else if mode === MODES.edit}

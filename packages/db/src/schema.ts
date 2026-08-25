@@ -1024,6 +1024,9 @@ export const lesson = pgTable(
         size?: number;
         key: string;
         assetId?: string;
+        // Admin-controlled per-file download toggle (default OFF). Governs the download affordance for
+        // learners/tutors; jsonb, so no migration needed.
+        downloadable?: boolean;
       }[]
     >(),
     // PearlLMS Phase 2 Step 4: labeled external links attached to the unit (a distinct material kind
