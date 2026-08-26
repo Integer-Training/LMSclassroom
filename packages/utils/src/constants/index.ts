@@ -4,6 +4,7 @@ export * from './content';
 export * from './course-type';
 export * from './unit-type';
 export * from './result';
+export * from './assessment';
 export * from './notification';
 export * from './registration';
 export * from './rate-limits';

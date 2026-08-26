@@ -1027,6 +1027,14 @@ export const lesson = pgTable(
         // Admin-controlled per-file download toggle (default OFF). Governs the download affordance for
         // learners/tutors; jsonb, so no migration needed.
         downloadable?: boolean;
+        // PearlLMS Phase 8 (assessments) — jsonb, so no migration needed. `kind` absent or 'resource'
+        // = a read-only material (existing behaviour). The three assessment kinds turn the file into a
+        // brief the learner downloads, answers, and uploads against (keyed by this document's `key`).
+        kind?: 'resource' | 'workbook' | 'casestudy' | 'assignment';
+        // Assessment-only config. dueAt = optional ISO deadline (drives due-soon/overdue queues);
+        // allowDrafts = whether learners may submit drafts for feedback before the final (default true).
+        dueAt?: string;
+        allowDrafts?: boolean;
       }[]
     >(),
     // PearlLMS Phase 2 Step 4: labeled external links attached to the unit (a distinct material kind
@@ -3943,10 +3951,16 @@ export const tutorAllocation = pgTable(
   ]
 );
 
-// A learner's coursework upload against a unit (lesson), versioned per (learner, lesson). learner_id
-// is profile.id so ownership is `actor.userId === learner_id`. Files live under the private
-// `coursework/{courseId}/{learnerId}/{lessonId}/{version}/…` bucket prefix. Rows are never deleted
-// (full resubmission history retained). status: 'submitted' → 'resulted'.
+// A learner's coursework upload against ONE assessment item within a unit (lesson), versioned per
+// (learner, lesson, assessment_key). learner_id is profile.id so ownership is `actor.userId ===
+// learner_id`. Files live under the private `coursework/{courseId}/{learnerId}/{lessonId}/{assessmentSlug}/
+// {version}/…` bucket prefix. Rows are never deleted (full resubmission history retained).
+// status: 'submitted' → 'resulted'.
+//
+// PearlLMS Phase 8 (assessments):
+//   assessment_key  = the lesson.documents[].key of the tagged workbook/casestudy/assignment this answers.
+//                     Nullable ONLY for legacy pre-Phase-8 unit-level rows; every new row carries it.
+//   submission_type = 'final' (graded PASS/REFER, gates the unit) | 'draft' (feedback-only, never gates).
 export const courseworkSubmission = pgTable(
   'coursework_submission',
   {
@@ -3954,6 +3968,8 @@ export const courseworkSubmission = pgTable(
     learnerId: uuid('learner_id').notNull(),
     courseId: uuid('course_id').notNull(),
     lessonId: uuid('lesson_id').notNull(),
+    assessmentKey: varchar('assessment_key'),
+    submissionType: varchar('submission_type').default('final').notNull(),
     version: integer().default(1).notNull(),
     files: jsonb().default([]).$type<{ key: string; name: string; size?: number; type?: string }[]>().notNull(),
     status: varchar().default('submitted').notNull(),
@@ -3975,21 +3991,31 @@ export const courseworkSubmission = pgTable(
       foreignColumns: [lesson.id],
       name: 'coursework_submission_lesson_id_fkey'
     }).onDelete('cascade'),
-    unique('coursework_submission_learner_lesson_version_unique').on(table.learnerId, table.lessonId, table.version),
+    // One version sequence per assessment item (per learner). NULLS NOT DISTINCT so the legacy
+    // unit-level rows (null assessment_key) still can't duplicate a (learner, lesson, version).
+    unique('coursework_submission_learner_lesson_assessment_version_unique')
+      .on(table.learnerId, table.lessonId, table.assessmentKey, table.version)
+      .nullsNotDistinct(),
     index('idx_coursework_submission_learner_lesson').on(table.learnerId, table.lessonId),
     index('idx_coursework_submission_course').on(table.courseId)
   ]
 );
 
-// The tutor's verdict on one submission version — one result per version. `result` is a RESULT_VALUES
+// The tutor's response to one submission version — one row per version. `result` is a RESULT_VALUES
 // value (config-driven, not a Postgres enum), enforced at the validation layer. A REFER lets the
 // learner resubmit (a new coursework_submission version); a PASS is terminal for the unit.
+//
+// PearlLMS Phase 8: `kind` discriminates 'verdict' (result = PASS/REFER, on a FINAL submission — gates
+// the unit) from 'draft' (result = NULL, feedback-only, on a DRAFT submission — never gates). Hence
+// `result` is nullable: it is required for kind='verdict' and null for kind='draft' (enforced in the
+// marking service, not the column).
 export const courseworkResult = pgTable(
   'coursework_result',
   {
     id: uuid().defaultRandom().primaryKey().notNull(),
     submissionId: uuid('submission_id').notNull(),
-    result: varchar().notNull(),
+    kind: varchar().default('verdict').notNull(),
+    result: varchar(),
     feedback: text(),
     recordedBy: uuid('recorded_by'),
     recordedAt: timestamp('recorded_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull()

@@ -134,6 +134,13 @@
       "when": 1787131439021,
       "tag": "0018_solid_sebastian_shaw",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1787742072602,
+      "tag": "0019_thin_jackpot",
+      "breakpoints": true
     }
   ]
 }

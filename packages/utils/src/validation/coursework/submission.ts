@@ -1,5 +1,6 @@
 import * as z from 'zod';
 
+import { SUBMISSION_TYPES } from '../../constants/assessment';
 import { ZResult } from './result';
 
 /**
@@ -17,6 +18,10 @@ const ZPresignFile = z.object({
 });
 
 export const ZCourseworkPresign = z.object({
+  // The lesson.documents[].key of the assessment item (workbook/casestudy/assignment) being answered.
+  // The service re-validates it is a real assessment material on this lesson.
+  assessmentKey: z.string().min(1).max(1024),
+  submissionType: z.enum(SUBMISSION_TYPES).default('final'),
   files: z.array(ZPresignFile).min(1).max(10)
 });
 
@@ -29,6 +34,8 @@ const ZCourseworkFile = z.object({
 });
 
 export const ZCourseworkCreate = z.object({
+  assessmentKey: z.string().min(1).max(1024),
+  submissionType: z.enum(SUBMISSION_TYPES).default('final'),
   version: z.number().int().positive(),
   files: z.array(ZCourseworkFile).min(1).max(10)
 });
@@ -48,11 +55,15 @@ export const ZCaseloadLearnerParam = z.object({
 });
 
 /**
- * Recording a result on a submission version (Step 5). `result` must be a configured value (ZResult);
- * feedback is ONE optional free-text field — no rubric/criteria fields (tutors assess off-platform).
+ * Recording a tutor response on a submission version (Step 5 + Phase 8 drafts). Two shapes, disambiguated
+ * by the submission's own type in the marking service (which has that context):
+ *   - FINAL  → a verdict: `result` (a configured ZResult, PASS/REFER) + optional `feedback`.
+ *   - DRAFT  → feedback-only: `result` omitted, `feedback` required (enforced in the service).
+ * `result` is therefore optional here; the service rejects a verdict on a draft and a resultless mark on
+ * a final. Feedback stays ONE free-text field — no rubric/criteria (tutors assess off-platform).
  */
 export const ZMarkSubmission = z.object({
-  result: ZResult,
+  result: ZResult.optional(),
   feedback: z.string().max(5000).optional()
 });
 export type MarkSubmissionInput = z.infer<typeof ZMarkSubmission>;
