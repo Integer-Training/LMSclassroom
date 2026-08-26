@@ -12,11 +12,13 @@ interface MaterialTab {
   badgeValue?: number;
 }
 
+// Default tab order: Docs, Note, Video, Slide. (Courses that carry a stored lessonTabsOrder are ordered by that;
+// see the docs-first migration in course.svelte.ts. This order applies when a course has no stored order.)
 export const tabs: MaterialTab[] = [
   {
-    label: 'course.navItem.lessons.materials.tabs.video.title',
-    icon: VideoIcon,
-    value: 3,
+    label: 'course.navItem.lessons.materials.tabs.document.title',
+    icon: FileTextIcon,
+    value: 4,
     badgeValue: 0
   },
   {
@@ -26,15 +28,15 @@ export const tabs: MaterialTab[] = [
     badgeValue: 0
   },
   {
-    label: 'course.navItem.lessons.materials.tabs.slide.title',
-    icon: PresentationIcon,
-    value: 2,
+    label: 'course.navItem.lessons.materials.tabs.video.title',
+    icon: VideoIcon,
+    value: 3,
     badgeValue: 0
   },
   {
-    label: 'course.navItem.lessons.materials.tabs.document.title',
-    icon: FileTextIcon,
-    value: 4,
+    label: 'course.navItem.lessons.materials.tabs.slide.title',
+    icon: PresentationIcon,
+    value: 2,
     badgeValue: 0
   }
 ];

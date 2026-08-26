@@ -268,10 +268,13 @@
   // Admin toggles whether a specific material is downloadable by learners/tutors. Changeable any time; persists
   // through the same lesson-documents save as reorder. Matched by the file's storage key (unique per material).
   function toggleDownloadable(doc: LessonDocument) {
+    const nowDownloadable = !doc.downloadable;
     const documents = (lessonApi.lesson?.documents ?? []).map((d) =>
-      d.key === doc.key ? { ...d, downloadable: !d.downloadable } : d
+      d.key === doc.key ? { ...d, downloadable: nowDownloadable } : d
     );
     lessonApi.updateLessonState('documents', documents);
+    // Unmistakable feedback on every click (independent of the icon), confirming the new state.
+    snackbar.success(nowDownloadable ? `"${doc.name}" is now downloadable` : `"${doc.name}" is now view-only`);
   }
 
   function closePDFViewer() {

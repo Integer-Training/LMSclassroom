@@ -703,19 +703,25 @@ export class CourseApi extends BaseApiWithErrors {
         }
       });
 
-      /** Legacy stacked-lesson materials order [Note, Slide, Video, Documents]; migrated to Video first in view mode */
+      /**
+       * Default lesson-materials tab order = Docs, Note, Video, Slide [4, 1, 3, 2].
+       * Two earlier known defaults are re-ordered to it: the original legacy [Note, Slide, Video, Docs] and the
+       * previous "Video first" [Video, Note, Slide, Docs]. Any other (genuinely customised) order is left as-is.
+       */
       const legacyDefaultLessonTabIds: Array<1 | 2 | 3 | 4> = [1, 2, 3, 4];
-      const lessonMaterialsVideoFirstTabIds: Array<1 | 2 | 3 | 4> = [3, 1, 2, 4];
+      const videoFirstLessonTabIds: Array<1 | 2 | 3 | 4> = [3, 1, 2, 4];
+      const docsFirstLessonTabIds: Array<1 | 2 | 3 | 4> = [4, 1, 3, 2];
 
-      const isLegacyDefaultLessonMaterialsOrder =
-        lessonTabsOrder.length === legacyDefaultLessonTabIds.length &&
-        lessonTabsOrder.every((tab, index) => tab.id === legacyDefaultLessonTabIds[index]);
+      const matchesOrder = (ids: Array<1 | 2 | 3 | 4>) =>
+        lessonTabsOrder.length === ids.length && lessonTabsOrder.every((tab, index) => tab.id === ids[index]);
 
-      if (isLegacyDefaultLessonMaterialsOrder) {
+      const isKnownDefaultOrder = matchesOrder(legacyDefaultLessonTabIds) || matchesOrder(videoFirstLessonTabIds);
+
+      if (isKnownDefaultOrder) {
         const entriesById = new Map(lessonTabsOrder.map((tab) => [tab.id, tab]));
 
         lessonTabsOrder.length = 0;
-        lessonMaterialsVideoFirstTabIds.forEach((id) => {
+        docsFirstLessonTabIds.forEach((id) => {
           const entry = entriesById.get(id);
           if (entry) lessonTabsOrder.push(entry);
         });

@@ -2,6 +2,7 @@
   import FileTextIcon from '@lucide/svelte/icons/file-text';
   import EyeIcon from '@lucide/svelte/icons/eye';
   import DownloadIcon from '@lucide/svelte/icons/download';
+  import LockIcon from '@lucide/svelte/icons/lock';
   import Trash2Icon from '@lucide/svelte/icons/trash-2';
   import GripVerticalIcon from '@lucide/svelte/icons/grip-vertical';
   import { dragHandle } from 'svelte-dnd-action';
@@ -108,17 +109,26 @@
       </Button>
     {:else if mode === 'edit'}
       {#if onToggleDownloadable}
+        <!-- Distinct icon + colour per state so it's unmistakable: GREEN download = downloadable, GREY lock =
+             view-only. Clicking flips it (state persists via the parent's save). -->
         <Button
           type="button"
-          variant={file.downloadable ? 'default' : 'outline'}
+          variant="outline"
           size="icon-sm"
+          class={file.downloadable
+            ? 'ui:text-green-600 ui:border-green-500 ui:hover:text-green-700'
+            : 'ui:text-muted-foreground'}
           aria-label={file.downloadable
             ? 'Downloadable — click to make view-only'
             : 'View-only — click to allow download'}
           title={file.downloadable ? 'Downloadable — click to make view-only' : 'View-only — click to allow download'}
           onclick={() => onToggleDownloadable(file)}
         >
-          <DownloadIcon class="ui:size-4" />
+          {#if file.downloadable}
+            <DownloadIcon class="ui:size-4" />
+          {:else}
+            <LockIcon class="ui:size-4" />
+          {/if}
         </Button>
       {/if}
       {#if onDelete}
