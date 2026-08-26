@@ -1,5 +1,6 @@
 import * as z from 'zod';
 
+import { MATERIAL_KINDS } from '../../constants/assessment';
 import { ZSlug } from '../shared/slug';
 import { ZUnitTypeNullable } from '../course/unit-type';
 
@@ -60,7 +61,13 @@ export const ZLessonUpdate = z.object({
         assetId: z.string().uuid().optional(),
         // PearlLMS — admin-controlled per-file download toggle (editable any time). Default OFF (not downloadable):
         // learners/tutors see the material view-only (no download button); an admin can turn it on per file.
-        downloadable: z.boolean().optional()
+        downloadable: z.boolean().optional(),
+        // PearlLMS Phase 8 — assessment tagging. kind absent/'resource' = a read-only material; the three
+        // assessment kinds turn it into a brief the learner submits against. dueAt (ISO) + allowDrafts are
+        // assessment-only config; persisted through this same lesson PUT (jsonb, no migration).
+        kind: z.enum(MATERIAL_KINDS).optional(),
+        dueAt: z.string().optional(),
+        allowDrafts: z.boolean().optional()
       })
     )
     .optional(),

@@ -15,6 +15,7 @@
   import * as FileDropZone from '@cio/ui/custom/file-drop-zone';
   import type { FileRejectedReason } from '@cio/ui/custom/file-drop-zone';
   import { getResolvedUploadLimits } from '$lib/utils/config/upload-limits-context';
+  import { MATERIAL_KINDS, MATERIAL_KIND_LABELS, isAssessmentKind, type MaterialKind } from '@cio/utils/constants';
 
   interface Props {
     lessonId?: string;
@@ -26,6 +27,13 @@
   let selectedFile: File | null = $state(null);
   // Per-file download toggle (default OFF = view-only for learners/tutors). Admin can change it any time later.
   let isDownloadable = $state(false);
+  // PearlLMS Phase 8 — assessment tagging. 'resource' = a plain read-only material (existing behaviour);
+  // the three assessment kinds turn this file into a brief the learner downloads, answers, and uploads a
+  // submission against (graded Pass/Refer). dueAt + allowDrafts apply to assessments only.
+  let materialKind = $state<MaterialKind>('resource');
+  let dueDate = $state(''); // optional yyyy-mm-dd from the date input; stored as ISO
+  let allowDrafts = $state(true);
+  const isAssessment = $derived(isAssessmentKind(materialKind));
   let errorTimeout: NodeJS.Timeout | null = $state(null);
   let successResetTimeout: ReturnType<typeof setTimeout> | null = $state(null);
   let isDisabled = $derived($lessonDocUpload.isUploading || $isFreePlan);
@@ -79,6 +87,9 @@
   function resetModalState() {
     selectedFile = null;
     isDownloadable = false;
+    materialKind = 'resource';
+    dueDate = '';
+    allowDrafts = true;
     uploadedDocument = null;
 
     if (successResetTimeout) {
@@ -214,8 +225,13 @@
         key: fileKey,
         size: selectedFile.size,
         assetId,
-        // Admin-controlled per-file download toggle (default OFF = view-only for learners/tutors).
-        downloadable: isDownloadable
+        // PearlLMS Phase 8 — assessment tagging.
+        kind: materialKind,
+        // An assessment BRIEF must be downloadable (the learner downloads it to answer); a plain resource
+        // uses the admin's per-file view-only/download choice.
+        downloadable: isAssessment ? true : isDownloadable,
+        ...(isAssessment && dueDate ? { dueAt: new Date(dueDate).toISOString() } : {}),
+        ...(isAssessment ? { allowDrafts } : {})
       };
 
       lessonApi.updateLessonState('documents', [document], { append: true });
@@ -311,14 +327,60 @@
           </div>
           <CloseButton onClick={removeSelectedFile} />
         </div>
-        <!-- Per-file download toggle (default OFF = view-only). Editable any time from the materials list. -->
-        <label class="border-border mb-4 flex items-start gap-2 rounded-lg border p-3 text-sm">
-          <input type="checkbox" bind:checked={isDownloadable} class="mt-0.5 size-4 shrink-0" />
-          <span class="ui:text-muted-foreground">
-            Allow learners &amp; tutors to <strong>download</strong> this file. Off = view-only (no download button). Slide
-            decks (.pptx/.ppt) have no on-page viewer, so they must be downloadable to be opened.
-          </span>
-        </label>
+        <!-- PearlLMS Phase 8 — material type. Resource = read-only reference; the three assessment kinds
+             turn this file into a brief the learner downloads, answers, and uploads a submission against. -->
+        <div class="border-border mb-4 rounded-lg border p-3 text-sm">
+          <p class="ui:text-foreground mb-2 font-medium">Material type</p>
+          <div class="flex flex-wrap gap-2">
+            {#each MATERIAL_KINDS as kind (kind)}
+              <button
+                type="button"
+                onclick={() => (materialKind = kind)}
+                class={`rounded-md border px-3 py-1.5 text-sm transition-colors ${
+                  materialKind === kind
+                    ? 'ui:border-primary ui:bg-primary/10 ui:text-foreground font-medium'
+                    : 'ui:border-border ui:text-muted-foreground ui:hover:bg-muted'
+                }`}
+              >
+                {MATERIAL_KIND_LABELS[kind]}
+              </button>
+            {/each}
+          </div>
+          <p class="ui:text-muted-foreground mt-2 text-xs">
+            {#if isAssessment}
+              Learners download this to answer it, then upload their work for a tutor to grade Pass or Refer.
+            {:else}
+              A read-only reference. Learners view it in-app; use the download toggle below to allow saving a copy.
+            {/if}
+          </p>
+        </div>
+
+        {#if isAssessment}
+          <!-- Assessment config: optional due date + drafts. -->
+          <div class="border-border mb-4 grid gap-3 rounded-lg border p-3 text-sm sm:grid-cols-2">
+            <label class="flex flex-col gap-1">
+              <span class="ui:text-foreground font-medium">
+                Due date <span class="ui:text-muted-foreground font-normal">(optional)</span>
+              </span>
+              <input type="date" bind:value={dueDate} class="ui:border-border rounded-md border px-2 py-1.5" />
+            </label>
+            <label class="flex items-center gap-2 sm:mt-6">
+              <input type="checkbox" bind:checked={allowDrafts} class="size-4 shrink-0" />
+              <span class="ui:text-muted-foreground">
+                Allow <strong>draft</strong> submissions (feedback before the graded final)
+              </span>
+            </label>
+          </div>
+        {:else}
+          <!-- Per-file download toggle (resources only; assessment briefs are always downloadable). -->
+          <label class="border-border mb-4 flex items-start gap-2 rounded-lg border p-3 text-sm">
+            <input type="checkbox" bind:checked={isDownloadable} class="mt-0.5 size-4 shrink-0" />
+            <span class="ui:text-muted-foreground">
+              Allow learners &amp; tutors to <strong>download</strong> this file. Off = view-only (no download button). Slide
+              decks (.pptx/.ppt) have no on-page viewer, so they must be downloadable to be opened.
+            </span>
+          </label>
+        {/if}
       {:else}
         <div class={isDisabled ? 'ui:opacity-50 ui:pointer-events-none' : ''}>
           <FileDropZone.Root
