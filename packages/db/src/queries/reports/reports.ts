@@ -3,6 +3,7 @@ import * as schema from '@db/schema';
 import { and, db, desc, eq, type DbOrTxClient } from '@db/drizzle';
 import { isPassingResult } from '@cio/utils/constants';
 import { getOrderedUnitsForCourse, type OrderedUnit } from '../gating';
+import { getAssessmentKeysByLesson } from '../coursework';
 import { computeProgress, type CurrentPosition } from '../progress';
 
 // PearlLMS Phase 5 Step 4 — the provider-wide progress report (docs/PROGRESS-MODEL.md §5). One aggregate
@@ -80,29 +81,56 @@ export async function listEnrolledLearnersWithName(
 }
 
 /**
- * The latest-marked result per (learner, lesson) for a whole course, in ONE query (DISTINCT ON the highest
- * submission version that has a result — the Phase-3 "latest marked version" semantics, batched). Feeds the
- * report's passed-predicate without a per-learner round-trip.
+ * The latest FINAL verdict per (learner, lesson, ASSESSMENT) for a whole course, in ONE query (DISTINCT ON
+ * the highest FINAL submission version with a 'verdict' result — Phase-8 per-assessment semantics, batched).
+ * assessmentKey is null for legacy unit-level rows (which then behave as the pre-Phase-8 per-unit latest).
+ * Feeds the report's per-assessment passed-predicate without a per-learner round-trip, so the report matches
+ * the learner self-view (hasLearnerPassedUnit) by construction.
  */
 export async function getLatestMarkedResultsForCourse(
   courseId: string,
   client: DbOrTxClient = db
-): Promise<{ learnerId: string; lessonId: string; result: string }[]> {
+): Promise<{ learnerId: string; lessonId: string; assessmentKey: string | null; result: string }[]> {
   const rows = await client
-    .selectDistinctOn([schema.courseworkSubmission.learnerId, schema.courseworkSubmission.lessonId], {
-      learnerId: schema.courseworkSubmission.learnerId,
-      lessonId: schema.courseworkSubmission.lessonId,
-      result: schema.courseworkResult.result
-    })
+    .selectDistinctOn(
+      [
+        schema.courseworkSubmission.learnerId,
+        schema.courseworkSubmission.lessonId,
+        schema.courseworkSubmission.assessmentKey
+      ],
+      {
+        learnerId: schema.courseworkSubmission.learnerId,
+        lessonId: schema.courseworkSubmission.lessonId,
+        assessmentKey: schema.courseworkSubmission.assessmentKey,
+        result: schema.courseworkResult.result
+      }
+    )
     .from(schema.courseworkSubmission)
-    .innerJoin(schema.courseworkResult, eq(schema.courseworkResult.submissionId, schema.courseworkSubmission.id))
-    .where(eq(schema.courseworkSubmission.courseId, courseId))
+    .innerJoin(
+      schema.courseworkResult,
+      and(
+        eq(schema.courseworkResult.submissionId, schema.courseworkSubmission.id),
+        eq(schema.courseworkResult.kind, 'verdict')
+      )
+    )
+    .where(
+      and(
+        eq(schema.courseworkSubmission.courseId, courseId),
+        eq(schema.courseworkSubmission.submissionType, 'final')
+      )
+    )
     .orderBy(
       schema.courseworkSubmission.learnerId,
       schema.courseworkSubmission.lessonId,
+      schema.courseworkSubmission.assessmentKey,
       desc(schema.courseworkSubmission.version)
     );
-  return rows as { learnerId: string; lessonId: string; result: string }[];
+  return rows.map((r) => ({
+    learnerId: r.learnerId,
+    lessonId: r.lessonId,
+    assessmentKey: r.assessmentKey ?? null,
+    result: r.result ?? ''
+  }));
 }
 
 /** All completion records for a course → learnerId → completedAt. */
@@ -127,10 +155,12 @@ export function assembleReportRows(
   courseId: string,
   units: OrderedUnit[],
   learners: { learnerId: string; name: string }[],
-  results: { learnerId: string; lessonId: string; result: string }[],
-  completions: Map<string, string>
+  results: { learnerId: string; lessonId: string; assessmentKey: string | null; result: string }[],
+  completions: Map<string, string>,
+  assessmentKeysByLesson: Map<string, string[]>
 ): CourseProgressReportRow[] {
-  // learnerId → set of passed lessonIds (config-driven passing check, once).
+  // learnerId → set of passing "lessonId::assessmentKey" (assessmentKey '' for legacy unit-level rows).
+  const keyOf = (lessonId: string, assessmentKey: string | null) => `${lessonId}::${assessmentKey ?? ''}`;
   const passedByLearner = new Map<string, Set<string>>();
   for (const r of results) {
     if (!isPassingResult(r.result)) continue;
@@ -139,12 +169,20 @@ export function assembleReportRows(
       set = new Set<string>();
       passedByLearner.set(r.learnerId, set);
     }
-    set.add(r.lessonId);
+    set.add(keyOf(r.lessonId, r.assessmentKey));
   }
 
   return learners.map(({ learnerId, name }) => {
     const passed = passedByLearner.get(learnerId) ?? new Set<string>();
-    const p = computeProgress(courseId, units, (lessonId) => passed.has(lessonId), completions.get(learnerId) ?? null);
+    // A unit with tagged assessments is passed iff EVERY item is passed (matches hasLearnerPassedUnit); a
+    // unit with none falls back to the legacy per-unit passing result (null assessmentKey).
+    const isUnitPassed = (lessonId: string): boolean => {
+      const keys = assessmentKeysByLesson.get(lessonId) ?? [];
+      return keys.length > 0
+        ? keys.every((k) => passed.has(keyOf(lessonId, k)))
+        : passed.has(keyOf(lessonId, null));
+    };
+    const p = computeProgress(courseId, units, isUnitPassed, completions.get(learnerId) ?? null);
     return {
       learnerId,
       name,
@@ -172,5 +210,9 @@ export async function getCourseProgressReport(
     getLatestMarkedResultsForCourse(courseId, client),
     getCompletionsForCourse(courseId, client)
   ]);
-  return { courseId, rows: assembleReportRows(courseId, units, learners, results, completions) };
+  const assessmentKeysByLesson = await getAssessmentKeysByLesson(
+    units.map((u) => u.lessonId),
+    client
+  );
+  return { courseId, rows: assembleReportRows(courseId, units, learners, results, completions, assessmentKeysByLesson) };
 }

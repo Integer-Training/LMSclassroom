@@ -69,6 +69,30 @@ export async function getAssessmentKeysForLesson(lessonId: string, client: DbOrT
   return (await getAssessmentItemsForLesson(lessonId, client)).map((i) => i.key);
 }
 
+/**
+ * Assessment-item keys for MANY units at once → lessonId → keys[] (empty array for a unit with none).
+ * Batched to avoid an N+1 in the provider-wide report's per-assessment pass.
+ */
+export async function getAssessmentKeysByLesson(
+  lessonIds: string[],
+  client: DbOrTxClient = db
+): Promise<Map<string, string[]>> {
+  const map = new Map<string, string[]>();
+  if (lessonIds.length === 0) return map;
+  const rows = await client
+    .select({ id: schema.lesson.id, documents: schema.lesson.documents })
+    .from(schema.lesson)
+    .where(inArray(schema.lesson.id, lessonIds));
+  for (const r of rows) {
+    const docs = (r.documents ?? []) as Array<{ key: string; kind?: string }>;
+    map.set(
+      r.id,
+      docs.filter((d) => isAssessmentKind(d.kind)).map((d) => d.key)
+    );
+  }
+  return map;
+}
+
 export interface CourseworkSubmissionRow {
   id: string;
   learnerId: string;
