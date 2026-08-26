@@ -30,8 +30,8 @@ export const courseworkRouter = new Hono()
       const actor = c.get('actor') as Actor;
       const courseId = c.req.param('courseId')!;
       const lessonId = c.req.param('lessonId')!;
-      const { files } = c.req.valid('json');
-      const data = await presignCourseworkUploads(actor, courseId, lessonId, files);
+      const { assessmentKey, submissionType, files } = c.req.valid('json');
+      const data = await presignCourseworkUploads(actor, courseId, lessonId, assessmentKey, submissionType, files);
       return c.json({ success: true, data }, 200);
     } catch (error) {
       return handleError(c, error, 'Failed to prepare coursework upload');
@@ -43,8 +43,16 @@ export const courseworkRouter = new Hono()
       const actor = c.get('actor') as Actor;
       const courseId = c.req.param('courseId')!;
       const lessonId = c.req.param('lessonId')!;
-      const { version, files } = c.req.valid('json');
-      const data = await createCourseworkSubmission(actor, courseId, lessonId, version, files);
+      const { assessmentKey, submissionType, version, files } = c.req.valid('json');
+      const data = await createCourseworkSubmission(
+        actor,
+        courseId,
+        lessonId,
+        assessmentKey,
+        submissionType,
+        version,
+        files
+      );
       return c.json({ success: true, data }, 201);
     } catch (error) {
       return handleError(c, error, 'Failed to record coursework submission');

@@ -6,7 +6,7 @@ import { isRole, isSelf, sameOrg } from '@cio/utils/auth';
 import { getSubmissionById } from '@cio/db/queries/submission';
 import { isCourseGroupMember } from '@cio/db/queries/group';
 import { isTutorAllocatedToLearner } from '@cio/db/queries/allocation';
-import { getSubmissionByFileKey, hasLearnerPassedUnit, isUnitUploadClosed } from '@cio/db/queries/coursework';
+import { getSubmissionByFileKey, hasLearnerPassedUnit } from '@cio/db/queries/coursework';
 import { getCourseMaterialKeys, getMaterialKeyLessonMap } from '@cio/db/queries/lesson';
 import { getCourseSequentialUnlock, getOrderedUnitsForCourse } from '@cio/db/queries/gating';
 import { findGatePredecessorIndex, isExemptUnitType } from '@cio/utils/constants';
@@ -318,9 +318,9 @@ export async function requireCourseworkSubmit(c: Context, next: Next) {
   if (!(await isCoursePublished(courseId))) {
     return forbidden(c, 'This course is not open for coursework submission');
   }
-  if (await isUnitUploadClosed(actor.userId, lessonId)) {
-    return forbidden(c, 'You have passed this unit — no further submissions are needed');
-  }
+  // NB: the per-ASSESSMENT "already passed ⇒ upload closed" check moved into the coursework service
+  // (resolveSubmittableAssessment), which can see the body's assessmentKey; the middleware only sees the
+  // path. This guard still enforces the coarse door (learner, enrolled, published, unit unlocked).
   // Phase 4: a locked unit refuses submissions too (same isUnitUnlocked gate as content read).
   if (!(await isUnitUnlocked(courseId, lessonId, actor.userId))) {
     return forbidden(c, LOCKED_MESSAGE);

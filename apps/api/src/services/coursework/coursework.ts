@@ -8,16 +8,44 @@ import { courseworkKeyPrefix, generateCourseworkFileKey } from '@cio/core/utils/
 import { generateDocumentDownloadPresignedUrls, generateDocumentUploadPresignedUrl } from '@cio/core/utils/s3';
 import {
   createSubmission,
+  getAssessmentItemsForLesson,
   getNextSubmissionVersion,
   getSubmissionById,
-  isUnitUploadClosed,
+  hasLearnerPassedUnit,
+  isAssessmentUploadClosed,
   listSubmissionsWithResultForLearnerUnit,
+  type AssessmentItem,
   type CourseworkFile,
   type CourseworkSubmissionRow,
   type SubmissionWithResultRow
 } from '@cio/db/queries/coursework';
 import { canReadCoursework } from '@api/middlewares/guards';
 import { notifyCourseworkSubmitted } from '@api/services/coursework/notifications';
+
+/**
+ * Resolve + validate the assessment item a submission targets. The key must be a REAL assessment material
+ * (tagged workbook/casestudy/assignment) on THIS unit — never trusted from input. A draft against an item
+ * with drafts disabled, or a submit against an already-passed item, is rejected here (the guard can't see
+ * the body, so these body-dependent checks live in the service). Returns the item's config (allowDrafts etc.).
+ */
+async function resolveSubmittableAssessment(
+  learnerId: string,
+  lessonId: string,
+  assessmentKey: string,
+  submissionType: string
+): Promise<AssessmentItem> {
+  const item = (await getAssessmentItemsForLesson(lessonId)).find((i) => i.key === assessmentKey);
+  if (!item) {
+    throw new AppError('This is not a submittable assessment on this unit', ErrorCodes.VALIDATION_ERROR, 400);
+  }
+  if (submissionType === 'draft' && !item.allowDrafts) {
+    throw new AppError('Drafts are not enabled for this assessment', ErrorCodes.VALIDATION_ERROR, 400);
+  }
+  if (await isAssessmentUploadClosed(learnerId, lessonId, assessmentKey)) {
+    throw new AppError('You have passed this assessment — no further submissions are needed', ErrorCodes.FORBIDDEN, 403);
+  }
+  return item;
+}
 
 // Learner coursework upload (PearlLMS Phase 3 Step 4). Uploads follow the Phase-2 guarded-storage
 // pattern: the server issues presigned PUT URLs under the learner's own coursework prefix, the client
@@ -62,21 +90,25 @@ export async function presignCourseworkUploads(
   actor: Actor,
   courseId: string,
   lessonId: string,
+  assessmentKey: string,
+  submissionType: string,
   files: Array<{ fileName: string; fileType: string; fileSize?: number }>
 ): Promise<{ version: number; files: PresignedCourseworkFile[] }> {
   if (!actor.authenticated) {
     throw new AppError('Unauthorized', ErrorCodes.UNAUTHORIZED, 401);
   }
+  await resolveSubmittableAssessment(actor.userId, lessonId, assessmentKey, submissionType);
+
   const limits = getUploadLimits();
   for (const f of files) {
     assertAllowedType(f.fileType, f.fileName);
     assertWithinSize(f.fileSize, f.fileName, limits.documentBytes);
   }
 
-  const version = await getNextSubmissionVersion(actor.userId, lessonId);
+  const version = await getNextSubmissionVersion(actor.userId, lessonId, assessmentKey);
   const out: PresignedCourseworkFile[] = [];
   for (const f of files) {
-    const fileKey = generateCourseworkFileKey(courseId, actor.userId, lessonId, version, f.fileName);
+    const fileKey = generateCourseworkFileKey(courseId, actor.userId, lessonId, assessmentKey, version, f.fileName);
     const uploadUrl = await generateDocumentUploadPresignedUrl(fileKey, f.fileType);
     out.push({ fileName: f.fileName, fileKey, uploadUrl });
   }
@@ -94,14 +126,17 @@ export async function createCourseworkSubmission(
   actor: Actor,
   courseId: string,
   lessonId: string,
+  assessmentKey: string,
+  submissionType: string,
   version: number,
   files: CourseworkFile[]
 ): Promise<CourseworkSubmissionRow> {
   if (!actor.authenticated) {
     throw new AppError('Unauthorized', ErrorCodes.UNAUTHORIZED, 401);
   }
+  await resolveSubmittableAssessment(actor.userId, lessonId, assessmentKey, submissionType);
 
-  const expectedPrefix = courseworkKeyPrefix(courseId, actor.userId, lessonId, version);
+  const expectedPrefix = courseworkKeyPrefix(courseId, actor.userId, lessonId, assessmentKey, version);
   for (const f of files) {
     if (!f.key.startsWith(expectedPrefix)) {
       throw new AppError('Invalid file reference for this submission', ErrorCodes.VALIDATION_ERROR, 400);
@@ -111,7 +146,7 @@ export async function createCourseworkSubmission(
 
   let row: CourseworkSubmissionRow;
   try {
-    row = await createSubmission({ learnerId: actor.userId, courseId, lessonId, version, files });
+    row = await createSubmission({ learnerId: actor.userId, courseId, lessonId, assessmentKey, submissionType, version, files });
   } catch (error) {
     if (isUniqueConstraintViolation(error)) {
       throw new AppError('This version already exists — please retry your upload', ErrorCodes.CONFLICT, 409);
@@ -124,7 +159,7 @@ export async function createCourseworkSubmission(
     action: AUDIT_ACTIONS.COURSEWORK_SUBMITTED,
     entityType: 'coursework_submission',
     entityId: row.id,
-    metadata: { courseId, lessonId, version, fileCount: files.length } // ids + counts only
+    metadata: { courseId, lessonId, assessmentKey, submissionType, version, fileCount: files.length } // ids + counts only
   });
 
   // Notify the learner's allocated tutor(s) — fire-and-forget: a mail failure must never roll back the
@@ -150,11 +185,14 @@ export async function listOwnCourseworkForUnit(
   if (!actor.authenticated) {
     throw new AppError('Unauthorized', ErrorCodes.UNAUTHORIZED, 401);
   }
-  const [submissions, closed] = await Promise.all([
+  // Unit-level informational flag (all assessments passed ⇒ nothing left to submit). The authoritative
+  // per-ASSESSMENT open/closed decision is enforced at submit time (resolveSubmittableAssessment); the
+  // learner UI derives per-item state from each submission's assessmentKey + result.
+  const [submissions, unitPassed] = await Promise.all([
     listSubmissionsWithResultForLearnerUnit(actor.userId, lessonId),
-    isUnitUploadClosed(actor.userId, lessonId)
+    hasLearnerPassedUnit(actor.userId, lessonId)
   ]);
-  return { submissions, canSubmit: !closed };
+  return { submissions, canSubmit: !unitPassed };
 }
 
 /**

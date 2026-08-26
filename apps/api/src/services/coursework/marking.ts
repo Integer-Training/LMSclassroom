@@ -24,7 +24,8 @@ import { emitNotification } from '@api/services/comms/notify';
 // one result per version (DB unique), and re-marking / marking a superseded version are rejected.
 
 export interface RecordResultInput {
-  result: string;
+  /** Present + a configured value for a FINAL (verdict). Absent for a DRAFT (feedback-only). */
+  result?: string;
   feedback?: string;
 }
 
@@ -54,13 +55,30 @@ export async function recordResult(
     throw new AppError('Only an allocated tutor or an admin can record a result', ErrorCodes.FORBIDDEN, 403);
   }
 
+  // Phase 8: a DRAFT submission receives feedback ONLY (no verdict, never gates); a FINAL requires a
+  // verdict (PASS/REFER). Enforce the pairing here where the submission type is known — the validator
+  // leaves `result` optional because it can't see the submission.
+  const isDraft = submission.submissionType === 'draft';
+  if (isDraft) {
+    if (input.result != null) {
+      throw new AppError('A draft receives feedback only — it cannot be passed or referred', ErrorCodes.VALIDATION_ERROR, 400);
+    }
+    if (!input.feedback || !input.feedback.trim()) {
+      throw new AppError('Draft feedback cannot be empty', ErrorCodes.VALIDATION_ERROR, 400);
+    }
+  } else if (input.result == null) {
+    throw new AppError('A result (Pass or Refer) is required', ErrorCodes.VALIDATION_ERROR, 400);
+  }
+  const resultKind = isDraft ? 'draft' : 'verdict';
+  const resultValue = isDraft ? null : (input.result ?? null);
+
   // One result per version — never overwrite history.
   if (await getResultForSubmission(submissionId)) {
     throw new AppError('This version has already been marked', ErrorCodes.CONFLICT, 409);
   }
 
-  // Only the latest version of a unit is markable — a newer version means this one is superseded.
-  const latest = await getLatestSubmissionResultState(submission.learnerId, submission.lessonId);
+  // Only the latest version of THIS assessment item is markable — a newer version supersedes this one.
+  const latest = await getLatestSubmissionResultState(submission.learnerId, submission.lessonId, submission.assessmentKey);
   if (latest && submission.version < latest.version) {
     throw new AppError('A newer version has been submitted — mark the latest version', ErrorCodes.CONFLICT, 409);
   }
@@ -76,13 +94,16 @@ export async function recordResult(
       const resultRow = await recordCourseworkResult(
         {
           submissionId,
-          result: input.result,
+          kind: resultKind,
+          result: resultValue,
           feedback: input.feedback ?? null,
           recordedBy: actor.userId
         },
         tx
       );
-      const completion = isPassingResult(input.result)
+      // Completion is evaluated ONLY for a passing FINAL verdict — a draft (result null) or a Refer can
+      // never complete a course. isPassingResult(null) is false, so a draft is naturally excluded.
+      const completion = isPassingResult(resultValue)
         ? await recordCompletionIfComplete(tx, {
             learnerId: submission.learnerId,
             courseId: submission.courseId,
@@ -105,7 +126,7 @@ export async function recordResult(
     action: AUDIT_ACTIONS.RESULT_ENTERED,
     entityType: 'coursework_result',
     entityId: row.id,
-    metadata: { submissionId, version: submission.version, result: input.result } // NEVER the feedback text
+    metadata: { submissionId, version: submission.version, result: isDraft ? 'draft' : input.result } // NEVER the feedback text
   });
 
   // A completion row was newly written → audit it (ids only). Fired ONLY on a genuine new insert — the
@@ -135,7 +156,7 @@ export async function recordResult(
   // session.unlocked (Phase 6) — a PASS may open the next gated session(s) for this learner. Determine which
   // unit(s) this Pass newly unblocks by composing the SAME Phase-4 unlock rule (no duplicate chain logic),
   // and notify the learner in-app (no email by default — session category). Fire-and-forget; never on a Refer.
-  if (isPassingResult(input.result)) {
+  if (isPassingResult(resultValue)) {
     try {
       const opened = await getUnitsUnlockedByPass(submission.courseId, submission.lessonId);
       for (const unit of opened) {

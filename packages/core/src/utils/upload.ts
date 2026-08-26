@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { nanoid } from 'nanoid';
 import path from 'path';
 
@@ -44,15 +45,32 @@ export function generateMaterialFileKey(courseId: string, fileName: string): str
 }
 
 /**
- * Object-key prefix for a learner's coursework on one unit VERSION (PearlLMS Phase 3 Step 4). The
- * key is learner- and unit-scoped: `coursework/{courseId}/{learnerId}/{lessonId}/{version}/…`. The
- * prefix is organizational only — access is enforced by the guarded coursework-download binding
- * (assertCourseworkDownloadAccess), never by the path. The server reconstructs this exact prefix from
- * the authenticated actor + path when a submission is created, so a learner can only register keys
- * under their OWN prefix (blocks key injection / cross-learner references).
+ * Short, stable, filesystem-safe slug for an assessment item, derived from its lesson.documents[].key.
+ * The raw key contains slashes/nanoids; this hashes it to a fixed 16-hex-char segment so it can namespace
+ * a coursework prefix without leaking or nesting the raw key. Deterministic (same key → same slug).
  */
-export function courseworkKeyPrefix(courseId: string, learnerId: string, lessonId: string, version: number): string {
-  return `coursework/${courseId}/${learnerId}/${lessonId}/${version}/`;
+export function courseworkAssessmentSlug(assessmentKey: string): string {
+  return createHash('sha256').update(assessmentKey).digest('hex').slice(0, 16);
+}
+
+/**
+ * Object-key prefix for a learner's coursework on one unit + ASSESSMENT + VERSION (PearlLMS Phase 3 Step
+ * 4; Phase 8 per-assessment). Learner-, unit-, and assessment-scoped:
+ * `coursework/{courseId}/{learnerId}/{lessonId}/{assessmentSlug}/{version}/…`. The prefix is organizational
+ * only — access is enforced by the guarded coursework-download binding (assertCourseworkDownloadAccess),
+ * never by the path. The server reconstructs this exact prefix from the authenticated actor + path +
+ * validated assessment when a submission is created, so a learner can only register keys under their OWN
+ * prefix (blocks key injection / cross-learner references), and one assessment's version namespace never
+ * collides with another's.
+ */
+export function courseworkKeyPrefix(
+  courseId: string,
+  learnerId: string,
+  lessonId: string,
+  assessmentKey: string,
+  version: number
+): string {
+  return `coursework/${courseId}/${learnerId}/${lessonId}/${courseworkAssessmentSlug(assessmentKey)}/${version}/`;
 }
 
 /** Key for one coursework file in a given submission version (see courseworkKeyPrefix). */
@@ -60,8 +78,9 @@ export function generateCourseworkFileKey(
   courseId: string,
   learnerId: string,
   lessonId: string,
+  assessmentKey: string,
   version: number,
   fileName: string
 ): string {
-  return `${courseworkKeyPrefix(courseId, learnerId, lessonId, version)}${generateFileKey(fileName)}`;
+  return `${courseworkKeyPrefix(courseId, learnerId, lessonId, assessmentKey, version)}${generateFileKey(fileName)}`;
 }
