@@ -383,6 +383,24 @@ class AppInitApi extends BaseApi {
 
     // This allows you to be on the landing page of an organization site and not be redirected
     const path = window.location.pathname;
+
+    // PearlLMS self-hosted: this domain is the whole app for EVERY role, not a learner-only org catalog.
+    // After auth, route STAFF to their working home even from the org-site landing (path '/' or a public
+    // route), which otherwise renders the public marketing page and strands tutors/managers. Runs BEFORE
+    // the public-route early-out below (which would otherwise keep them on the landing). Learners + Admins
+    // keep their existing paths (/lms, /org) via the logic further down.
+    if (PUBLIC_IS_SELFHOSTED === 'true' && (path === '/' || isPublicRoute(path))) {
+      const staffRoleId = get(currentOrg).roleId;
+      if (staffRoleId === ROLE.TUTOR) {
+        console.log('self-hosted: redirecting tutor to caseload');
+        return goto(resolve('/caseload', {}));
+      }
+      if (staffRoleId === ROLE.MANAGER) {
+        console.log('self-hosted: redirecting manager to reports');
+        return goto(resolve('/reports', {}));
+      }
+    }
+
     if (isPublicRoute(path) && (path !== '/' || isOrgSite)) {
       console.log('no redirect is needed');
       return;
