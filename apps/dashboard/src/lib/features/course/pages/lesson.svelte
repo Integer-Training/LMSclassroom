@@ -60,6 +60,7 @@
   import StudentContentLockedNotice from '$features/course/components/student-content-locked-notice.svelte';
   import LiveSessionCard from '$features/course/components/lesson/live-session-card.svelte';
   import CourseworkSubmission from '$features/course/components/lesson/coursework-submission.svelte';
+  import { isAssessmentKind } from '@cio/utils/constants';
   import IdVerificationStatus from '$features/registrations/components/id-verification-status.svelte';
 
   interface Props {
@@ -70,6 +71,9 @@
   let { courseId, lessonId }: Props = $props();
 
   const mode = $derived($page.url.searchParams.get('mode') === 'edit' ? MODES.edit : MODES.view);
+  // PearlLMS Phase 8 — the unit's tagged assessment items (workbook/casestudy/assignment), for the learner
+  // per-assessment submission cards.
+  const assessmentItems = $derived((lessonApi.lesson?.documents ?? []).filter((d) => isAssessmentKind(d.kind)));
 
   let prevModeParam = $state<string | null>(null);
   let isDeletingLesson = $state(false);
@@ -518,8 +522,39 @@
                 <IdVerificationStatus />
               {/if}
 
-              <!-- Learner coursework upload (PearlLMS Phase 3 Step 4): self-only; guarded read/download. -->
-              <CourseworkSubmission {courseId} {lessonId} />
+              <!-- Learner assessment submissions (PearlLMS Phase 8): one card per tagged assessment item
+                   (workbook/casestudy/assignment) in this unit. Resources stay view-only above. Self-only;
+                   guarded read/download. -->
+              {#if assessmentItems.length > 0}
+                <section class="mt-8 border-t pt-6">
+                  <div class="mb-1 flex items-center justify-between gap-3">
+                    <h2 class="text-lg font-semibold">Assessments</h2>
+                    <a
+                      href="/messages"
+                      class="ui:text-primary inline-flex items-center gap-1 text-sm font-medium hover:underline"
+                    >
+                      Message your tutor →
+                    </a>
+                  </div>
+                  <p class="text-muted-foreground mb-4 text-sm">
+                    Download each brief, complete it, then upload your work. Your tutor grades it Pass or Refer.
+                  </p>
+                  {#each assessmentItems as item (item.key)}
+                    <CourseworkSubmission
+                      {courseId}
+                      {lessonId}
+                      assessment={{
+                        key: item.key,
+                        name: item.name,
+                        kind: item.kind ?? 'assignment',
+                        dueAt: item.dueAt ?? null,
+                        allowDrafts: item.allowDrafts !== false,
+                        briefLink: item.link
+                      }}
+                    />
+                  {/each}
+                </section>
+              {/if}
 
               {#if $currentOrg.customization?.apps?.comments}
                 <hr class="my-2" />

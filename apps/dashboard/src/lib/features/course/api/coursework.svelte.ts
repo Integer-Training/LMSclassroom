@@ -15,13 +15,19 @@ export interface CourseworkSubmission {
   learnerId: string;
   courseId: string;
   lessonId: string;
+  /** The assessment item this answers (Phase 8), or null for legacy unit-level rows. */
+  assessmentKey: string | null;
+  /** 'final' (graded Pass/Refer) | 'draft' (feedback-only). */
+  submissionType: string;
   version: number;
   files: CourseworkFile[];
   status: string;
   submittedAt: string;
-  /** The tutor's result on this version (Step 5), or null while awaiting marking. */
+  /** 'verdict' | 'draft' | null (unmarked). */
+  resultKind: string | null;
+  /** The tutor's verdict on a FINAL version (Pass/Refer), or null (unmarked / draft). */
   result: string | null;
-  /** The tutor's written feedback for this version (Step 5), or null. */
+  /** The tutor's written feedback for this version, or null. */
   feedback: string | null;
 }
 
@@ -45,9 +51,20 @@ class CourseworkApi extends BaseApi {
   isUploading = $state(false);
   uploadError = $state<string | null>(null);
   lastSubmitted = $state<CourseworkSubmission | null>(null);
+  loadedLessonId = $state<string | null>(null);
 
   private base(courseId: string, lessonId: string) {
     return classroomio.course[':courseId'].lesson[':lessonId'].coursework;
+  }
+
+  /**
+   * Load the unit's submissions once per lesson (deduped across the several per-assessment cards that mount
+   * together). Sets loadedLessonId synchronously before the fetch so concurrent card mounts don't refetch.
+   */
+  async ensureLoaded(courseId: string, lessonId: string) {
+    if (this.loadedLessonId === lessonId) return;
+    this.loadedLessonId = lessonId;
+    await this.list(courseId, lessonId);
   }
 
   async list(courseId: string, lessonId: string) {
@@ -78,8 +95,17 @@ class CourseworkApi extends BaseApi {
     return null;
   }
 
-  /** Presign → PUT each file → register the submission. Returns true on success. */
-  async submit(courseId: string, lessonId: string, files: File[]): Promise<boolean> {
+  /**
+   * Presign → PUT each file → register the submission, for ONE assessment item as a draft or final.
+   * Returns true on success.
+   */
+  async submit(
+    courseId: string,
+    lessonId: string,
+    assessmentKey: string,
+    submissionType: 'draft' | 'final',
+    files: File[]
+  ): Promise<boolean> {
     this.isUploading = true;
     this.uploadError = null;
 
@@ -88,6 +114,8 @@ class CourseworkApi extends BaseApi {
       const presignRes = await this.base(courseId, lessonId).presign.$post({
         param: { courseId, lessonId },
         json: {
+          assessmentKey,
+          submissionType,
           files: files.map((f) => ({ fileName: f.name, fileType: f.type, fileSize: f.size }))
         }
       });
@@ -114,6 +142,8 @@ class CourseworkApi extends BaseApi {
       const createRes = await this.base(courseId, lessonId).$post({
         param: { courseId, lessonId },
         json: {
+          assessmentKey,
+          submissionType,
           version,
           files: files.map((f, i) => ({
             key: presignedFiles[i].fileKey,
@@ -133,7 +163,9 @@ class CourseworkApi extends BaseApi {
       }
 
       this.lastSubmitted = created.data;
-      snackbar.success(`Coursework submitted (version ${created.data.version}).`);
+      snackbar.success(
+        `${submissionType === 'draft' ? 'Draft' : 'Work'} submitted (version ${created.data.version}).`
+      );
       await this.list(courseId, lessonId);
       return true;
     } catch (error) {

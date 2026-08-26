@@ -26,6 +26,28 @@
 
   onMount(() => caseloadApi.loadLearner(learnerId));
 
+  // PearlLMS Phase 8 — the markable submissions: the latest version of each (assessment, type) group that
+  // has no result yet (matches the server mark-latest-per-type rule). A later draft never blocks a final.
+  const markableIds = $derived.by(() => {
+    const set = new Set<string>();
+    const detail = caseloadApi.detail;
+    if (!detail) return set;
+    for (const course of detail.courses) {
+      for (const unit of course.units) {
+        const latestByGroup = new Map<string, (typeof unit.submissions)[number]>();
+        for (const sub of unit.submissions) {
+          const k = `${sub.assessmentKey ?? ''}::${sub.submissionType}`;
+          const cur = latestByGroup.get(k);
+          if (!cur || sub.version > cur.version) latestByGroup.set(k, sub);
+        }
+        for (const sub of latestByGroup.values()) {
+          if (!sub.resultKind) set.add(sub.id);
+        }
+      }
+    }
+    return set;
+  });
+
   function formatDate(iso: string): string {
     const d = new Date(iso);
     return isNaN(d.getTime()) ? iso : d.toLocaleString();
@@ -94,13 +116,18 @@
                   <ul class="divide-y">
                     {#each unit.submissions as sub, idx (sub.id)}
                       <li class="px-4 py-3">
-                        <div class="mb-2 flex items-center justify-between gap-2">
-                          <span class="text-sm font-medium">Version {sub.version}</span>
+                        <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+                          <span class="flex items-center gap-2 text-sm font-medium">
+                            {sub.assessmentName} · v{sub.version}
+                            <Badge variant="outline">{sub.submissionType === 'draft' ? 'Draft' : 'Final'}</Badge>
+                          </span>
                           <div class="flex items-center gap-2">
-                            {#if sub.result}
+                            {#if sub.resultKind === 'verdict' && sub.result}
                               <Badge variant={isPassingResult(sub.result) ? 'default' : 'destructive'}>
                                 {resultLabel(sub.result)}
                               </Badge>
+                            {:else if sub.resultKind === 'draft'}
+                              <Badge variant="secondary">Draft feedback sent</Badge>
                             {/if}
                             <span class="text-muted-foreground text-xs">{formatDate(sub.submittedAt)}</span>
                           </div>
@@ -128,9 +155,14 @@
                             <p class="text-sm whitespace-pre-wrap">{sub.feedback}</p>
                           </div>
                         {/if}
-                        {#if idx === 0 && !sub.result}
-                          <!-- Latest, unmarked version → record a result (allocated tutor / Admin). -->
-                          <MarkingForm submissionId={sub.id} onMarked={() => caseloadApi.loadLearner(learnerId)} />
+                        {#if markableIds.has(sub.id)}
+                          <!-- Latest unmarked version of this assessment+type → grade it (allocated tutor /
+                               Admin). A draft gets feedback only; a final gets Pass/Refer. -->
+                          <MarkingForm
+                            submissionId={sub.id}
+                            isDraft={sub.submissionType === 'draft'}
+                            onMarked={() => caseloadApi.loadLearner(learnerId)}
+                          />
                         {/if}
                       </li>
                     {/each}
