@@ -1,5 +1,5 @@
 import { ZCaseloadLearnerParam, ZMarkSubmission, ZSubmissionIdParam } from '@cio/utils/validation/coursework';
-import { getCaseloadLearnerDetail, getTutorCaseload } from '@api/services/caseload/caseload';
+import { getCaseloadLearnerDetail, getTutorCaseload, getTutorPipeline } from '@api/services/caseload/caseload';
 import { recordResult } from '@api/services/coursework/marking';
 
 import { Hono } from '@api/utils/hono';
@@ -20,6 +20,17 @@ export const caseloadRouter = new Hono()
       return c.json({ success: true, data }, 200);
     } catch (error) {
       return handleError(c, error, 'Failed to load caseload');
+    }
+  })
+  // The grading pipeline — queue lists + headline stats (Phase 8). requireStaff = ADMIN/TUTOR; the
+  // service is allocation-scoped (a tutor sees only their learners; Admin sees the org).
+  .get('/pipeline', requireStaff, async (c) => {
+    try {
+      const actor = c.get('actor') as Actor;
+      const data = await getTutorPipeline(actor);
+      return c.json({ success: true, data }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to load grading pipeline');
     }
   })
   .get('/learners/:learnerId', requireStaff, zValidator('param', ZCaseloadLearnerParam), async (c) => {

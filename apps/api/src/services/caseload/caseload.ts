@@ -1,8 +1,18 @@
 import { AppError, ErrorCodes } from '@api/utils/errors';
 import type { Actor } from '@cio/db/actor';
-import { deriveCaseloadState, type CaseloadState } from '@cio/utils/constants';
+import {
+  DUE_SOON_WINDOW_DAYS,
+  deriveCaseloadState,
+  isPassingResult,
+  resolveMarkingSlaHours,
+  type CaseloadState
+} from '@cio/utils/constants';
 import { listAllocatedLearnersForOrg, listLearnersForTutor, type AllocatedLearner } from '@cio/db/queries/allocation';
-import { getSubmissionsWithContextForLearners, type SubmissionWithContext } from '@cio/db/queries/coursework';
+import {
+  getAssessmentItemsByLesson,
+  getSubmissionsWithContextForLearners,
+  type SubmissionWithContext
+} from '@cio/db/queries/coursework';
 import { getProfileById } from '@cio/db/queries/auth';
 import { isAllocatedTutor } from '@api/middlewares/guards';
 
@@ -131,11 +141,194 @@ export async function getTutorCaseload(
   return { learners, awaiting };
 }
 
+// ── Tutor grading pipeline (PearlLMS Phase 8) — queues + stats derived from coursework submissions ──
+// Extends the plain caseload roster into the pipeline dashboard: the marking queues + outcome stats, all
+// derived per ASSESSMENT ITEM. NB: "due soon" covers assessments a learner has already engaged with (a
+// full not-yet-started catalog scan is deferred — flagged to the owner as a later enrichment).
+
+export interface PipelineItem {
+  submissionId: string;
+  learnerId: string;
+  learnerName: string | null;
+  courseId: string;
+  courseTitle: string;
+  lessonId: string;
+  unitTitle: string;
+  assessmentKey: string | null;
+  assessmentName: string;
+  submissionType: string;
+  version: number;
+  submittedAt: string;
+  dueAt: string | null;
+}
+export interface TutorPipelineStats {
+  learners: number;
+  awaitingMarking: number;
+  resubmissions: number;
+  awaitingDraftFeedback: number;
+  overdue: number;
+  dueSoon: number;
+  totalGraded: number;
+  passCount: number;
+  referCount: number;
+}
+export interface TutorPipeline {
+  stats: TutorPipelineStats;
+  awaitingMarking: PipelineItem[];
+  resubmissions: PipelineItem[];
+  awaitingDraftFeedback: PipelineItem[];
+  overdue: PipelineItem[];
+  dueSoon: PipelineItem[];
+}
+
+/**
+ * The tutor's grading pipeline — the queue lists + headline stats. Roster is allocation-sourced (Admin =
+ * org-wide); everything is derived from the allocated learners' submissions, per assessment item:
+ *  - awaitingMarking: latest FINAL is unmarked and no prior Refer (a first submission to grade)
+ *  - resubmissions: latest FINAL is unmarked AND a prior FINAL was Refer'd (a resubmission to re-review)
+ *  - awaitingDraftFeedback: latest DRAFT is unmarked (feedback-only, never a verdict)
+ *  - overdue: an awaiting FINAL older than the marking SLA (default 72h)
+ *  - dueSoon: an engaged, not-yet-passed assessment whose dueAt is within the window
+ *  - totalGraded / passCount / referCount: verdict outcomes across all versions
+ */
+export async function getTutorPipeline(actor: Actor): Promise<TutorPipeline> {
+  if (!actor.authenticated) throw new AppError('Unauthorized', ErrorCodes.UNAUTHORIZED, 401);
+  if (actor.role !== 'ADMIN' && actor.role !== 'TUTOR') {
+    throw new AppError('You do not have a caseload', ErrorCodes.FORBIDDEN, 403);
+  }
+
+  const roster: AllocatedLearner[] =
+    actor.role === 'ADMIN' ? await listAllocatedLearnersForOrg(actor.orgId) : await listLearnersForTutor(actor.userId);
+  const nameOf = new Map(roster.map((l) => [l.learnerId, l.name] as const));
+  const subs = await getSubmissionsWithContextForLearners(roster.map((l) => l.learnerId));
+
+  const lessonIds = [...new Set(subs.map((s) => s.lessonId))];
+  const itemsByLesson = await getAssessmentItemsByLesson(lessonIds);
+  const metaOf = (lessonId: string, key: string | null): { name: string; dueAt: string | null } => {
+    if (!key) return { name: 'Coursework', dueAt: null };
+    const item = itemsByLesson.get(lessonId)?.find((i) => i.key === key);
+    return { name: item?.name ?? 'Assessment', dueAt: item?.dueAt ?? null };
+  };
+
+  // Group every version per (learner, unit, assessment).
+  const groups = new Map<string, SubmissionWithContext[]>();
+  for (const s of subs) {
+    const k = `${s.learnerId}::${s.lessonId}::${s.assessmentKey ?? ''}`;
+    const arr = groups.get(k);
+    if (arr) arr.push(s);
+    else groups.set(k, [s]);
+  }
+
+  const stats: TutorPipelineStats = {
+    learners: roster.length,
+    awaitingMarking: 0,
+    resubmissions: 0,
+    awaitingDraftFeedback: 0,
+    overdue: 0,
+    dueSoon: 0,
+    totalGraded: 0,
+    passCount: 0,
+    referCount: 0
+  };
+  const awaitingMarking: PipelineItem[] = [];
+  const resubmissions: PipelineItem[] = [];
+  const awaitingDraftFeedback: PipelineItem[] = [];
+  const overdue: PipelineItem[] = [];
+  const dueSoon: PipelineItem[] = [];
+
+  const slaMs = resolveMarkingSlaHours({ MARKING_SLA_HOURS: process.env.MARKING_SLA_HOURS }) * 3_600_000;
+  const dueSoonMs = DUE_SOON_WINDOW_DAYS * 86_400_000;
+  const now = Date.now();
+
+  const toItem = (s: SubmissionWithContext): PipelineItem => {
+    const meta = metaOf(s.lessonId, s.assessmentKey);
+    return {
+      submissionId: s.id,
+      learnerId: s.learnerId,
+      learnerName: nameOf.get(s.learnerId) ?? null,
+      courseId: s.courseId,
+      courseTitle: s.courseTitle,
+      lessonId: s.lessonId,
+      unitTitle: s.unitTitle,
+      assessmentKey: s.assessmentKey,
+      assessmentName: meta.name,
+      submissionType: s.submissionType,
+      version: s.version,
+      submittedAt: s.submittedAt,
+      dueAt: meta.dueAt
+    };
+  };
+  const pickLatest = (list: SubmissionWithContext[]): SubmissionWithContext | null =>
+    list.reduce<SubmissionWithContext | null>((a, b) => (!a || b.version > a.version ? b : a), null);
+
+  for (const arr of groups.values()) {
+    for (const s of arr) {
+      if (s.resultKind === 'verdict' && s.result) {
+        stats.totalGraded++;
+        if (isPassingResult(s.result)) stats.passCount++;
+        else stats.referCount++;
+      }
+    }
+
+    const latestFinal = pickLatest(arr.filter((s) => s.submissionType === 'final'));
+    const latestDraft = pickLatest(arr.filter((s) => s.submissionType === 'draft'));
+    const assessmentPassed = arr.some((s) => s.resultKind === 'verdict' && s.result && isPassingResult(s.result));
+    const priorRefer = arr.some(
+      (s) => s.submissionType === 'final' && s.resultKind === 'verdict' && s.result && !isPassingResult(s.result)
+    );
+
+    if (latestFinal && latestFinal.resultKind == null && !assessmentPassed) {
+      const item = toItem(latestFinal);
+      if (priorRefer) {
+        resubmissions.push(item);
+        stats.resubmissions++;
+      } else {
+        awaitingMarking.push(item);
+        stats.awaitingMarking++;
+      }
+      if (now - new Date(latestFinal.submittedAt).getTime() > slaMs) {
+        overdue.push(item);
+        stats.overdue++;
+      }
+    }
+    if (latestDraft && latestDraft.resultKind == null && !assessmentPassed) {
+      awaitingDraftFeedback.push(toItem(latestDraft));
+      stats.awaitingDraftFeedback++;
+    }
+
+    const latest = latestFinal ?? latestDraft;
+    if (latest) {
+      const { dueAt } = metaOf(latest.lessonId, latest.assessmentKey);
+      if (dueAt && !assessmentPassed) {
+        const due = new Date(dueAt).getTime();
+        if (due >= now && due - now <= dueSoonMs) {
+          dueSoon.push(toItem(latest));
+          stats.dueSoon++;
+        }
+      }
+    }
+  }
+
+  const oldestFirst = (a: PipelineItem, b: PipelineItem) =>
+    new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime();
+  awaitingMarking.sort(oldestFirst);
+  resubmissions.sort(oldestFirst);
+  awaitingDraftFeedback.sort(oldestFirst);
+  overdue.sort(oldestFirst);
+  dueSoon.sort((a, b) => new Date(a.dueAt ?? 0).getTime() - new Date(b.dueAt ?? 0).getTime());
+
+  return { stats, awaitingMarking, resubmissions, awaitingDraftFeedback, overdue, dueSoon };
+}
+
 export interface LearnerDetailSubmission {
   id: string;
   version: number;
   submittedAt: string;
   status: string;
+  assessmentKey: string | null;
+  assessmentName: string;
+  submissionType: string;
+  resultKind: string | null;
   result: string | null;
   feedback: string | null;
   files: { key: string; name: string; size?: number; type?: string }[];
@@ -179,6 +372,9 @@ export async function getCaseloadLearnerDetail(
   }
 
   const subs = await getSubmissionsWithContextForLearners([learnerId]);
+  const itemsByLesson = await getAssessmentItemsByLesson([...new Set(subs.map((s) => s.lessonId))]);
+  const assessmentNameOf = (lessonId: string, key: string | null): string =>
+    key ? (itemsByLesson.get(lessonId)?.find((i) => i.key === key)?.name ?? 'Assessment') : 'Coursework';
 
   // Group into course → unit → versions (newest version first). Latest version drives the unit state.
   const courseMap = new Map<string, Map<string, LearnerDetailUnit>>();
@@ -197,6 +393,10 @@ export async function getCaseloadLearnerDetail(
       version: s.version,
       submittedAt: s.submittedAt,
       status: s.status,
+      assessmentKey: s.assessmentKey,
+      assessmentName: assessmentNameOf(s.lessonId, s.assessmentKey),
+      submissionType: s.submissionType,
+      resultKind: s.resultKind,
       result: s.result,
       feedback: s.feedback,
       files: s.files

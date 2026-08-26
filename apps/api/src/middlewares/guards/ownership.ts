@@ -241,6 +241,15 @@ export async function assertCourseMaterialDownloadAccess(
     throw new AppError('Unauthorized', ErrorCodes.UNAUTHORIZED, 401);
   }
 
+  // Coursework files are NEVER served through the materials door — they have their own guarded endpoint
+  // (assertCourseworkDownloadAccess → canReadCoursework: self / allocated tutor / admin only). Reject any
+  // coursework-prefixed key here so a staff caller cannot bypass the coursework ACL by signing it via the
+  // materials endpoint (staff skip the material-currency check below). A Manager — excluded from ALL
+  // coursework by design — and a de-allocated tutor are both stopped here even if they know a key.
+  if (keys.some((k) => k.startsWith('coursework/'))) {
+    throw new AppError('These files are not available here', ErrorCodes.FORBIDDEN, 403);
+  }
+
   if (!courseId) {
     // Org-level asset download (no course context) — restrict to staff (closes the any-authed-user hole).
     if (!isContentStaff(actor)) {

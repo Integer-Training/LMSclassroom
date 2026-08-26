@@ -77,17 +77,45 @@ export async function getAssessmentKeysByLesson(
   lessonIds: string[],
   client: DbOrTxClient = db
 ): Promise<Map<string, string[]>> {
-  const map = new Map<string, string[]>();
+  const map = await getAssessmentItemsByLesson(lessonIds, client);
+  const out = new Map<string, string[]>();
+  for (const [lessonId, items] of map) out.set(lessonId, items.map((i) => i.key));
+  return out;
+}
+
+/**
+ * Full assessment-item config for MANY units at once → lessonId → AssessmentItem[] (kind/name/dueAt/
+ * allowDrafts). Batched for the tutor pipeline (due-soon/overdue) + the learner assignments surface.
+ */
+export async function getAssessmentItemsByLesson(
+  lessonIds: string[],
+  client: DbOrTxClient = db
+): Promise<Map<string, AssessmentItem[]>> {
+  const map = new Map<string, AssessmentItem[]>();
   if (lessonIds.length === 0) return map;
   const rows = await client
     .select({ id: schema.lesson.id, documents: schema.lesson.documents })
     .from(schema.lesson)
     .where(inArray(schema.lesson.id, lessonIds));
   for (const r of rows) {
-    const docs = (r.documents ?? []) as Array<{ key: string; kind?: string }>;
+    const docs = (r.documents ?? []) as Array<{
+      key: string;
+      name?: string;
+      kind?: string;
+      dueAt?: string;
+      allowDrafts?: boolean;
+    }>;
     map.set(
       r.id,
-      docs.filter((d) => isAssessmentKind(d.kind)).map((d) => d.key)
+      docs
+        .filter((d) => isAssessmentKind(d.kind))
+        .map((d) => ({
+          key: d.key,
+          kind: d.kind as string,
+          name: d.name ?? 'Assessment',
+          dueAt: d.dueAt ?? null,
+          allowDrafts: d.allowDrafts !== false
+        }))
     );
   }
   return map;
@@ -430,14 +458,17 @@ export async function isAssessmentUploadClosed(
 }
 
 /**
- * The version + result of the HIGHEST-version submission (marked or not) for one learner+unit+ASSESSMENT.
- * Backs the mark-latest-only check (a tutor may only mark the latest version of that assessment). A null
- * assessmentKey scopes to legacy unit-level rows (IS NULL), preserving pre-Phase-8 marking of old rows.
+ * The version + result of the HIGHEST-version submission (marked or not) for one learner+unit+ASSESSMENT,
+ * optionally scoped to ONE submission_type. Backs the mark-latest-only check: a tutor marks the latest
+ * version OF THE SAME TYPE (a later draft must not make an earlier unmarked final look superseded, and
+ * vice-versa — drafts and finals share the version sequence). A null assessmentKey scopes to legacy
+ * unit-level rows (IS NULL), preserving pre-Phase-8 marking of old rows.
  */
 export async function getLatestSubmissionResultState(
   learnerId: string,
   lessonId: string,
-  assessmentKey: string | null
+  assessmentKey: string | null,
+  submissionType?: string
 ): Promise<{ version: number; result: string | null } | null> {
   const [row] = await db
     .select({ version: schema.courseworkSubmission.version, result: schema.courseworkResult.result })
@@ -449,7 +480,8 @@ export async function getLatestSubmissionResultState(
         eq(schema.courseworkSubmission.lessonId, lessonId),
         assessmentKey === null
           ? isNull(schema.courseworkSubmission.assessmentKey)
-          : eq(schema.courseworkSubmission.assessmentKey, assessmentKey)
+          : eq(schema.courseworkSubmission.assessmentKey, assessmentKey),
+        ...(submissionType ? [eq(schema.courseworkSubmission.submissionType, submissionType)] : [])
       )
     )
     .orderBy(desc(schema.courseworkSubmission.version))

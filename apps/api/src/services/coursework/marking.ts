@@ -77,8 +77,15 @@ export async function recordResult(
     throw new AppError('This version has already been marked', ErrorCodes.CONFLICT, 409);
   }
 
-  // Only the latest version of THIS assessment item is markable — a newer version supersedes this one.
-  const latest = await getLatestSubmissionResultState(submission.learnerId, submission.lessonId, submission.assessmentKey);
+  // Only the latest version of THIS assessment item OF THE SAME TYPE is markable — a newer version of the
+  // same type supersedes this one. Scoped to submission_type so a later draft cannot make an earlier
+  // unmarked final look superseded (drafts + finals share one version sequence per assessment).
+  const latest = await getLatestSubmissionResultState(
+    submission.learnerId,
+    submission.lessonId,
+    submission.assessmentKey,
+    submission.submissionType
+  );
   if (latest && submission.version < latest.version) {
     throw new AppError('A newer version has been submitted — mark the latest version', ErrorCodes.CONFLICT, 409);
   }
