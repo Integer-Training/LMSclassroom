@@ -22,6 +22,7 @@ import { identifyPosthogUser } from '$lib/utils/services/posthog';
 import { identifyUserJotUser } from '$lib/utils/services/userjot';
 import { isOrgStudent, globalStore } from '$lib/utils/store/app';
 import { isPublicRoute } from '$lib/utils/functions/routes/isPublicRoute';
+import { homeForRole } from '$lib/utils/functions/routes/homeForRole';
 import { licenseApi } from '$features/license/api/license.svelte';
 import { logout } from '$lib/utils/functions/logout';
 import { page } from '$app/state';
@@ -384,21 +385,15 @@ class AppInitApi extends BaseApi {
     // This allows you to be on the landing page of an organization site and not be redirected
     const path = window.location.pathname;
 
-    // PearlLMS self-hosted: this domain is the whole app for EVERY role, not a learner-only org catalog.
-    // After auth, route STAFF to their working home even from the org-site landing (path '/' or a public
-    // route), which otherwise renders the public marketing page and strands tutors/managers. Runs BEFORE
-    // the public-route early-out below (which would otherwise keep them on the landing). Learners + Admins
-    // keep their existing paths (/lms, /org) via the logic further down.
+    // PearlLMS self-hosted (closed system): this domain is the whole app for EVERY role — there is no
+    // public catalog. After auth, on a landing/login path, route EVERY role to their own home
+    // (homeForRole: admin→/org/{siteName}/dash, tutor→/caseload, manager→/reports, student→/lms) so no one
+    // is stranded on the retired marketing root. Runs BEFORE the public-route early-out below.
     if (PUBLIC_IS_SELFHOSTED === 'true' && (path === '/' || isPublicRoute(path))) {
-      const staffRoleId = get(currentOrg).roleId;
-      if (staffRoleId === ROLE.TUTOR) {
-        console.log('self-hosted: redirecting tutor to caseload');
-        return goto(resolve('/caseload', {}));
-      }
-      if (staffRoleId === ROLE.MANAGER) {
-        console.log('self-hosted: redirecting manager to reports');
-        return goto(resolve('/reports', {}));
-      }
+      const org = get(currentOrg);
+      const home = homeForRole(org.roleId, org.siteName);
+      console.log('self-hosted: routing to role home', home);
+      return goto(home);
     }
 
     if (isPublicRoute(path) && (path !== '/' || isOrgSite)) {

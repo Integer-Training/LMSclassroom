@@ -4,13 +4,11 @@
   import { currentOrg } from '$lib/utils/store/org';
   import { Badge } from '@cio/ui/base/badge';
   import { PLAN_NAMES, PLAN } from '@cio/utils/plans';
-  import { BRAND_ROOT_DOMAIN, TENANT_ROOT_DOMAIN } from '@cio/utils/constants';
+  import { homeForRole } from '$lib/utils/functions/routes/homeForRole';
 
   const plan = $derived($currentOrg.plans?.[0]?.planName || PLAN.BASIC);
-  const utmSource = $derived(
-    $currentOrg.customDomain ||
-      ($currentOrg.siteName ? `${$currentOrg.siteName}.${TENANT_ROOT_DOMAIN}` : BRAND_ROOT_DOMAIN)
-  );
+  // PearlLMS: the logo is a HOME link to the user's own dashboard (role-aware), not an external marketing site.
+  const home = $derived(homeForRole($currentOrg.roleId, $currentOrg.siteName));
 </script>
 
 <Sidebar.Menu>
@@ -20,17 +18,12 @@
       class="ui:data-[state=open]:bg-sidebar-accent ui:data-[state=open]:text-sidebar-accent-foreground"
     >
       {#snippet child({ props })}
-        <a
-          href="https://{BRAND_ROOT_DOMAIN}?utm_source={utmSource}"
-          target="_blank"
-          rel="noopener noreferrer"
-          {...props}
-        >
+        <a href={home} {...props}>
           <Avatar.Root class="ui:flex ui:size-6 ui:items-center ui:justify-center">
-            <Avatar.Image src="/logo-192.png" alt="ClassroomIO logo" />
+            <Avatar.Image src="/logo-192.png" alt="{$currentOrg.name || 'Home'} logo" />
           </Avatar.Root>
 
-          <span class="truncate font-normal">ClassroomIO</span>
+          <span class="truncate font-normal">{$currentOrg.name || 'Home'}</span>
           <Badge variant="outline" class="capitalize">
             {PLAN_NAMES[plan] || plan}
           </Badge>

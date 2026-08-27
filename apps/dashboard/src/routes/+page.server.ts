@@ -1,46 +1,20 @@
-import { classroomio, type InferResponseType } from '$lib/utils/services/api';
-import { safeServerApi } from '$lib/utils/services/api/server';
+import { redirect } from '@sveltejs/kit';
+import { ROLE } from '@cio/utils/constants';
+import { homeForRole } from '$lib/utils/functions/routes/homeForRole';
 
-type GetPublicCoursesRequest = typeof classroomio.organization.courses.public.$get;
-type GetPublicCoursesSuccess = Extract<InferResponseType<GetPublicCoursesRequest>, { success: true }>;
+// PearlLMS (closed system): `/` has no public landing. A logged-in user is sent to their role home
+// (server-side, so there is no flash of the old marketing page); an anonymous visitor is sent to login.
+// (`/` was removed from PUBLIC_ROUTES, so hooks.server.ts already bounces the logged-out case here too —
+// this redirect is the authoritative + belt-and-suspenders handling.)
+export const load = async ({ locals, parent }) => {
+  const { org, orgSiteName } = await parent();
+  const siteName = orgSiteName || org?.siteName || '';
+  const actor = locals.actor;
 
-export const load = async ({ parent }) => {
-  const { isOrgSite, orgSiteName, org } = await parent();
-
-  if (!isOrgSite || !org) {
-    return {
-      isOrgSite: false as const,
-      org: null,
-      orgSiteName: '',
-      courses: [],
-      hasMoreCourses: false
-    };
+  if (actor?.authenticated) {
+    const roleId = ROLE[actor.role as keyof typeof ROLE];
+    throw redirect(303, homeForRole(roleId, siteName));
   }
 
-  const siteName = orgSiteName || org.siteName;
-  if (!siteName) {
-    return {
-      isOrgSite: true as const,
-      org,
-      orgSiteName,
-      courses: [],
-      hasMoreCourses: false
-    };
-  }
-
-  const coursesResult = await safeServerApi<GetPublicCoursesSuccess>(() =>
-    classroomio.organization.courses.public.$get({
-      query: { siteName }
-    })
-  );
-
-  const courseData = coursesResult.ok ? coursesResult.body.data : { courses: [], hasMoreCourses: false };
-
-  return {
-    isOrgSite: true as const,
-    org,
-    orgSiteName,
-    courses: courseData.courses,
-    hasMoreCourses: courseData.hasMoreCourses
-  };
+  throw redirect(303, '/login');
 };

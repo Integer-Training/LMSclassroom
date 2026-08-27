@@ -25,7 +25,8 @@ export const ROUTE = {
 // public — an unanchored bare string like `/reset` used to match anywhere and silently skip the
 // auth gate. Server-side layout guards (Step 5) are the real authority; anchoring removes the footgun.
 export const PUBLIC_ROUTES = [
-  `^${ROUTE.HOME}$`,
+  // PearlLMS (closed system): `/` is NOT public — it redirects (logged-out → /login, logged-in → their
+  // role home) in routes/+page.server.ts. There is no public marketing landing. (^/$ intentionally removed.)
   `^${ROUTE.LOGIN}$`,
   `^${ROUTE.LOGOUT}$`,
   `^${ROUTE.SIGN_UP}$`,
