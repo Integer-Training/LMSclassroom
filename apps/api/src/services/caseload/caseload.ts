@@ -13,6 +13,13 @@ import {
   getSubmissionsWithContextForLearners,
   type SubmissionWithContext
 } from '@cio/db/queries/coursework';
+import {
+  getCoursesForLearners,
+  getLessonIdsForCourses,
+  getProfileStatusForIds,
+  type RosterCourse
+} from '@cio/db/queries/caseload';
+import { getLastSeenForUserIds } from '@cio/db/queries/analytics';
 import { getProfileById } from '@cio/db/queries/auth';
 import { isAllocatedTutor } from '@api/middlewares/guards';
 
@@ -163,14 +170,33 @@ export interface PipelineItem {
 }
 export interface TutorPipelineStats {
   learners: number;
+  // Learner activity buckets (Phase 9). suspended = DEACTIVATED; neverLoggedIn = no login ever;
+  // inactive = last seen > 30 days ago; active = seen within 30 days. Buckets are exclusive + sum to learners.
+  activeLearners: number;
+  inactiveLearners: number;
+  neverLoggedIn: number;
+  suspendedLearners: number;
+  learnersWithPendingWork: number;
+  // Caseload scope
+  courses: number;
+  assignments: number;
+  // Queues
   awaitingMarking: number;
   resubmissions: number;
   awaitingDraftFeedback: number;
   overdue: number;
   dueSoon: number;
+  // Grading outcomes
   totalGraded: number;
   passCount: number;
   referCount: number;
+  /** Average days from a final submission to its verdict, or null if nothing graded yet. */
+  avgTurnaroundDays: number | null;
+}
+export interface ProgrammeRow {
+  courseId: string;
+  title: string;
+  learners: number;
 }
 export interface TutorPipeline {
   stats: TutorPipelineStats;
@@ -179,6 +205,8 @@ export interface TutorPipeline {
   awaitingDraftFeedback: PipelineItem[];
   overdue: PipelineItem[];
   dueSoon: PipelineItem[];
+  /** Assigned courses + roster learner distribution (the "Programmes & Caseload" table). */
+  programmes: ProgrammeRow[];
 }
 
 /**
@@ -221,6 +249,13 @@ export async function getTutorPipeline(actor: Actor): Promise<TutorPipeline> {
 
   const stats: TutorPipelineStats = {
     learners: roster.length,
+    activeLearners: 0,
+    inactiveLearners: 0,
+    neverLoggedIn: 0,
+    suspendedLearners: 0,
+    learnersWithPendingWork: 0,
+    courses: 0,
+    assignments: 0,
     awaitingMarking: 0,
     resubmissions: 0,
     awaitingDraftFeedback: 0,
@@ -228,7 +263,8 @@ export async function getTutorPipeline(actor: Actor): Promise<TutorPipeline> {
     dueSoon: 0,
     totalGraded: 0,
     passCount: 0,
-    referCount: 0
+    referCount: 0,
+    avgTurnaroundDays: null
   };
   const awaitingMarking: PipelineItem[] = [];
   const resubmissions: PipelineItem[] = [];
@@ -317,7 +353,53 @@ export async function getTutorPipeline(actor: Actor): Promise<TutorPipeline> {
   overdue.sort(oldestFirst);
   dueSoon.sort((a, b) => new Date(a.dueAt ?? 0).getTime() - new Date(b.dueAt ?? 0).getTime());
 
-  return { stats, awaitingMarking, resubmissions, awaitingDraftFeedback, overdue, dueSoon };
+  // ── Enrichment (Phase 9): learner activity, caseload scope, grading turnaround ──────────────────
+  const learnerIds = roster.map((l) => l.learnerId);
+  const [lastSeen, statusMap, programmes] = await Promise.all([
+    getLastSeenForUserIds(learnerIds),
+    getProfileStatusForIds(learnerIds),
+    getCoursesForLearners(learnerIds)
+  ]);
+
+  const THIRTY_DAYS_MS = 30 * 86_400_000;
+  for (const l of roster) {
+    if (statusMap.get(l.learnerId) === 'DEACTIVATED') {
+      stats.suspendedLearners++;
+      continue;
+    }
+    const seen = lastSeen.get(l.learnerId);
+    if (!seen) stats.neverLoggedIn++;
+    else if (now - new Date(seen).getTime() > THIRTY_DAYS_MS) stats.inactiveLearners++;
+    else stats.activeLearners++;
+  }
+
+  stats.courses = programmes.length;
+  const courseLessonIds = await getLessonIdsForCourses(programmes.map((p: RosterCourse) => p.courseId));
+  const assessmentsByLesson = await getAssessmentItemsByLesson(courseLessonIds);
+  for (const items of assessmentsByLesson.values()) stats.assignments += items.length;
+
+  // Average grading turnaround (final submission → verdict), in days.
+  let turnSum = 0;
+  let turnCount = 0;
+  for (const s of subs) {
+    if (s.resultKind === 'verdict' && s.resultRecordedAt) {
+      const d = new Date(s.resultRecordedAt).getTime() - new Date(s.submittedAt).getTime();
+      if (d >= 0) {
+        turnSum += d;
+        turnCount++;
+      }
+    }
+  }
+  stats.avgTurnaroundDays = turnCount > 0 ? Math.round((turnSum / turnCount / 86_400_000) * 10) / 10 : null;
+
+  // Distinct learners with work pending the tutor's action (across the action queues).
+  const pending = new Set<string>();
+  for (const item of [...awaitingMarking, ...resubmissions, ...awaitingDraftFeedback, ...overdue]) {
+    pending.add(item.learnerId);
+  }
+  stats.learnersWithPendingWork = pending.size;
+
+  return { stats, awaitingMarking, resubmissions, awaitingDraftFeedback, overdue, dueSoon, programmes };
 }
 
 export interface LearnerDetailSubmission {

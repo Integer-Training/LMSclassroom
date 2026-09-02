@@ -93,6 +93,13 @@ export interface PipelineItem {
 }
 export interface TutorPipelineStats {
   learners: number;
+  activeLearners: number;
+  inactiveLearners: number;
+  neverLoggedIn: number;
+  suspendedLearners: number;
+  learnersWithPendingWork: number;
+  courses: number;
+  assignments: number;
   awaitingMarking: number;
   resubmissions: number;
   awaitingDraftFeedback: number;
@@ -101,6 +108,12 @@ export interface TutorPipelineStats {
   totalGraded: number;
   passCount: number;
   referCount: number;
+  avgTurnaroundDays: number | null;
+}
+export interface ProgrammeRow {
+  courseId: string;
+  title: string;
+  learners: number;
 }
 export interface TutorPipeline {
   stats: TutorPipelineStats;
@@ -109,6 +122,7 @@ export interface TutorPipeline {
   awaitingDraftFeedback: PipelineItem[];
   overdue: PipelineItem[];
   dueSoon: PipelineItem[];
+  programmes: ProgrammeRow[];
 }
 
 /**
