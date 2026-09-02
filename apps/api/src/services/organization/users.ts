@@ -28,7 +28,7 @@ import {
   type LearnerProfileFields
 } from '@cio/db/queries/learner-profile';
 import { updateOrganizationMemberById } from '@cio/db/queries/organization/invite';
-import { updateProfile } from '@cio/db/queries/auth';
+import { markUserAndProfileEmailVerified, updateProfile } from '@cio/db/queries/auth';
 import { getProfileById } from '@cio/db/queries/auth';
 import { db } from '@cio/db/drizzle';
 import { recordAudit, AUDIT_ACTIONS } from '@cio/db/audit';
@@ -88,6 +88,11 @@ export async function createOrgUser(
     email,
     verified: true
   });
+
+  // Closed system: an admin-provisioned account is trusted — there is no self-signup, and email
+  // verification can't complete while SMTP is dormant. Mark it verified so the learner/tutor isn't nagged
+  // forever by the "Verify your email" modal. (The set-password link below is what actually lets them in.)
+  await markUserAndProfileEmailVerified(newUserId);
 
   // Set-password email (works despite disableSignUp). Best-effort — the account already exists.
   try {
