@@ -41,11 +41,19 @@
 {:else}
   <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
     {#each filtered as prog (prog.courseId)}
-      <CourseCard href={`/courses/${prog.courseId}`} title={prog.title} description="">
+      <!-- No href: the tutor read-only course-content view is not built yet. Both the admin editor root
+           (`/courses/{id}`) and the lesson view live behind the course-editor layout, which loads
+           admin/member-only data and gates on course membership — a non-enrolled tutor either hangs on
+           "Loading course…" or is refused. So these are informational cards for now; the read-only
+           resource view ships with the courses-assigned phase. -->
+      <CourseCard title={prog.title} description="">
         {#snippet footer()}
-          <p class="text-muted-foreground text-sm">
-            {prog.learners} learner{prog.learners === 1 ? '' : 's'}
-          </p>
+          <div class="flex w-full items-center justify-between gap-2">
+            <span class="text-muted-foreground text-sm">
+              {prog.learners} learner{prog.learners === 1 ? '' : 's'}
+            </span>
+            <span class="text-muted-foreground text-xs">Content view coming soon</span>
+          </div>
         {/snippet}
       </CourseCard>
     {/each}
