@@ -62,6 +62,7 @@
   import CourseworkSubmission from '$features/course/components/lesson/coursework-submission.svelte';
   import { isAssessmentKind } from '@cio/utils/constants';
   import IdVerificationStatus from '$features/registrations/components/id-verification-status.svelte';
+  import { unitTimeHeartbeat } from '$features/course/utils/unit-time-heartbeat';
 
   interface Props {
     courseId: string;
@@ -120,6 +121,14 @@
 
     return courseApi.course?.content != null;
   });
+  // PearlLMS Phase 9 — the active-time heartbeat runs ONLY for a learner viewing this lesson (view mode,
+  // lesson loaded, not locked). Staff / edit-mode / a locked unit all disable it.
+  const heartbeatEnabled = $derived(
+    $isCourseLearnerView &&
+      mode === MODES.view &&
+      contentLockReason === null &&
+      lessonApi.lesson?.id === lessonId
+  );
   const lessonSlug = $derived(lessonApi.lesson?.slug ?? '');
   const isPublicCourse = $derived(courseApi.course?.type === 'PUBLIC');
   const isLiveSessionLesson = $derived(Boolean(lessonApi.lesson?.callUrl && lessonApi.lesson?.lessonAt));
@@ -478,6 +487,8 @@
 <Page.Body>
   {#snippet child()}
     <div class={`overflow-x-hidden pb-6 ${mode === MODES.edit ? 'lg:w-full xl:w-11/12' : 'mx-auto w-full max-w-3xl'}`}>
+      <!-- PearlLMS Phase 9: unit active-time heartbeat (learner view only; the action self-gates on `enabled`). -->
+      <div class="sr-only" aria-hidden="true" use:unitTimeHeartbeat={{ courseId, lessonId, enabled: heartbeatEnabled }}></div>
       {#if isLiveSessionLesson && mode === MODES.view && !($isCourseLearnerView && contentLockReason)}
         <div class="mb-4">
           <LiveSessionCard

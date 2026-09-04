@@ -36,6 +36,44 @@ export async function getCoursesForLearners(
   return rows.map((r) => ({ courseId: r.courseId, title: r.title ?? 'Untitled course', learners: Number(r.learners) }));
 }
 
+export interface LearnerEnrolment {
+  learnerId: string;
+  courseId: string;
+  title: string;
+  /** The enrolment date (groupmember.createdAt) — earliest across a learner's courses is their start date. */
+  enrolledAt: string | null;
+}
+
+/**
+ * Per-learner course enrolments for a roster (groupmember.roleId = STUDENT), each with the course title and
+ * the enrolment date (groupmember.createdAt). One row per (learner, course). Roster-scoped by the caller (an
+ * empty set → []). Feeds the progression view's "start date" (earliest enrolment) and primary-course pick
+ * (most-recent enrolment).
+ */
+export async function getEnrolmentsForLearners(
+  learnerIds: string[],
+  client: DbOrTxClient = db
+): Promise<LearnerEnrolment[]> {
+  if (learnerIds.length === 0) return [];
+  const rows = await client
+    .select({
+      learnerId: schema.groupmember.profileId,
+      courseId: schema.course.id,
+      title: schema.course.title,
+      enrolledAt: schema.groupmember.createdAt
+    })
+    .from(schema.groupmember)
+    .innerJoin(schema.group, eq(schema.group.id, schema.groupmember.groupId))
+    .innerJoin(schema.course, eq(schema.course.groupId, schema.group.id))
+    .where(and(inArray(schema.groupmember.profileId, learnerIds), eq(schema.groupmember.roleId, 3)));
+  return rows.map((r) => ({
+    learnerId: r.learnerId as string,
+    courseId: r.courseId,
+    title: r.title ?? 'Untitled course',
+    enrolledAt: (r.enrolledAt as string | null) ?? null
+  }));
+}
+
 /** All lesson ids across a set of courses (via course_section) — feeds the assessment-item count. */
 export async function getLessonIdsForCourses(courseIds: string[], client: DbOrTxClient = db): Promise<string[]> {
   if (courseIds.length === 0) return [];

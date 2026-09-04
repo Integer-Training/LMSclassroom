@@ -21,6 +21,12 @@
       url: '/caseload/courses',
       icon: BookOpenIcon,
       isActive: page.url.pathname.startsWith('/caseload/courses')
+    },
+    {
+      title: 'Learner Progression',
+      url: '/caseload/progression',
+      icon: TrendingUpIcon,
+      isActive: page.url.pathname.startsWith('/caseload/progression')
     }
   ]);
 </script>
@@ -62,19 +68,6 @@
             </Sidebar.MenuButton>
           </Sidebar.MenuItem>
         {/each}
-
-        <!-- Learner Progression — disabled placeholder (arrives in a later phase). -->
-        <Sidebar.MenuItem>
-          <Sidebar.MenuButton tooltipContent="Learner Progression (Soon)">
-            {#snippet child({ props })}
-              <span {...props} aria-disabled="true" class="text-muted-foreground cursor-not-allowed opacity-60">
-                <TrendingUpIcon size={16} />
-                <span>Learner Progression</span>
-                <Sidebar.MenuBadge>Soon</Sidebar.MenuBadge>
-              </span>
-            {/snippet}
-          </Sidebar.MenuButton>
-        </Sidebar.MenuItem>
       </Sidebar.Menu>
     </Sidebar.Group>
   </Sidebar.Content>

@@ -54,6 +54,11 @@ export const ZCaseloadLearnerParam = z.object({
   learnerId: z.uuid()
 });
 
+/** Optional course filter for the tutor Learner-Progression list (PearlLMS Phase 9). */
+export const ZProgressionQuery = z.object({
+  courseId: z.uuid().optional()
+});
+
 /**
  * Recording a tutor response on a submission version (Step 5 + Phase 8 drafts). Two shapes, disambiguated
  * by the submission's own type in the marking service (which has that context):

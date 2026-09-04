@@ -75,6 +75,59 @@ export interface LearnerDetail {
   courses: DetailCourse[];
 }
 
+// PearlLMS Phase 9 — Learner Progression (progress table + per-learner detail), from GET /caseload/progression.
+export type ActivityStatus = 'created' | 'active' | 'inactive';
+export interface KindCount {
+  passed: number;
+  total: number;
+}
+export interface ProgressionRow {
+  learnerId: string;
+  name: string | null;
+  startDate: string | null;
+  activity: ActivityStatus;
+  currentPercent: number;
+  currentUnitIndex: number | null;
+  workbooks: KindCount;
+  caseStudies: KindCount;
+}
+export interface ProgressionCourse {
+  courseId: string;
+  title: string;
+}
+export interface ProgressionList {
+  courses: ProgressionCourse[];
+  rows: ProgressionRow[];
+}
+export interface ProgressionSubmissionDetail {
+  assessmentName: string;
+  kind: string;
+  documentName: string;
+  documentKey: string | null;
+  submittedAt: string;
+  markedAt: string | null;
+  status: string;
+}
+export interface ProgressionUnitDetail {
+  lessonId: string;
+  unitTitle: string;
+  timeSeconds: number;
+  submissions: ProgressionSubmissionDetail[];
+}
+export interface ProgressionCourseDetail {
+  courseId: string;
+  title: string;
+  percent: number;
+  workbooks: KindCount;
+  caseStudies: KindCount;
+  totalTimeSeconds: number;
+  units: ProgressionUnitDetail[];
+}
+export interface ProgressionDetail {
+  learner: { id: string; name: string | null };
+  courses: ProgressionCourseDetail[];
+}
+
 // PearlLMS Phase 8 — the tutor grading pipeline (queues + stats), from GET /caseload/pipeline.
 export interface PipelineItem {
   submissionId: string;
@@ -135,6 +188,10 @@ class CaseloadApi extends BaseApi {
   awaiting = $state<AwaitingItem[]>([]);
   detail = $state<LearnerDetail | null>(null);
   pipeline = $state<TutorPipeline | null>(null);
+  // Learner Progression (Phase 9): the table + a per-learner detail cache (expandable rows).
+  progression = $state<ProgressionList | null>(null);
+  progressionDetail = $state<Record<string, ProgressionDetail>>({});
+  progressionDetailLoading = $state<Record<string, boolean>>({});
 
   /** The grading pipeline — queue lists + headline stats (Phase 8). Allocation-scoped server-side. */
   async loadPipeline() {
@@ -148,6 +205,37 @@ class CaseloadApi extends BaseApi {
         if (typeof result === 'string') snackbar.error(result);
       }
     });
+  }
+
+  /** The progression table (Phase 9). Optional courseId narrows it to one course (server re-fetch). */
+  async loadProgression(courseId?: string) {
+    return this.execute<typeof classroomio.caseload.progression.$get>({
+      requestFn: () => classroomio.caseload.progression.$get({ query: courseId ? { courseId } : {} }),
+      logContext: 'loading progression',
+      onSuccess: (result) => {
+        this.progression = result.data as ProgressionList;
+      },
+      onError: (result) => {
+        if (typeof result === 'string') snackbar.error(result);
+      }
+    });
+  }
+
+  /** One learner's progression detail (expandable row). Cached per learner; re-fetches on demand. */
+  async loadProgressionDetail(learnerId: string) {
+    this.progressionDetailLoading = { ...this.progressionDetailLoading, [learnerId]: true };
+    const res = await this.execute<(typeof classroomio.caseload.progression)[':learnerId']['$get']>({
+      requestFn: () => classroomio.caseload.progression[':learnerId'].$get({ param: { learnerId } }),
+      logContext: 'loading learner progression detail',
+      onSuccess: (result) => {
+        this.progressionDetail = { ...this.progressionDetail, [learnerId]: result.data as ProgressionDetail };
+      },
+      onError: (result) => {
+        if (typeof result === 'string') snackbar.error(result);
+      }
+    });
+    this.progressionDetailLoading = { ...this.progressionDetailLoading, [learnerId]: false };
+    return res;
   }
 
   async loadCaseload() {

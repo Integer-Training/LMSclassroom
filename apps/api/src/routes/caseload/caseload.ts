@@ -1,5 +1,11 @@
-import { ZCaseloadLearnerParam, ZMarkSubmission, ZSubmissionIdParam } from '@cio/utils/validation/coursework';
+import {
+  ZCaseloadLearnerParam,
+  ZMarkSubmission,
+  ZProgressionQuery,
+  ZSubmissionIdParam
+} from '@cio/utils/validation/coursework';
 import { getCaseloadLearnerDetail, getTutorCaseload, getTutorPipeline } from '@api/services/caseload/caseload';
+import { getProgression, getProgressionDetail } from '@api/services/progression/progression';
 import { recordResult } from '@api/services/coursework/marking';
 
 import { Hono } from '@api/utils/hono';
@@ -31,6 +37,31 @@ export const caseloadRouter = new Hono()
       return c.json({ success: true, data }, 200);
     } catch (error) {
       return handleError(c, error, 'Failed to load grading pipeline');
+    }
+  })
+  // Learner Progression (PearlLMS Phase 9) — the progress table across the caseload. requireStaff =
+  // ADMIN/TUTOR; the service is allocation-scoped (Tutor = own roster, Admin = org). Optional ?courseId
+  // narrows the table to one course.
+  .get('/progression', requireStaff, zValidator('query', ZProgressionQuery), async (c) => {
+    try {
+      const actor = c.get('actor') as Actor;
+      const { courseId } = c.req.valid('query');
+      const data = await getProgression(actor, courseId);
+      return c.json({ success: true, data }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to load progression');
+    }
+  })
+  // One learner's full progression detail. requireStaff + the learner must be in the caller's roster
+  // (else 403 — the URL-tamper defence, mirroring the caseload learner-detail rule).
+  .get('/progression/:learnerId', requireStaff, zValidator('param', ZCaseloadLearnerParam), async (c) => {
+    try {
+      const actor = c.get('actor') as Actor;
+      const { learnerId } = c.req.valid('param');
+      const data = await getProgressionDetail(actor, learnerId);
+      return c.json({ success: true, data }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to load learner progression');
     }
   })
   .get('/learners/:learnerId', requireStaff, zValidator('param', ZCaseloadLearnerParam), async (c) => {
