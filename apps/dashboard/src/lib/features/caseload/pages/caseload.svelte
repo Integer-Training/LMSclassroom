@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { Badge } from '@cio/ui/base/badge';
   import * as Table from '@cio/ui/base/table';
   import UsersIcon from '@lucide/svelte/icons/users';
@@ -55,8 +55,17 @@
     learners: { label: 'Your Learners', empty: 'No learners are allocated to you yet.' }
   };
 
-  function open(view: QueueView) {
-    activeView = activeView === view ? null : view;
+  // Ref to the drill-down section so a "View"/tile click scrolls it into sight (user-friendly — the
+  // section renders below the tables, so opening it silently would leave it off-screen).
+  let drilldownEl = $state<HTMLElement | null>(null);
+
+  async function open(view: QueueView) {
+    const wasActive = activeView === view;
+    activeView = wasActive ? null : view;
+    if (wasActive) return; // toggled off — nothing to scroll to
+    await tick(); // wait for the drill-down to render
+    const reduce = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    drilldownEl?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
   }
 
   function formatDate(iso: string): string {
@@ -232,7 +241,7 @@
 
 <!-- Drill-down: queue or roster -->
 {#if activeView}
-  <div class="mb-6">
+  <div class="mb-6 scroll-mt-4" bind:this={drilldownEl}>
     <div class="mb-2 flex items-center justify-between">
       <h2 class="text-lg font-semibold tracking-tight">{QUEUE_META[activeView].label}</h2>
       <button type="button" class="text-muted-foreground text-sm hover:underline" onclick={() => (activeView = null)}>
