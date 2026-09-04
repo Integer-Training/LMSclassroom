@@ -11,6 +11,7 @@ import {
   ZLessonListQuery,
   ZLessonReorder,
   ZLessonUpdate,
+  ZUnitTimeBeat,
   ZUpdateLessonWatchProgress
 } from '@cio/utils/validation/lesson';
 import {
@@ -43,6 +44,7 @@ import { requireAdmin, requireCourseContentRead } from '@api/middlewares/guards'
 import { notifyCourseSessionUpdateService } from '@api/services/course/notify-session';
 import { generateLessonPdf } from '@api/utils/lesson';
 import { getGroupMemberIdByCourseAndProfile } from '@cio/db/queries/group';
+import { addUnitTimeSpent } from '@cio/db/queries/caseload';
 import { handleError } from '@api/utils/errors';
 import { lessonLanguageRouter } from '@api/routes/course/lesson-language';
 import { courseworkRouter } from '@api/routes/course/coursework';
@@ -348,6 +350,40 @@ export const lessonRouter = new Hono()
         return c.json({ success: true, data: watchProgress }, 200);
       } catch (error) {
         return handleError(c, error, 'Failed to update lesson watch progress');
+      }
+    }
+  )
+  // PearlLMS Phase 9 — unit-view active-time heartbeat. Records active seconds against (learner, unit) for
+  // the tutor progression view. Enrolled-student-only (assertEnrolledStudentContentAccess), so staff
+  // previewing a unit never accrue time. Each beat is capped server-side before accumulating.
+  .put(
+    '/:lessonId/time',
+    authMiddleware,
+    courseMemberMiddleware,
+    zValidator('param', ZLessonGetParam),
+    zValidator('json', ZUnitTimeBeat),
+    async (c) => {
+      try {
+        const user = c.get('user')!;
+        const courseId = c.req.param('courseId')!;
+        const { lessonId } = c.req.valid('param');
+        const { seconds } = c.req.valid('json');
+
+        await assertEnrolledStudentContentAccess({
+          courseId,
+          profileId: user.id,
+          contentId: lessonId,
+          type: ContentType.Lesson
+        });
+
+        // Cap each beat (client sends ~30s beats; a legit refocus catch-up is small). Blocks a tampered
+        // client from claiming huge jumps. 120s ceiling per beat.
+        const capped = Math.min(seconds, 120);
+        await addUnitTimeSpent({ learnerId: user.id, courseId, lessonId, seconds: capped });
+
+        return c.json({ success: true }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to record unit time');
       }
     }
   )

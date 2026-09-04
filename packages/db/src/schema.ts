@@ -4036,6 +4036,43 @@ export const courseworkResult = pgTable(
   ]
 );
 
+// PearlLMS Phase 9 — accumulated ACTIVE time a learner has spent ON a unit (lesson), for the tutor
+// progression view's per-unit + per-course "Time Spent". One row per (learner, lesson); `seconds` is
+// incremented by a wall-clock-capped heartbeat while the learner has the unit open + is active (modelled
+// on lesson_video_progress's `beat`). courseId is denormalised for cheap per-course aggregation. This is
+// on-platform VIEWING time and accrues only from when tracking ships — no historical backfill.
+export const unitTimeSpent = pgTable(
+  'unit_time_spent',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    learnerId: uuid('learner_id').notNull(),
+    courseId: uuid('course_id').notNull(),
+    lessonId: uuid('lesson_id').notNull(),
+    seconds: integer().default(0).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.learnerId],
+      foreignColumns: [profile.id],
+      name: 'unit_time_spent_learner_id_fkey'
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.courseId],
+      foreignColumns: [course.id],
+      name: 'unit_time_spent_course_id_fkey'
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.lessonId],
+      foreignColumns: [lesson.id],
+      name: 'unit_time_spent_lesson_id_fkey'
+    }).onDelete('cascade'),
+    unique('unit_time_spent_learner_lesson_unique').on(table.learnerId, table.lessonId),
+    index('idx_unit_time_spent_learner').on(table.learnerId),
+    index('idx_unit_time_spent_course').on(table.courseId)
+  ]
+);
+
 // PearlLMS Phase 5 — durable per-learner-per-course COMPLETION record (docs/PROGRESS-MODEL.md §2). Written
 // transactionally with the tutor result that completes the course (every NON-EXEMPT unit passed); the
 // UNIQUE(learner,course) constraint is the idempotency backstop (check-and-insert via ON CONFLICT DO

@@ -169,3 +169,13 @@ export const ZUpdateLessonWatchProgress = z.object({
   assetId: z.string().optional()
 });
 export type TUpdateLessonWatchProgress = z.infer<typeof ZUpdateLessonWatchProgress>;
+
+// PearlLMS Phase 9 — a unit-view active-time heartbeat. `seconds` is the active time since the last beat
+// (client sends ~30s beats); the service caps it (wall-clock defence) before accumulating.
+export const ZUnitTimeBeat = z.object({
+  seconds: z
+    .number()
+    .transform((value) => Math.round(value))
+    .pipe(z.number().min(1).max(600))
+});
+export type TUnitTimeBeat = z.infer<typeof ZUnitTimeBeat>;
