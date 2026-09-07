@@ -13,6 +13,7 @@
   import { useSidebar } from '@cio/ui/base/sidebar';
   import ChevronsUpDownIcon from '@lucide/svelte/icons/chevrons-up-down';
   import ThemeToggle from './theme-toggle.svelte';
+  import SidebarLogoutButton from './logout-button.svelte';
 
   import { t } from '$lib/utils/functions/translations';
   import { profile } from '$lib/utils/store/user';
@@ -163,3 +164,7 @@
     <SourceCodeLink />
   </Sidebar.MenuItem>
 </Sidebar.Menu>
+
+<!-- Explicit, always-visible Log out button at the very bottom (the dropdown above also has one,
+     but this makes it obvious in every view without opening the account menu). -->
+<SidebarLogoutButton />

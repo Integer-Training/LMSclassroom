@@ -6,6 +6,7 @@
   import LayoutDashboardIcon from '@lucide/svelte/icons/layout-dashboard';
   import BookOpenIcon from '@lucide/svelte/icons/book-open';
   import TrendingUpIcon from '@lucide/svelte/icons/trending-up';
+  import { SidebarLogoutButton } from '$features/ui/sidebar/footer';
 
   // Tutor shell nav (PearlLMS Phase 8). Three flat items; Learner Progression is a disabled "Soon"
   // placeholder. Active state is derived from the current pathname.
@@ -71,6 +72,10 @@
       </Sidebar.Menu>
     </Sidebar.Group>
   </Sidebar.Content>
+
+  <Sidebar.Footer>
+    <SidebarLogoutButton />
+  </Sidebar.Footer>
 
   <Sidebar.Rail />
 </Sidebar.Root>

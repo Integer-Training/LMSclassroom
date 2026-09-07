@@ -9,6 +9,7 @@
   import Navigation from './cohort-sidebar-navigation.svelte';
   import SidebarSkeleton from '$features/ui/sidebar/sidebar-skeleton.svelte';
   import PoweredBy from '$features/ui/powered-by.svelte';
+  import { SidebarLogoutButton } from '$features/ui/sidebar/footer';
   import { useSidebar } from '@cio/ui/base/sidebar';
 
   const SIDEBAR_ITEM_SKELETON_COUNT = 4;
@@ -65,6 +66,7 @@
         sidebarUtmSource="lms-cohort-sidebar"
         showOnlyLogo={!sidebar.open || sidebar.isMobile}
       />
+      <SidebarLogoutButton />
     </Sidebar.Footer>
   </Sidebar.Root>
 {/if}
