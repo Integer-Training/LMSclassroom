@@ -20,7 +20,9 @@
   import { currentOrg } from '$lib/utils/store/org';
   import { showUserJotWidget } from '$lib/utils/services/userjot';
   import { ROLE } from '@cio/utils/constants';
-  import SourceCodeLink from '$features/ui/source-code-link.svelte';
+  // TEMPORARILY HIDDEN (owner request 2026-09-07) while the source-code affordance is reworked.
+  // Re-enable this import + the <SourceCodeLink /> block below to restore the AGPL-3.0 notice.
+  // import SourceCodeLink from '$features/ui/source-code-link.svelte';
 
   const SUPPORT_EMAIL = 'help@classroomio.com';
   const DOCS_URL = 'https://classroomio.com/docs';
@@ -158,11 +160,12 @@
     </DropdownMenu.Root>
   </Sidebar.MenuItem>
 
-  <!-- AGPL-3.0: source-code link, always visible in the logged-in sidebar footer.
-       Hidden when the rail is collapsed to icons. -->
+  <!-- AGPL-3.0: source-code link — TEMPORARILY HIDDEN (owner request 2026-09-07), reworking.
+       Restore by uncommenting this block + the import above.
   <Sidebar.MenuItem class="px-2 py-1 group-data-[collapsible=icon]:hidden">
     <SourceCodeLink />
   </Sidebar.MenuItem>
+  -->
 </Sidebar.Menu>
 
 <!-- Explicit, always-visible Log out button at the very bottom (the dropdown above also has one,

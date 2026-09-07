@@ -6,7 +6,9 @@
   import * as Card from '@cio/ui/base/card';
   import { preventDefault } from '$lib/utils/functions/svelte';
   import { DotPattern } from '@cio/ui/custom/animation/dot-pattern';
-  import SourceCodeLink from '$features/ui/source-code-link.svelte';
+  // TEMPORARILY HIDDEN (owner request 2026-09-07) while the source-code affordance is reworked.
+  // Re-enable this import + the <SourceCodeLink /> block below to restore the AGPL-3.0 notice.
+  // import SourceCodeLink from '$features/ui/source-code-link.svelte';
 
   // Closed system: public sign-up and Google social sign-in are removed (no public account
   // creation). This card now serves the login / forgot / reset flows for provisioned users only.
@@ -78,8 +80,10 @@
     </Card.Content>
   </Card.Root>
 
-  <!-- AGPL-3.0: source-code link, visible on all logged-out auth pages -->
+  <!-- AGPL-3.0: source-code link — TEMPORARILY HIDDEN (owner request 2026-09-07), reworking.
+       Restore by uncommenting this block + the import above.
   <div class="relative z-10 mt-4 text-center">
     <SourceCodeLink />
   </div>
+  -->
 </div>
