@@ -192,6 +192,8 @@ class CaseloadApi extends BaseApi {
   progression = $state<ProgressionList | null>(null);
   progressionDetail = $state<Record<string, ProgressionDetail>>({});
   progressionDetailLoading = $state<Record<string, boolean>>({});
+  // Monotonic id so a slow earlier course-filter response can't overwrite a newer one (stale-rows race).
+  #progressionReqId = 0;
 
   /** The grading pipeline — queue lists + headline stats (Phase 8). Allocation-scoped server-side. */
   async loadPipeline() {
@@ -209,11 +211,13 @@ class CaseloadApi extends BaseApi {
 
   /** The progression table (Phase 9). Optional courseId narrows it to one course (server re-fetch). */
   async loadProgression(courseId?: string) {
+    const reqId = ++this.#progressionReqId;
     return this.execute<typeof classroomio.caseload.progression.$get>({
       requestFn: () => classroomio.caseload.progression.$get({ query: courseId ? { courseId } : {} }),
       logContext: 'loading progression',
       onSuccess: (result) => {
-        this.progression = result.data as ProgressionList;
+        // Ignore a response that a newer course-filter change has already superseded.
+        if (reqId === this.#progressionReqId) this.progression = result.data as ProgressionList;
       },
       onError: (result) => {
         if (typeof result === 'string') snackbar.error(result);

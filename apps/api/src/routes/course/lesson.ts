@@ -45,6 +45,20 @@ import { notifyCourseSessionUpdateService } from '@api/services/course/notify-se
 import { generateLessonPdf } from '@api/utils/lesson';
 import { getGroupMemberIdByCourseAndProfile } from '@cio/db/queries/group';
 import { addUnitTimeSpent } from '@cio/db/queries/caseload';
+import { createRateLimiter } from '@api/middlewares/rate-limiter';
+import type { Actor } from '@cio/db/actor';
+
+// Rate-limit the unit-time heartbeat per (learner, lesson): a legit client beats ~2/min, so 12/min is
+// generous headroom while blocking a scripted client from spamming capped beats to inflate its own total.
+const unitTimeRateLimit = createRateLimiter({
+  windowMs: 60_000,
+  maxRequests: 12,
+  message: 'Too many time updates — please slow down.',
+  keyGenerator: (c) => {
+    const actor = c.get('actor') as Actor | undefined;
+    return `unit-time:${actor?.userId ?? 'anon'}:${c.req.param('lessonId') ?? ''}`;
+  }
+});
 import { handleError } from '@api/utils/errors';
 import { lessonLanguageRouter } from '@api/routes/course/lesson-language';
 import { courseworkRouter } from '@api/routes/course/coursework';
@@ -359,12 +373,14 @@ export const lessonRouter = new Hono()
   .put(
     '/:lessonId/time',
     authMiddleware,
+    unitTimeRateLimit,
     courseMemberMiddleware,
     zValidator('param', ZLessonGetParam),
     zValidator('json', ZUnitTimeBeat),
     async (c) => {
       try {
         const user = c.get('user')!;
+        const actor = c.get('actor') as Actor | undefined;
         const courseId = c.req.param('courseId')!;
         const { lessonId } = c.req.valid('param');
         const { seconds } = c.req.valid('json');
@@ -376,10 +392,14 @@ export const lessonRouter = new Hono()
           type: ContentType.Lesson
         });
 
-        // Cap each beat (client sends ~30s beats; a legit refocus catch-up is small). Blocks a tampered
-        // client from claiming huge jumps. 120s ceiling per beat.
-        const capped = Math.min(seconds, 120);
-        await addUnitTimeSpent({ learnerId: user.id, courseId, lessonId, seconds: capped });
+        // Record ONLY for a LEARNER (assertEnrolledStudentContentAccess is a content-lock check that
+        // returns silently for non-students, so gate explicitly here — staff/managers never accrue time).
+        if (actor?.authenticated && actor.role === 'LEARNER') {
+          // Cap each beat (client sends ~30s beats; a legit refocus catch-up is small). With the rate limit
+          // above, this bounds how fast a total can grow. 120s ceiling per beat.
+          const capped = Math.min(seconds, 120);
+          await addUnitTimeSpent({ learnerId: user.id, courseId, lessonId, seconds: capped });
+        }
 
         return c.json({ success: true }, 200);
       } catch (error) {

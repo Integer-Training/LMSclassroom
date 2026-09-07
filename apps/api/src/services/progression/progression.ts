@@ -16,7 +16,7 @@ import {
   getSubmissionsWithContextForLearners,
   type SubmissionWithContext
 } from '@cio/db/queries/coursework';
-import { getLatestMarkedResultsForCourse } from '@cio/db/queries/reports';
+import { getCourseProgressReport, getLatestMarkedResultsForCourse } from '@cio/db/queries/reports';
 import { getLastSeenForUserIds } from '@cio/db/queries/analytics';
 import { isAllocatedTutor } from '@api/middlewares/guards';
 
@@ -210,14 +210,27 @@ export async function getProgression(actor: Actor, courseId?: string): Promise<P
     });
   }
 
+  // Batch per TARGET course once (not per learner): the WB/CS catalog + pass set, and the whole-course
+  // progress report (getCourseProgressReport feeds the shared computeProgress with a batched passed-predicate,
+  // so percent + current-unit come from an in-memory lookup — no per-learner N+1 / timeout at admin scale).
   const targetCourseIds = [...new Set(pending.map((p) => p.targetCourseId).filter((id): id is string => !!id))];
   const catalogs = new Map<string, CourseCatalog>();
   const passSets = new Map<string, Set<string>>();
+  const progressByCourse = new Map<string, Map<string, { passed: number; total: number; index: number | null }>>();
   await Promise.all(
     targetCourseIds.map(async (cid) => {
-      const [catalog, passSet] = await Promise.all([buildCourseCatalog(cid), buildCoursePassSet(cid)]);
+      const [catalog, passSet, report] = await Promise.all([
+        buildCourseCatalog(cid),
+        buildCoursePassSet(cid),
+        getCourseProgressReport(cid)
+      ]);
       catalogs.set(cid, catalog);
       passSets.set(cid, passSet);
+      const byLearner = new Map<string, { passed: number; total: number; index: number | null }>();
+      for (const r of report.rows) {
+        byLearner.set(r.learnerId, { passed: r.passed, total: r.total, index: r.currentPosition?.index ?? null });
+      }
+      progressByCourse.set(cid, byLearner);
     })
   );
 
@@ -229,9 +242,11 @@ export async function getProgression(actor: Actor, courseId?: string): Promise<P
     let caseStudies: KindCount = { passed: 0, total: 0 };
 
     if (p.targetCourseId) {
-      const progress = await computeLearnerCourseProgress(p.learner.learnerId, p.targetCourseId);
-      currentPercent = progress.total > 0 ? Math.round((progress.passed / progress.total) * 100) : 0;
-      currentUnitIndex = progress.currentPosition?.index ?? null;
+      const prog = progressByCourse.get(p.targetCourseId)?.get(p.learner.learnerId);
+      if (prog) {
+        currentPercent = prog.total > 0 ? Math.round((prog.passed / prog.total) * 100) : 0;
+        currentUnitIndex = prog.index;
+      }
 
       const catalog = catalogs.get(p.targetCourseId);
       const passSet = passSets.get(p.targetCourseId) ?? new Set<string>();
