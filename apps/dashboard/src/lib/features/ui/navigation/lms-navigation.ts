@@ -85,11 +85,13 @@ export const baseNavConfig: NavItemConfig[] = [
     matchPattern: '^/lms/cohorts(/.*)?$'
   },
   {
+    // PearlLMS: this page is the learner's coursework board (workbooks / case studies), a core feature —
+    // always visible on the self-hosted build. Upstream still gates it on the exercise customization flag.
     titleKey: 'lms_navigation.exercise',
     path: '/exercises',
     icon: ExerciseIcon,
     matchPattern: '^/lms/exercises(/.*)?$',
-    show: (currentOrg) => currentOrg?.customization?.dashboard?.exercise === true
+    show: (currentOrg) => PUBLIC_IS_SELFHOSTED === 'true' || currentOrg?.customization?.dashboard?.exercise === true
   },
   {
     titleKey: 'lms_navigation.community',

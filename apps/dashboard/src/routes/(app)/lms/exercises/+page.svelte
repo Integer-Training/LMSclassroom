@@ -1,17 +1,17 @@
 <script lang="ts">
   import { ExercisesPage } from '$features/lms/pages';
-  import { t } from '$lib/utils/functions/translations';
   import * as Page from '@cio/ui/base/page';
 </script>
 
 <svelte:head>
-  <title>Exercises - ClassroomIO</title>
+  <title>Assessments</title>
 </svelte:head>
 
 <Page.Root class="w-full">
   <Page.Header>
     <Page.HeaderContent>
-      <Page.Title>{$t('exercises.heading')}</Page.Title>
+      <Page.Title>Assessments</Page.Title>
+      <p class="text-muted-foreground text-sm">Your workbooks and case studies across all your courses.</p>
     </Page.HeaderContent>
   </Page.Header>
   <Page.Body>

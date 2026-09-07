@@ -30,6 +30,7 @@ import { internalRouter } from '@api/routes/internal';
 import { inviteRouter } from '@api/routes/invite';
 import { jobsRouter } from '@api/routes/jobs';
 import { licenseRouter } from '@api/routes/license';
+import { lmsRouter } from '@api/routes/lms/lms';
 import { logger } from 'hono/logger';
 // ROUTES
 import { hlsRouter } from '@api/routes/hls';
@@ -277,6 +278,7 @@ export const app = new Hono()
   .route('/public-api/v1', v1Router)
   .route('/cohort', cohortRouter)
   .route('/caseload', caseloadRouter)
+  .route('/lms', lmsRouter)
   .route('/register', registrationRouter)
   .route('/unsplash', unsplashRouter)
   .route('/widgets', publicWidgetsRouter)
