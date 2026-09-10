@@ -4073,6 +4073,37 @@ export const unitTimeSpent = pgTable(
   ]
 );
 
+// PearlLMS — monthly-bucketed study time per (learner, course, calendar month 'YYYY-MM'). Written ALONGSIDE
+// the running total (unit_time_spent) by the same lesson-view heartbeat, so the learner home can draw a
+// study-hours-over-time chart (the running total is a single number with no history). Additive; no
+// back-history (buckets fill from first study after this ships). Summed by month for the chart.
+export const unitTimeMonthly = pgTable(
+  'unit_time_monthly',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    learnerId: uuid('learner_id').notNull(),
+    courseId: uuid('course_id').notNull(),
+    yearMonth: varchar('year_month', { length: 7 }).notNull(), // 'YYYY-MM' (UTC)
+    seconds: integer().default(0).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.learnerId],
+      foreignColumns: [profile.id],
+      name: 'unit_time_monthly_learner_id_fkey'
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.courseId],
+      foreignColumns: [course.id],
+      name: 'unit_time_monthly_course_id_fkey'
+    }).onDelete('cascade'),
+    unique('unit_time_monthly_learner_course_month_unique').on(table.learnerId, table.courseId, table.yearMonth),
+    index('idx_unit_time_monthly_learner').on(table.learnerId),
+    index('idx_unit_time_monthly_learner_month').on(table.learnerId, table.yearMonth)
+  ]
+);
+
 // PearlLMS Phase 5 — durable per-learner-per-course COMPLETION record (docs/PROGRESS-MODEL.md §2). Written
 // transactionally with the tutor result that completes the course (every NON-EXEMPT unit passed); the
 // UNIQUE(learner,course) constraint is the idempotency backstop (check-and-insert via ON CONFLICT DO

@@ -148,6 +148,13 @@
       "when": 1788521296762,
       "tag": "0020_young_moondragon",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789041749973,
+      "tag": "0021_bitter_the_fallen",
+      "breakpoints": true
     }
   ]
 }
