@@ -12,9 +12,8 @@ import {
 import type { AccountOrg } from '$features/app/types';
 import type { Component } from 'svelte';
 import { isActive } from '$lib/utils/functions/app';
-import { isOrgOnFreePlan } from '@cio/utils/plans';
 import { PUBLIC_IS_SELFHOSTED } from '$env/static/public';
-import { COHORTS_ENABLED, COMMUNITY_ENABLED, EXPLORE_ENABLED } from '$lib/utils/constants/features';
+import { CERTIFICATES_ENABLED, COHORTS_ENABLED, COMMUNITY_ENABLED, EXPLORE_ENABLED } from '$lib/utils/constants/features';
 
 export interface NavItem {
   title: string;
@@ -66,12 +65,7 @@ export const baseNavConfig: NavItemConfig[] = [
     path: '/certificates',
     icon: CertificateIcon,
     matchPattern: '^/lms/certificates(/.*)?$',
-    show: (currentOrg) =>
-      !isOrgOnFreePlan({
-        plans: currentOrg?.plans,
-        isSelfHosted: PUBLIC_IS_SELFHOSTED === 'true',
-        orgId: currentOrg?.id
-      })
+    show: () => CERTIFICATES_ENABLED // certificates are issued off-platform / manually in PearlLMS
   },
   {
     titleKey: 'lms_navigation.explore',

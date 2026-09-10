@@ -19,3 +19,7 @@ export const COHORTS_ENABLED = false;
 // COMMUNITY: the learner community/forum is off for now (low expected use). Nav item + /lms/community route
 // gated on this. Flip to true (and the org community customization flag) to bring it back.
 export const COMMUNITY_ENABLED = false;
+
+// CERTIFICATES: PearlLMS issues certificates off-platform / manually, so the learner certificates page is
+// empty and hidden. Nav item + /lms/certificates route gated on this.
+export const CERTIFICATES_ENABLED = false;
