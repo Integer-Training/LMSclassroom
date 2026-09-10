@@ -318,7 +318,14 @@
       case 'Escape':
         closePDFViewer();
         break;
+      default:
+        return; // let un-handled keys through
     }
+    // A key we handled inside the open PDF viewer must NOT also reach the lesson's window-level
+    // navigation listener (which would switch sessions on Arrow keys). This document listener runs
+    // first (bubble phase, document is inside window), so stopping propagation here shields it.
+    event.preventDefault();
+    event.stopImmediatePropagation();
   }
 
   onMount(() => {

@@ -5,6 +5,7 @@
   import { lessonApi } from '$features/course/api';
   import { t } from '$lib/utils/functions/translations';
   import MODES from '$lib/utils/constants/mode';
+  import { AI_ENABLED } from '$lib/utils/constants/features';
   import type { Content, TiptapEditor } from '@cio/ui/custom/editor';
   import type { TLocale } from '@cio/db/types';
   import AIButton from '$features/course/components/lesson/ai-button.svelte';
@@ -70,7 +71,7 @@
       placeholder={$t('course.navItem.lessons.materials.tabs.note.placeholder')}
     />
   </div>
-  <QuoteSelection root={editRoot} enabled />
+  <QuoteSelection root={editRoot} enabled={AI_ENABLED} />
 {:else}
   <!-- View Mode -->
   {#if !isHtmlValueEmpty(content)}
@@ -78,7 +79,7 @@
       <HTMLRender>
         <SafeHtmlContent {content} />
       </HTMLRender>
-      <QuoteSelection root={noteRoot} enabled />
+      <QuoteSelection root={noteRoot} enabled={AI_ENABLED} />
     </div>
   {:else if hasAtLeastOneTranslation}
     <p class="text-md py-2 font-normal italic dark:text-white">

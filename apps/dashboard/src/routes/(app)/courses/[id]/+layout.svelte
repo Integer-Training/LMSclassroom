@@ -14,6 +14,7 @@
   import ContentCreateModal from '$features/course/components/content/content-create-modal.svelte';
   import CourseCompletionModal from '$features/course/components/ceritficate/course-completion-modal.svelte';
   import { aiAssistantPanelDefinition, ContentAskAiBar, AI_ASSISTANT_PANEL_ID } from '$features/ai-assistant';
+  import { AI_ENABLED } from '$lib/utils/constants/features';
   import {
     getContentAskAiBarWidthClass,
     isCourseContentLockedForStudent
@@ -36,7 +37,8 @@
     COURSE_SIDEBAR_STORAGE_KEY
   } from '$features/course/components/sidebar/constants';
 
-  sidePanel.register(aiAssistantPanelDefinition);
+  // AI disabled for this deployment — don't even register the AI assistant side panel (no rail entry).
+  if (AI_ENABLED) sidePanel.register(aiAssistantPanelDefinition);
   sidePanel.register(transcriptPanelDefinition);
 
   interface Props {
@@ -107,7 +109,8 @@
   );
 
   const showContentAskAiBar = $derived(
-    isCourseReady &&
+    AI_ENABLED &&
+      isCourseReady &&
       isLessonOrExercisePage &&
       !($isCourseLearnerView && isContentLockedForStudent) &&
       sidePanel.activePanelId !== AI_ASSISTANT_PANEL_ID

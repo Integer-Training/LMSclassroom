@@ -4,6 +4,7 @@
   import { ContentIcon, HoverableItem, PremiumIcon } from '@cio/ui/custom/moving-icons';
   import { sendPromptToAssistant } from '$features/ai-assistant/utils/store';
   import { t } from '$lib/utils/functions/translations';
+  import { AI_ENABLED } from '$lib/utils/constants/features';
   import { buildLessonSummarizePrompt } from './utils/lesson-summarize-prompt';
 
   interface Props {
@@ -50,11 +51,11 @@
         </HoverableItem>
       {/if}
 
-      {#if showTranscript && showSummarize}
+      {#if showTranscript && showSummarize && AI_ENABLED}
         <span class="ui:text-muted-foreground hidden text-sm sm:inline" aria-hidden="true">|</span>
       {/if}
 
-      {#if showSummarize}
+      {#if showSummarize && AI_ENABLED}
         <HoverableItem>
           {#snippet children(isHovered)}
             <Button

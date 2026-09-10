@@ -2,6 +2,9 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
+  import { page } from '$app/state';
+  import { Button } from '@cio/ui/base/button';
+  import { AI_ENABLED } from '$lib/utils/constants/features';
   import CheckCircleIcon from '@lucide/svelte/icons/circle-check';
   import CircleIcon from '@lucide/svelte/icons/circle';
   import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
@@ -47,6 +50,8 @@
   let selectedTemplateId: CourseTemplateId | null = $state(null);
   let selectedModel: AgentModelId = $state(DEFAULT_PICKER_MODEL_ID);
   const paidModelIds = UI_PICKER_MODEL_IDS.filter((id) => !AGENT_MODELS[id].isFree);
+
+  const slug = $derived(page.params.slug ?? '');
 
   function isAgentModelId(value: unknown): value is AgentModelId {
     return typeof value === 'string' && (UI_PICKER_MODEL_IDS as readonly string[]).includes(value);
@@ -222,7 +227,7 @@
       </div>
     </div>
   </div>
-{:else}
+{:else if AI_ENABLED}
   <div class="flex min-h-[90vh] items-center justify-center px-4 py-12">
     <div class="w-full max-w-3xl">
       <CourseCreator
@@ -275,6 +280,20 @@
           </button>
         {/each}
       </div>
+    </div>
+  </div>
+{:else}
+  <div class="flex min-h-[80vh] flex-col items-center justify-center gap-6 px-4 text-center">
+    <div class="flex flex-col items-center gap-2">
+      <h1 class="text-2xl font-semibold">{$t('org_navigation.courses')}</h1>
+    </div>
+    <div class="flex flex-wrap items-center justify-center gap-3">
+      <Button onclick={() => goto(`/org/${slug}/dash`)}>
+        {$t('org_navigation.dashboard')}
+      </Button>
+      <Button variant="outline" onclick={() => goto(`/org/${slug}/courses`)}>
+        {$t('org_navigation.courses')}
+      </Button>
     </div>
   </div>
 {/if}

@@ -17,6 +17,7 @@
   import { toggleAiAssistant } from '$features/ai-assistant/utils/store';
   import { openCoursePreview } from '$features/course/utils/course-preview';
   import { t } from '$lib/utils/functions/translations';
+  import { AI_ENABLED } from '$lib/utils/constants/features';
   import CoursePublishBadge from './course-publish-badge.svelte';
   import CoursePublicBadge from './course-public-badge.svelte';
   import CourseContextMenuContent from './course-context-menu-content.svelte';
@@ -88,23 +89,25 @@
     <!-- PearlLMS Phase 5 Step 3 — stock self-asserted progress popover removed for the student experience;
          the learner's single result-derived progress lives in the sidebar (docs/PROGRESS-MODEL.md §4). -->
 
-    <Button
-      size="sm"
-      onclick={toggleAiAssistant}
-      class="ui:bg-primary ui:text-primary-foreground relative overflow-hidden border-0"
-    >
-      <Waves
-        lineColor="rgba(255,255,255,0.55)"
-        xGap={8}
-        yGap={12}
-        waveAmpX={18}
-        waveAmpY={9}
-        waveSpeedX={0.04}
-        waveSpeedY={0.02}
-      />
-      <SparklesIcon size={14} class="relative z-10" />
-      <span class="relative z-10">{$t('course.navItems.nav_ai_assistant')}</span>
-    </Button>
+    {#if AI_ENABLED}
+      <Button
+        size="sm"
+        onclick={toggleAiAssistant}
+        class="ui:bg-primary ui:text-primary-foreground relative overflow-hidden border-0"
+      >
+        <Waves
+          lineColor="rgba(255,255,255,0.55)"
+          xGap={8}
+          yGap={12}
+          waveAmpX={18}
+          waveAmpY={9}
+          waveSpeedX={0.04}
+          waveSpeedY={0.02}
+        />
+        <SparklesIcon size={14} class="relative z-10" />
+        <span class="relative z-10">{$t('course.navItems.nav_ai_assistant')}</span>
+      </Button>
+    {/if}
 
     {#if !$isStudentExperience}
       <ButtonGroup.Root>

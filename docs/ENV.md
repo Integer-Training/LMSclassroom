@@ -151,7 +151,7 @@ ZeptoMail's HTTP API instead of SMTP. Email branding is still ClassroomIO — se
 | `PUBLIC_APP_TITLE`, `PUBLIC_APP_DESCRIPTION`, `PUBLIC_OG_IMAGE_URL` | Custom branding meta tags | set to Pearl branding later |
 | `PUBLIC_MEDIA_CDN_URL` | Public CDN base for media/OG | unset |
 | `ALLOWED_EXTERNAL_DOMAINS`, `CSP_SCRIPT_SRC_DOMAINS`, `CSP_STYLE_SRC_DOMAINS`, `CSP_CONNECT_SRC_DOMAINS`, `CSP_FRAME_SRC_DOMAINS`, `CSP_FONT_SRC_DOMAINS`, `CSP_MEDIA_SRC_DOMAINS`, `CSP_FRAME_ANCESTORS_DOMAINS` | Runtime CSP allowlists (self-hosted starts from `'self'` only — `csp-domains.js:63-73`) | add Supabase Storage host so media loads |
-| `UPLOAD_MAX_{DOCUMENT,IMAGE,VIDEO,EXERCISE_FILE,AGENT_DOCUMENT,LANDING_IMAGE,THUMBNAIL}_MB` | Upload caps (defaults 5/5/800/2/5/0.5/5) — set on BOTH api and dashboard | stock for now |
+| `UPLOAD_MAX_{DOCUMENT,IMAGE,VIDEO,EXERCISE_FILE,AGENT_DOCUMENT,LANDING_IMAGE,THUMBNAIL}_MB` | Upload caps (defaults **50**/5/800/2/5/0.5/5; DOCUMENT is 50MB for learner coursework) — set on BOTH api and dashboard. NB the Supabase `documents` bucket has no per-file limit set, so this app cap governs. | stock for now |
 | `CI_ENVIRONMENT` | `cloudflare` switches the SvelteKit adapter | unset (adapter-node) |
 | `CIO_VERSION` | docker-compose.images tag | unused (we build from source) |
 | `SKIP_DB_SETUP` | Skips db:setup in the api container entrypoint | default false |

@@ -19,6 +19,7 @@ import type { AccountOrg } from '$features/app/types';
 import BotIcon from '@lucide/svelte/icons/bot';
 import type { Component } from 'svelte';
 import { isActive } from '$lib/utils/functions/app';
+import { AI_ENABLED } from '$lib/utils/constants/features';
 import type { PlanLimitResource } from '@cio/utils/plans';
 
 export interface NavItem {
@@ -191,15 +192,19 @@ export const baseNavConfig: NavItemConfig[] = [
     requiresAdmin: true,
     matchPattern: '^/org/[^/]+/allocation(/.*)?$'
   },
-  {
-    group: 'automation',
-    titleKey: 'automation.tabs.mcp',
-    path: '/mcp',
-    icon: BotIcon,
-    requiresAdmin: true,
-    disableWhenNotAdmin: true,
-    matchPattern: '^/org/[^/]+/mcp(/.*)?$'
-  },
+  ...(AI_ENABLED
+    ? [
+        {
+          group: 'automation',
+          titleKey: 'automation.tabs.mcp',
+          path: '/mcp',
+          icon: BotIcon,
+          requiresAdmin: true,
+          disableWhenNotAdmin: true,
+          matchPattern: '^/org/[^/]+/mcp(/.*)?$'
+        }
+      ]
+    : []),
   {
     group: 'automation',
     titleKey: 'automation.tabs.api',
@@ -262,14 +267,18 @@ export const baseNavConfig: NavItemConfig[] = [
         titleKey: 'settings.tabs.billing_tab',
         path: '/settings/billing'
       },
-      {
-        titleKey: 'settings.tabs.ai_credits_tab',
-        path: '/settings/ai-credits'
-      },
-      {
-        titleKey: 'settings.tabs.ai_tutor_tab',
-        path: '/settings/ai-tutor'
-      },
+      ...(AI_ENABLED
+        ? [
+            {
+              titleKey: 'settings.tabs.ai_credits_tab',
+              path: '/settings/ai-credits'
+            },
+            {
+              titleKey: 'settings.tabs.ai_tutor_tab',
+              path: '/settings/ai-tutor'
+            }
+          ]
+        : []),
       {
         titleKey: 'settings.tabs.auth_tab',
         matchPattern: '^/org/[^/]+/settings/auth(/.*)?$',
@@ -286,14 +295,18 @@ export const baseNavConfig: NavItemConfig[] = [
         path: 'billing',
         titleKey: 'settings.tabs.billing_tab'
       },
-      {
-        path: 'ai-credits',
-        titleKey: 'settings.tabs.ai_credits_tab'
-      },
-      {
-        path: 'ai-tutor',
-        titleKey: 'settings.tabs.ai_tutor_tab'
-      },
+      ...(AI_ENABLED
+        ? [
+            {
+              path: 'ai-credits',
+              titleKey: 'settings.tabs.ai_credits_tab'
+            },
+            {
+              path: 'ai-tutor',
+              titleKey: 'settings.tabs.ai_tutor_tab'
+            }
+          ]
+        : []),
       {
         path: 'customize-lms',
         titleKey: 'settings.tabs.customize_lms_tab'

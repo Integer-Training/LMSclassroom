@@ -201,9 +201,26 @@
 
   const INTERACTIVE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
 
+  // An open overlay (the PDF viewer, a fullscreen slide, or any modal/dialog) owns the arrow keys for its
+  // own navigation — session switching must NOT also fire underneath it. The PDF viewer additionally stops
+  // its own key events, but this guard also covers slides/dialogs and is cheap defence-in-depth.
+  function isOverlayOpen(): boolean {
+    if (typeof document === 'undefined') return false;
+    try {
+      if (document.fullscreenElement) return true;
+      // Match only OVERLAYS THAT ARE OPEN — `.z-modal` (the PDF viewer, mounted only while open) and any
+      // dialog whose bits-ui state is "open". Scoping to data-state avoids a persistent closed dialog in the
+      // DOM permanently swallowing arrow-key session navigation.
+      return !!document.querySelector('.z-modal, [role="dialog"][data-state="open"], [data-state="open"][aria-modal="true"]');
+    } catch {
+      return false;
+    }
+  }
+
   function handleKeydown(event: KeyboardEvent) {
     const target = event.target as HTMLElement;
     if (INTERACTIVE_TAGS.has(target.tagName) || target.isContentEditable) return;
+    if (isOverlayOpen()) return;
 
     if (event.key === 'ArrowLeft' && !isPrevDisabled) {
       event.preventDefault();

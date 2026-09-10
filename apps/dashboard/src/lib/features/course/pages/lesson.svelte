@@ -60,7 +60,9 @@
   import StudentContentLockedNotice from '$features/course/components/student-content-locked-notice.svelte';
   import LiveSessionCard from '$features/course/components/lesson/live-session-card.svelte';
   import CourseworkSubmission from '$features/course/components/lesson/coursework-submission.svelte';
-  import { isAssessmentKind } from '@cio/utils/constants';
+  import { isAssessmentKind, MATERIAL_KIND_LABELS, type MaterialKind } from '@cio/utils/constants';
+  import ClipboardListIcon from '@lucide/svelte/icons/clipboard-list';
+  import ArrowDownIcon from '@lucide/svelte/icons/arrow-down';
   import IdVerificationStatus from '$features/registrations/components/id-verification-status.svelte';
   import { unitTimeHeartbeat } from '$features/course/utils/unit-time-heartbeat';
 
@@ -75,6 +77,28 @@
   // PearlLMS Phase 8 — the unit's tagged assessment items (workbook/casestudy/assignment), for the learner
   // per-assessment submission cards.
   const assessmentItems = $derived((lessonApi.lesson?.documents ?? []).filter((d) => isAssessmentKind(d.kind)));
+
+  // A human summary of the unit's assessments for the top-of-lesson banner (so a learner never misses that
+  // the session has work to submit, without scrolling to the bottom). E.g. "1 workbook · 1 case study".
+  const assessmentSummary = $derived.by(() => {
+    const counts = new Map<string, number>();
+    for (const d of assessmentItems) {
+      const kind = (d.kind ?? 'assignment') as MaterialKind;
+      counts.set(kind, (counts.get(kind) ?? 0) + 1);
+    }
+    const pluralize = (label: string, n: number) => {
+      if (n <= 1) return label;
+      return label.endsWith('y') ? `${label.slice(0, -1)}ies` : `${label}s`; // "case study"→"case studies"
+    };
+    return [...counts]
+      .map(([kind, n]) => `${n} ${pluralize((MATERIAL_KIND_LABELS[kind as MaterialKind] ?? 'assessment').toLowerCase(), n)}`)
+      .join(' · ');
+  });
+
+  function scrollToAssessments() {
+    if (typeof document === 'undefined') return;
+    document.getElementById('assessments')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 
   let prevModeParam = $state<string | null>(null);
   let isDeletingLesson = $state(false);
@@ -510,6 +534,29 @@
         {:else if lessonApi.lesson}
           {#key lessonId}
             <div class="mb-20 flex w-full flex-col" in:fade={{ delay: 500 }} out:fade>
+              <!-- Top-of-lesson assessment banner (PearlLMS): the submission cards sit below all the
+                   material, so a learner could miss them. This makes it unmissable + jumps to them. -->
+              {#if assessmentItems.length > 0}
+                <div
+                  class="mb-4 flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 sm:flex-row sm:items-center sm:justify-between dark:border-amber-800/60 dark:bg-amber-950/40"
+                >
+                  <div class="flex items-center gap-2.5">
+                    <span class="flex size-8 shrink-0 items-center justify-center rounded-md bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300">
+                      <ClipboardListIcon size={17} />
+                    </span>
+                    <div class="text-sm">
+                      <p class="font-semibold text-amber-900 dark:text-amber-200">
+                        This session has {assessmentItems.length > 1 ? `${assessmentItems.length} assessments` : 'an assessment'} to submit
+                      </p>
+                      <p class="text-amber-700/90 dark:text-amber-300/80">{assessmentSummary} — download the brief, complete it, then upload your work.</p>
+                    </div>
+                  </div>
+                  <Button size="sm" class="shrink-0 bg-amber-600 text-white hover:bg-amber-700" onclick={scrollToAssessments}>
+                    Go to assessment <ArrowDownIcon size={14} />
+                  </Button>
+                </div>
+              {/if}
+
               {#if !isMaterialsEmpty}
                 {#if !hasLessonVideos}
                   <LessonMaterialActions showSummarize {lessonId} alignWithNote />
@@ -537,7 +584,7 @@
                    (workbook/casestudy/assignment) in this unit. Resources stay view-only above. Self-only;
                    guarded read/download. -->
               {#if assessmentItems.length > 0}
-                <section class="mt-8 border-t pt-6">
+                <section id="assessments" class="mt-8 scroll-mt-24 border-t pt-6">
                   <div class="mb-1 flex items-center justify-between gap-3">
                     <h2 class="text-lg font-semibold">Assessments</h2>
                     <a

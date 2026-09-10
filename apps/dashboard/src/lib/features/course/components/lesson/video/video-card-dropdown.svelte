@@ -14,6 +14,7 @@
   import { sidePanel } from '$features/side-panel';
   import { snackbar } from '$features/ui/snackbar/store';
   import { t } from '$lib/utils/functions/translations';
+  import { AI_ENABLED } from '$lib/utils/constants/features';
   import { onDestroy, onMount } from 'svelte';
   import {
     canGenerateHls1080,
@@ -367,7 +368,7 @@
         </span>
       </DropdownMenu.Item>
     {/if}
-    {#if canGenerateTranscript && !hasTranscript}
+    {#if AI_ENABLED && canGenerateTranscript && !hasTranscript}
       <DropdownMenu.Item
         disabled={isTranscribing}
         onclick={() => {

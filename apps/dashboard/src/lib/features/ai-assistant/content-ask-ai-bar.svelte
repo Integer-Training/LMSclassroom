@@ -9,6 +9,7 @@
   import * as Kbd from '@cio/ui/base/kbd';
   import { t } from '$lib/utils/functions/translations';
   import { sendPromptToAssistant } from '$features/ai-assistant/utils/store';
+  import { AI_ENABLED } from '$lib/utils/constants/features';
 
   interface Props {
     /** Width classes matching the page content column (e.g. mx-auto w-full max-w-3xl). */
@@ -110,9 +111,10 @@
   }
 </script>
 
-<svelte:window onkeydown={handleWindowKeydown} />
+<svelte:window onkeydown={AI_ENABLED ? handleWindowKeydown : undefined} />
 
-{#if expanded}
+{#if AI_ENABLED}
+  {#if expanded}
   <div
     class="ui:bg-background ui:border-border fixed right-0 bottom-0 left-0 z-40 border-t py-3 shadow-sm md:right-[var(--side-panel-width,0px)] md:left-[var(--sidebar-width,0px)]"
     in:fly={expandIn}
@@ -162,4 +164,5 @@
       </div>
     </div>
   </div>
+  {/if}
 {/if}

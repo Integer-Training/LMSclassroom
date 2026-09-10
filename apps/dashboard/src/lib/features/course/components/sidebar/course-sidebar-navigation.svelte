@@ -39,6 +39,7 @@
   import { IconButton } from '@cio/ui/custom/icon-button';
   import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
   import { profile } from '$lib/utils/store/user';
+  import { AI_ENABLED } from '$lib/utils/constants/features';
 
   interface Props {
     path: string;
@@ -185,7 +186,7 @@
         url: getNavItemRoute(id, 'ai-tutor'),
         isActive: (path || page.url.pathname) === getNavItemRoute(id, 'ai-tutor'),
         show() {
-          return !isStudent;
+          return !isStudent && AI_ENABLED;
         },
         icon: getNavIcon(NAV_IDS.AI_ASSISTANT)
       },
