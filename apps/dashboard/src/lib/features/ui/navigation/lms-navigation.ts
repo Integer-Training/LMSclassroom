@@ -14,6 +14,7 @@ import type { Component } from 'svelte';
 import { isActive } from '$lib/utils/functions/app';
 import { isOrgOnFreePlan } from '@cio/utils/plans';
 import { PUBLIC_IS_SELFHOSTED } from '$env/static/public';
+import { COHORTS_ENABLED, COMMUNITY_ENABLED, EXPLORE_ENABLED } from '$lib/utils/constants/features';
 
 export interface NavItem {
   title: string;
@@ -76,13 +77,15 @@ export const baseNavConfig: NavItemConfig[] = [
     titleKey: 'lms_navigation.explore',
     path: '/explore',
     icon: ExploreIcon,
-    matchPattern: '^/lms/explore(/.*)?$'
+    matchPattern: '^/lms/explore(/.*)?$',
+    show: () => EXPLORE_ENABLED // closed LMS — no public catalogue to explore
   },
   {
     titleKey: 'lms_navigation.cohorts',
     path: '/cohorts',
     icon: GoalIcon,
-    matchPattern: '^/lms/cohorts(/.*)?$'
+    matchPattern: '^/lms/cohorts(/.*)?$',
+    show: () => COHORTS_ENABLED // scheduled cohorts unused — learners enrolled via staff allocation
   },
   {
     // PearlLMS: this page is the learner's coursework board (workbooks / case studies), a core feature —
@@ -98,7 +101,7 @@ export const baseNavConfig: NavItemConfig[] = [
     path: '/community',
     icon: CommunityIcon,
     matchPattern: '^/lms/community(/.*)?$',
-    show: (currentOrg) => currentOrg?.customization?.dashboard?.community === true,
+    show: (currentOrg) => COMMUNITY_ENABLED && currentOrg?.customization?.dashboard?.community === true,
     supportsDynamicSegment: true,
     nestedRoutes: [
       {
@@ -108,35 +111,12 @@ export const baseNavConfig: NavItemConfig[] = [
     ]
   },
   {
+    // PearlLMS: learners may NOT edit profile (name/email) — Settings now holds only Notification
+    // preferences. Profile + Integrations are removed (their routes redirect to notifications).
     titleKey: 'lms_navigation.settings',
-    path: '/settings',
+    path: '/settings/notifications',
     icon: SettingsIcon,
-    useHashUrl: true,
-    matchPattern: '^/lms/settings(/.*)?$',
-    items: [
-      {
-        titleKey: 'Profile',
-        path: '/settings'
-      },
-      {
-        titleKey: 'Notifications',
-        path: '/settings/notifications'
-      },
-      {
-        titleKey: 'Integrations',
-        path: '/settings/integrations'
-      }
-    ],
-    nestedRoutes: [
-      {
-        path: 'notifications',
-        titleKey: 'settings.tabs.notifications_tab'
-      },
-      {
-        path: 'integrations',
-        titleKey: 'settings.tabs.integrations_tab'
-      }
-    ]
+    matchPattern: '^/lms/settings(/.*)?$'
   }
 ];
 

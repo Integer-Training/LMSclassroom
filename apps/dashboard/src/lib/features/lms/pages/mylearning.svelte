@@ -7,6 +7,7 @@
   import { t } from '$lib/utils/functions/translations';
   import { coursesApi } from '$features/course/api';
   import { isStudentCourseComplete } from '$features/course/utils/compliance-utils';
+  import { EXPLORE_ENABLED } from '$lib/utils/constants/features';
 
   let searchValue = $state('');
 
@@ -54,7 +55,9 @@
       isLoading={coursesApi.isLoading}
     >
       {#snippet emptyAction()}
-        <Button href="/lms/explore">{$t('my_learning.find_courses')}</Button>
+        {#if EXPLORE_ENABLED}
+          <Button href="/lms/explore">{$t('my_learning.find_courses')}</Button>
+        {/if}
       {/snippet}
     </CoursesPage>
   </UnderlineTabs.Content>
