@@ -6,7 +6,11 @@ import { isRole, isSelf, sameOrg } from '@cio/utils/auth';
 import { getSubmissionById } from '@cio/db/queries/submission';
 import { isCourseGroupMember } from '@cio/db/queries/group';
 import { isTutorAllocatedToLearner } from '@cio/db/queries/allocation';
-import { getSubmissionByFileKey, hasLearnerPassedUnit } from '@cio/db/queries/coursework';
+import {
+  getSubmissionByFeedbackFileKey,
+  getSubmissionByFileKey,
+  hasLearnerPassedUnit
+} from '@cio/db/queries/coursework';
 import { getCourseMaterialKeys, getMaterialKeyLessonMap } from '@cio/db/queries/lesson';
 import { getCourseSequentialUnlock, getOrderedUnitsForCourse } from '@cio/db/queries/gating';
 import { findGatePredecessorIndex, isExemptUnitType } from '@cio/utils/constants';
@@ -354,7 +358,10 @@ export async function assertCourseworkDownloadAccess(actor: Actor, keys: string[
   }
 
   for (const key of keys) {
-    const submission = await getSubmissionByFileKey(key);
+    // A key is either a learner submission file (coursework/…) or a tutor feedback file
+    // (coursework-feedback/…). Try both authoritative owner lookups; access to the owning submission is
+    // then decided by canReadCoursework (learner-self / allocated tutor / admin) — identical for both.
+    const submission = (await getSubmissionByFileKey(key)) ?? (await getSubmissionByFeedbackFileKey(key));
     if (!submission || !(await canReadCoursework(actor, submission))) {
       // 403 (not 404) whether the key is unknown or simply not the caller's — never reveal which.
       throw new AppError('You do not have access to this coursework file', ErrorCodes.FORBIDDEN, 403);

@@ -84,3 +84,32 @@ export function generateCourseworkFileKey(
 ): string {
   return `${courseworkKeyPrefix(courseId, learnerId, lessonId, assessmentKey, version)}${generateFileKey(fileName)}`;
 }
+
+/**
+ * Object-key prefix for a TUTOR's feedback files on one submission version (PearlLMS). A distinct
+ * `coursework-feedback/{courseId}/{learnerId}/{lessonId}/{assessmentSlug}/{version}/…` namespace so the
+ * download guard can tell learner-submitted files (`coursework/…`) from tutor feedback files, while the
+ * learner still downloads their OWN feedback (access enforced by the guard binding, never the path). The
+ * server reconstructs this exact prefix from the submission being graded when it presigns/registers.
+ */
+export function courseworkFeedbackKeyPrefix(
+  courseId: string,
+  learnerId: string,
+  lessonId: string,
+  assessmentKey: string,
+  version: number
+): string {
+  return `coursework-feedback/${courseId}/${learnerId}/${lessonId}/${courseworkAssessmentSlug(assessmentKey)}/${version}/`;
+}
+
+/** Key for one tutor feedback file on a given submission version (see courseworkFeedbackKeyPrefix). */
+export function generateCourseworkFeedbackFileKey(
+  courseId: string,
+  learnerId: string,
+  lessonId: string,
+  assessmentKey: string,
+  version: number,
+  fileName: string
+): string {
+  return `${courseworkFeedbackKeyPrefix(courseId, learnerId, lessonId, assessmentKey, version)}${generateFileKey(fileName)}`;
+}

@@ -43,7 +43,7 @@ export const courseworkRouter = new Hono()
       const actor = c.get('actor') as Actor;
       const courseId = c.req.param('courseId')!;
       const lessonId = c.req.param('lessonId')!;
-      const { assessmentKey, submissionType, version, files } = c.req.valid('json');
+      const { assessmentKey, submissionType, version, files, comment } = c.req.valid('json');
       const data = await createCourseworkSubmission(
         actor,
         courseId,
@@ -51,7 +51,8 @@ export const courseworkRouter = new Hono()
         assessmentKey,
         submissionType,
         version,
-        files
+        files,
+        comment
       );
       return c.json({ success: true, data }, 201);
     } catch (error) {

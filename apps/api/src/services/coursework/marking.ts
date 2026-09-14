@@ -9,10 +9,12 @@ import {
   getResultForSubmission,
   getSubmissionById,
   recordCourseworkResult,
+  type CourseworkFile,
   type CourseworkResultRow
 } from '@cio/db/queries/coursework';
 import { recordCompletionIfComplete, type CompletionRow } from '@cio/db/queries/completion';
 import { isAllocatedTutor } from '@api/middlewares/guards';
+import { expectedFeedbackPrefix } from '@api/services/coursework/coursework';
 import { notifyCourseworkResulted } from '@api/services/coursework/notifications';
 import { getUnitsUnlockedByPass } from '@api/services/gating/unlock';
 import { emitNotification } from '@api/services/comms/notify';
@@ -27,6 +29,8 @@ export interface RecordResultInput {
   /** Present + a configured value for a FINAL (verdict). Absent for a DRAFT (feedback-only). */
   result?: string;
   feedback?: string;
+  /** Tutor's uploaded feedback files (already PUT under the coursework-feedback/ prefix for this version). */
+  feedbackFiles?: CourseworkFile[];
 }
 
 /**
@@ -72,6 +76,18 @@ export async function recordResult(
   const resultKind = isDraft ? 'draft' : 'verdict';
   const resultValue = isDraft ? null : (input.result ?? null);
 
+  // Bind any feedback files to THIS submission's feedback prefix — a tutor can't attach an arbitrary or
+  // cross-submission object as feedback (mirrors the learner submit-key binding).
+  const feedbackFiles = input.feedbackFiles ?? [];
+  if (feedbackFiles.length > 0) {
+    const prefix = expectedFeedbackPrefix(submission);
+    for (const f of feedbackFiles) {
+      if (!f.key.startsWith(prefix)) {
+        throw new AppError('Invalid feedback file reference for this submission', ErrorCodes.VALIDATION_ERROR, 400);
+      }
+    }
+  }
+
   // One result per version — never overwrite history.
   if (await getResultForSubmission(submissionId)) {
     throw new AppError('This version has already been marked', ErrorCodes.CONFLICT, 409);
@@ -104,6 +120,7 @@ export async function recordResult(
           kind: resultKind,
           result: resultValue,
           feedback: input.feedback ?? null,
+          feedbackFiles,
           recordedBy: actor.userId
         },
         tx

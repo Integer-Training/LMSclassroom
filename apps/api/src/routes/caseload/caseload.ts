@@ -1,12 +1,18 @@
 import {
+  ZAssessmentKeyQuery,
   ZCaseloadLearnerParam,
+  ZCourseIdParam,
+  ZCourseLessonParam,
+  ZFeedbackPresign,
   ZMarkSubmission,
   ZProgressionQuery,
   ZSubmissionIdParam
 } from '@cio/utils/validation/coursework';
 import { getCaseloadLearnerDetail, getTutorCaseload, getTutorPipeline } from '@api/services/caseload/caseload';
+import { getTutorCourseContent, getAssessmentSubmissions } from '@api/services/caseload/course-view';
 import { getProgression, getProgressionDetail } from '@api/services/progression/progression';
 import { recordResult } from '@api/services/coursework/marking';
+import { presignFeedbackUploads } from '@api/services/coursework/coursework';
 
 import { Hono } from '@api/utils/hono';
 import type { Actor } from '@cio/db/actor';
@@ -86,11 +92,61 @@ export const caseloadRouter = new Hono()
       try {
         const actor = c.get('actor') as Actor;
         const { submissionId } = c.req.valid('param');
-        const { result, feedback } = c.req.valid('json');
-        const data = await recordResult(actor, submissionId, { result, feedback });
+        const { result, feedback, feedbackFiles } = c.req.valid('json');
+        const data = await recordResult(actor, submissionId, { result, feedback, feedbackFiles });
         return c.json({ success: true, data }, 201);
       } catch (error) {
         return handleError(c, error, 'Failed to record result');
+      }
+    }
+  )
+  // Presign feedback-file uploads for a submission (tutor attaches the learner's workbook marked up).
+  // requireStaff at the door; presignFeedbackUploads additionally requires ADMIN or the ALLOCATED tutor.
+  .post(
+    '/submissions/:submissionId/feedback/presign',
+    requireStaff,
+    zValidator('param', ZSubmissionIdParam),
+    zValidator('json', ZFeedbackPresign),
+    async (c) => {
+      try {
+        const actor = c.get('actor') as Actor;
+        const { submissionId } = c.req.valid('param');
+        const { files } = c.req.valid('json');
+        const data = await presignFeedbackUploads(actor, submissionId, files);
+        return c.json({ success: true, data }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to prepare feedback upload');
+      }
+    }
+  )
+  // Tutor read-only course content — outline of units, materials + assessments with per-workbook stats.
+  // requireStaff at the door; the service allows only an ADMIN or a tutor allocated to the course.
+  .get('/courses/:courseId/content', requireStaff, zValidator('param', ZCourseIdParam), async (c) => {
+    try {
+      const actor = c.get('actor') as Actor;
+      const { courseId } = c.req.valid('param');
+      const data = await getTutorCourseContent(actor, courseId);
+      return c.json({ success: true, data }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to load course content');
+    }
+  })
+  // The submissions grid for one assessment (workbook) on a unit — every roster learner's submission +
+  // grading summary. requireStaff at the door; service scopes to allocated∩enrolled (tutor) / all (admin).
+  .get(
+    '/courses/:courseId/lessons/:lessonId/submissions',
+    requireStaff,
+    zValidator('param', ZCourseLessonParam),
+    zValidator('query', ZAssessmentKeyQuery),
+    async (c) => {
+      try {
+        const actor = c.get('actor') as Actor;
+        const { courseId, lessonId } = c.req.valid('param');
+        const { assessmentKey } = c.req.valid('query');
+        const data = await getAssessmentSubmissions(actor, courseId, lessonId, assessmentKey);
+        return c.json({ success: true, data }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to load submissions');
       }
     }
   );

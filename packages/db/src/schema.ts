@@ -3972,6 +3972,8 @@ export const courseworkSubmission = pgTable(
     submissionType: varchar('submission_type').default('final').notNull(),
     version: integer().default(1).notNull(),
     files: jsonb().default([]).$type<{ key: string; name: string; size?: number; type?: string }[]>().notNull(),
+    // Optional learner note attached to this submission version (Moodle "Submission comments"). Text only.
+    comment: text(),
     status: varchar().default('submitted').notNull(),
     submittedAt: timestamp('submitted_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull()
   },
@@ -4017,6 +4019,13 @@ export const courseworkResult = pgTable(
     kind: varchar().default('verdict').notNull(),
     result: varchar(),
     feedback: text(),
+    // Tutor's uploaded feedback files (Moodle "Feedback files") — typically the learner's workbook marked
+    // up with feedback. Stored under the coursework-feedback/ bucket prefix; the learner can view/download
+    // their own. Same shape as submission files.
+    feedbackFiles: jsonb('feedback_files')
+      .default([])
+      .$type<{ key: string; name: string; size?: number; type?: string }[]>()
+      .notNull(),
     recordedBy: uuid('recorded_by'),
     recordedAt: timestamp('recorded_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull()
   },

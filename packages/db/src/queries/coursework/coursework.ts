@@ -130,6 +130,7 @@ export interface CourseworkSubmissionRow {
   submissionType: string;
   version: number;
   files: CourseworkFile[];
+  comment: string | null;
   status: string;
   submittedAt: string;
 }
@@ -161,6 +162,7 @@ export interface CreateSubmissionInput {
   submissionType: string;
   version: number;
   files: CourseworkFile[];
+  comment?: string | null;
 }
 
 /** Insert one submission version. The UNIQUE(learner,lesson,assessment,version) constraint guards a race. */
@@ -209,6 +211,25 @@ export async function getSubmissionByFileKey(key: string): Promise<CourseworkSub
   return (row as CourseworkSubmissionRow) ?? null;
 }
 
+/**
+ * The submission a given FEEDBACK file key belongs to (jsonb containment on coursework_result.feedback_files,
+ * joined back to its submission). Authoritative owner lookup for the download guard on tutor feedback files:
+ * a nonexistent key returns null, and access to the returned submission is then decided by canReadCoursework
+ * (the learner may download their OWN feedback; the allocated tutor + admin may too).
+ */
+export async function getSubmissionByFeedbackFileKey(key: string): Promise<CourseworkSubmissionRow | null> {
+  const [row] = await db
+    .select({ submission: schema.courseworkSubmission })
+    .from(schema.courseworkResult)
+    .innerJoin(
+      schema.courseworkSubmission,
+      eq(schema.courseworkSubmission.id, schema.courseworkResult.submissionId)
+    )
+    .where(sql`${schema.courseworkResult.feedbackFiles} @> ${JSON.stringify([{ key }])}::jsonb`)
+    .limit(1);
+  return (row?.submission as CourseworkSubmissionRow) ?? null;
+}
+
 export interface SubmissionWithContext extends CourseworkSubmissionRow {
   courseTitle: string;
   unitTitle: string;
@@ -240,6 +261,7 @@ export async function getSubmissionsWithContextForLearners(learnerIds: string[])
       submissionType: schema.courseworkSubmission.submissionType,
       version: schema.courseworkSubmission.version,
       files: schema.courseworkSubmission.files,
+      comment: schema.courseworkSubmission.comment,
       status: schema.courseworkSubmission.status,
       submittedAt: schema.courseworkSubmission.submittedAt,
       courseTitle: schema.course.title,
@@ -265,6 +287,7 @@ export async function getSubmissionsWithContextForLearners(learnerIds: string[])
     submissionType: r.submissionType,
     version: r.version,
     files: (r.files ?? []) as CourseworkFile[],
+    comment: r.comment ?? null,
     status: r.status,
     submittedAt: r.submittedAt as string,
     courseTitle: r.courseTitle ?? 'Untitled course',
@@ -297,6 +320,7 @@ export interface RecordResultInput {
   kind: string;
   result: string | null;
   feedback: string | null;
+  feedbackFiles?: CourseworkFile[];
   recordedBy: string;
 }
 
@@ -494,6 +518,8 @@ export interface SubmissionWithResultRow extends CourseworkSubmissionRow {
   resultKind: string | null;
   result: string | null;
   feedback: string | null;
+  /** Tutor's uploaded feedback files for this version (the learner may download their own). */
+  feedbackFiles: CourseworkFile[];
 }
 
 /**
@@ -516,11 +542,13 @@ export async function listSubmissionsWithResultForLearnerUnit(
       submissionType: schema.courseworkSubmission.submissionType,
       version: schema.courseworkSubmission.version,
       files: schema.courseworkSubmission.files,
+      comment: schema.courseworkSubmission.comment,
       status: schema.courseworkSubmission.status,
       submittedAt: schema.courseworkSubmission.submittedAt,
       resultKind: schema.courseworkResult.kind,
       result: schema.courseworkResult.result,
-      feedback: schema.courseworkResult.feedback
+      feedback: schema.courseworkResult.feedback,
+      feedbackFiles: schema.courseworkResult.feedbackFiles
     })
     .from(schema.courseworkSubmission)
     .leftJoin(schema.courseworkResult, eq(schema.courseworkResult.submissionId, schema.courseworkSubmission.id))
@@ -542,10 +570,12 @@ export async function listSubmissionsWithResultForLearnerUnit(
     submissionType: r.submissionType,
     version: r.version,
     files: (r.files ?? []) as CourseworkFile[],
+    comment: r.comment ?? null,
     status: r.status,
     submittedAt: r.submittedAt as string,
     resultKind: r.resultKind ?? null,
     result: r.result ?? null,
-    feedback: r.feedback ?? null
+    feedback: r.feedback ?? null,
+    feedbackFiles: (r.feedbackFiles ?? []) as CourseworkFile[]
   }));
 }

@@ -37,7 +37,14 @@ export const ZCourseworkCreate = z.object({
   assessmentKey: z.string().min(1).max(1024),
   submissionType: z.enum(SUBMISSION_TYPES).default('final'),
   version: z.number().int().positive(),
-  files: z.array(ZCourseworkFile).min(1).max(10)
+  files: z.array(ZCourseworkFile).min(1).max(10),
+  // Optional learner note attached to this submission (Moodle "Submission comments"). Text only.
+  comment: z.string().max(5000).optional()
+});
+
+/** Tutor feedback-file presign: the files the tutor intends to upload as feedback on one submission. */
+export const ZFeedbackPresign = z.object({
+  files: z.array(ZPresignFile).min(1).max(10)
 });
 
 /** Download-signing request: the keys the caller wants signed URLs for (guard binds each to a submission). */
@@ -48,6 +55,12 @@ export const ZCourseworkDownload = z.object({
 export const ZSubmissionIdParam = z.object({
   submissionId: z.uuid()
 });
+
+/** Tutor course-view params. */
+export const ZCourseIdParam = z.object({ courseId: z.uuid() });
+export const ZCourseLessonParam = z.object({ courseId: z.uuid(), lessonId: z.uuid() });
+/** The submissions-grid selects one assessment on a unit by its (long) document key, via query. */
+export const ZAssessmentKeyQuery = z.object({ assessmentKey: z.string().min(1).max(1024) });
 
 /** Path param for the tutor caseload learner-detail route. */
 export const ZCaseloadLearnerParam = z.object({
@@ -69,9 +82,13 @@ export const ZProgressionQuery = z.object({
  */
 export const ZMarkSubmission = z.object({
   result: ZResult.optional(),
-  feedback: z.string().max(5000).optional()
+  feedback: z.string().max(5000).optional(),
+  // Already-uploaded tutor feedback files (registered under the coursework-feedback/ prefix for THIS
+  // submission; the service re-validates each key's prefix). Optional; replaces the version's feedback set.
+  feedbackFiles: z.array(ZCourseworkFile).max(10).optional()
 });
 export type MarkSubmissionInput = z.infer<typeof ZMarkSubmission>;
+export type FeedbackPresignInput = z.infer<typeof ZFeedbackPresign>;
 
 export type CourseworkPresignInput = z.infer<typeof ZCourseworkPresign>;
 export type CourseworkCreateInput = z.infer<typeof ZCourseworkCreate>;

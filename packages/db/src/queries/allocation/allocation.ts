@@ -16,6 +16,44 @@ export async function isTutorAllocatedToLearner(tutorId: string, learnerId: stri
   return rows.length > 0;
 }
 
+/**
+ * Does this tutor have at least one allocated learner ENROLLED (roleId 3 = STUDENT) in this course? Backs
+ * the tutor's read-only course-content access — a tutor may open a course only if they actually mark
+ * learners on it. (No PII — ids only.)
+ */
+export async function isTutorAllocatedToCourse(tutorId: string, courseId: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: schema.tutorAllocation.id })
+    .from(schema.tutorAllocation)
+    .innerJoin(
+      schema.groupmember,
+      and(eq(schema.groupmember.profileId, schema.tutorAllocation.learnerId), eq(schema.groupmember.roleId, 3))
+    )
+    .innerJoin(schema.group, eq(schema.group.id, schema.groupmember.groupId))
+    .innerJoin(schema.course, eq(schema.course.groupId, schema.group.id))
+    .where(and(eq(schema.tutorAllocation.tutorId, tutorId), eq(schema.course.id, courseId)))
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
+ * The learner ids allocated to this tutor AND enrolled (STUDENT) in this course — the tutor's roster for
+ * that course's submissions grid ("Separate groups: <tutor>"). Distinct.
+ */
+export async function listAllocatedLearnerIdsForCourse(tutorId: string, courseId: string): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ learnerId: schema.tutorAllocation.learnerId })
+    .from(schema.tutorAllocation)
+    .innerJoin(
+      schema.groupmember,
+      and(eq(schema.groupmember.profileId, schema.tutorAllocation.learnerId), eq(schema.groupmember.roleId, 3))
+    )
+    .innerJoin(schema.group, eq(schema.group.id, schema.groupmember.groupId))
+    .innerJoin(schema.course, eq(schema.course.groupId, schema.group.id))
+    .where(and(eq(schema.tutorAllocation.tutorId, tutorId), eq(schema.course.id, courseId)));
+  return rows.map((r) => r.learnerId);
+}
+
 export interface CreateAllocationInput {
   organizationId: string;
   tutorId: string;

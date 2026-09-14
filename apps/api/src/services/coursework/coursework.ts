@@ -4,7 +4,12 @@ import { AUDIT_ACTIONS, recordAudit } from '@cio/db/audit';
 import { ALLOWED_DOCUMENT_TYPES } from '@cio/utils/validation/constants';
 import { isUniqueConstraintViolation } from '@cio/utils/errors';
 import { getUploadLimits } from '@cio/core/config/upload-limits';
-import { courseworkKeyPrefix, generateCourseworkFileKey } from '@cio/core/utils/upload';
+import {
+  courseworkKeyPrefix,
+  generateCourseworkFileKey,
+  courseworkFeedbackKeyPrefix,
+  generateCourseworkFeedbackFileKey
+} from '@cio/core/utils/upload';
 import { generateDocumentDownloadPresignedUrls, generateDocumentUploadPresignedUrl } from '@cio/core/utils/s3';
 import {
   createSubmission,
@@ -19,7 +24,7 @@ import {
   type CourseworkSubmissionRow,
   type SubmissionWithResultRow
 } from '@cio/db/queries/coursework';
-import { canReadCoursework } from '@api/middlewares/guards';
+import { canReadCoursework, isAllocatedTutor } from '@api/middlewares/guards';
 import { notifyCourseworkSubmitted } from '@api/services/coursework/notifications';
 
 /**
@@ -129,7 +134,8 @@ export async function createCourseworkSubmission(
   assessmentKey: string,
   submissionType: string,
   version: number,
-  files: CourseworkFile[]
+  files: CourseworkFile[],
+  comment?: string
 ): Promise<CourseworkSubmissionRow> {
   if (!actor.authenticated) {
     throw new AppError('Unauthorized', ErrorCodes.UNAUTHORIZED, 401);
@@ -144,9 +150,19 @@ export async function createCourseworkSubmission(
     if (f.type) assertAllowedType(f.type, f.name);
   }
 
+  const trimmedComment = comment?.trim() ? comment.trim() : null;
   let row: CourseworkSubmissionRow;
   try {
-    row = await createSubmission({ learnerId: actor.userId, courseId, lessonId, assessmentKey, submissionType, version, files });
+    row = await createSubmission({
+      learnerId: actor.userId,
+      courseId,
+      lessonId,
+      assessmentKey,
+      submissionType,
+      version,
+      files,
+      comment: trimmedComment
+    });
   } catch (error) {
     if (isUniqueConstraintViolation(error)) {
       throw new AppError('This version already exists — please retry your upload', ErrorCodes.CONFLICT, 409);
@@ -219,4 +235,62 @@ export async function getCourseworkSubmissionForReader(
 /** Signed download URLs for coursework keys — the guard (assertCourseworkDownloadAccess) runs in the route. */
 export async function signCourseworkDownloads(keys: string[]): Promise<Record<string, string>> {
   return generateDocumentDownloadPresignedUrls(keys);
+}
+
+/** ADMIN, or a TUTOR allocated to this learner — the only roles that may grade / attach feedback. */
+async function assertGraderAccess(actor: Actor, learnerId: string): Promise<void> {
+  const ok =
+    actor.authenticated &&
+    (actor.role === 'ADMIN' || (actor.role === 'TUTOR' && (await isAllocatedTutor(actor, learnerId))));
+  if (!ok) {
+    throw new AppError('You do not have access to grade this submission', ErrorCodes.FORBIDDEN, 403);
+  }
+}
+
+/**
+ * Issue presigned upload URLs for a TUTOR's feedback files on one submission (PearlLMS). Keys are baked
+ * under the coursework-feedback/ prefix reconstructed from the submission's own course/learner/unit/
+ * assessment/version — the tutor never supplies the prefix, so feedback lands in the right, guarded place.
+ * Only ADMIN or the allocated TUTOR may presign (not the learner, not other tutors).
+ */
+export async function presignFeedbackUploads(
+  actor: Actor,
+  submissionId: string,
+  files: Array<{ fileName: string; fileType: string; fileSize?: number }>
+): Promise<{ files: PresignedCourseworkFile[] }> {
+  const submission = await getSubmissionById(submissionId);
+  if (!submission) throw new AppError('Submission not found', ErrorCodes.NOT_FOUND, 404);
+  await assertGraderAccess(actor, submission.learnerId);
+
+  const limits = getUploadLimits();
+  for (const f of files) {
+    assertAllowedType(f.fileType, f.fileName);
+    assertWithinSize(f.fileSize, f.fileName, limits.documentBytes);
+  }
+
+  const out: PresignedCourseworkFile[] = [];
+  for (const f of files) {
+    const fileKey = generateCourseworkFeedbackFileKey(
+      submission.courseId,
+      submission.learnerId,
+      submission.lessonId,
+      submission.assessmentKey ?? '',
+      submission.version,
+      f.fileName
+    );
+    const uploadUrl = await generateDocumentUploadPresignedUrl(fileKey, f.fileType);
+    out.push({ fileName: f.fileName, fileKey, uploadUrl });
+  }
+  return { files: out };
+}
+
+/** The expected feedback-file prefix for a submission — used by the marking service to bind keys. */
+export function expectedFeedbackPrefix(submission: CourseworkSubmissionRow): string {
+  return courseworkFeedbackKeyPrefix(
+    submission.courseId,
+    submission.learnerId,
+    submission.lessonId,
+    submission.assessmentKey ?? '',
+    submission.version
+  );
 }
