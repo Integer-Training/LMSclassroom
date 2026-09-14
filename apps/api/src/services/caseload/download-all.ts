@@ -8,7 +8,14 @@ import { getAssessmentSubmissions } from '@api/services/caseload/course-view';
 // learner's LATEST submission files (named per learner) via the core zip util.
 
 function sanitize(name: string): string {
-  return (name || 'unknown').replace(/[^a-zA-Z0-9 ._-]/g, '').trim().slice(0, 80) || 'unknown';
+  // Strip anything but a safe charset, then remove any leading dots so a name/filename can never reduce to
+  // "." or ".." (Zip Slip). A result that's empty or still dot-only falls back to a fixed label.
+  const cleaned = (name || '')
+    .replace(/[^a-zA-Z0-9 ._-]/g, '')
+    .replace(/^\.+/, '')
+    .trim()
+    .slice(0, 80);
+  return cleaned && cleaned !== '.' && cleaned !== '..' ? cleaned : 'unknown';
 }
 
 export async function buildAssessmentSubmissionsZip(

@@ -113,13 +113,11 @@
     return RESULT_LABELS[grade as keyof typeof RESULT_LABELS] ?? grade;
   }
 
-  // The submission to grade for a row: an explicit target, else the latest version.
-  function latestVersionId(row: SubmissionsGridRow): string | null {
-    if (row.versions.length === 0) return null;
-    return row.versions.reduce((a, b) => (b.version >= a.version ? b : a)).submissionId;
-  }
+  // The submission to grade for a row = the server-provided target, which is set ONLY when there's an
+  // unmarked version to act on (awaiting final / unmarked draft). Null for already-marked or not-submitted
+  // rows → the Grade button stays disabled (no re-mark 409, no confusing error).
   function gradeTarget(row: SubmissionsGridRow): string | null {
-    return row.gradeTargetId ?? latestVersionId(row);
+    return row.gradeTargetId;
   }
 
   function toggleRow(learnerId: string) {
