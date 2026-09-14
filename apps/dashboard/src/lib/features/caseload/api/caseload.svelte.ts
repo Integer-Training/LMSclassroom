@@ -1,7 +1,23 @@
-import { classroomio } from '$lib/utils/services/api';
+import axios from 'axios';
+import { classroomio, type InferResponseType } from '$lib/utils/services/api';
 import { BaseApi } from '$lib/utils/services/api/base.svelte';
 import { snackbar } from '$features/ui/snackbar/store';
-import { courseworkApi } from '$features/course/api/coursework.svelte';
+import { courseworkApi, type CourseworkFile } from '$features/course/api/coursework.svelte';
+
+// Tutor course-view + submissions-grid response shapes, inferred from the RPC endpoints.
+type CourseContentResp = InferResponseType<
+  (typeof classroomio.caseload.courses)[':courseId']['content']['$get']
+>;
+export type TutorCourseContent = Extract<CourseContentResp, { success: true }>['data'];
+export type TutorOutlineUnit = TutorCourseContent['units'][number];
+export type OutlineAssessmentStat = TutorOutlineUnit['assessments'][number];
+
+type SubmissionsResp = InferResponseType<
+  (typeof classroomio.caseload.courses)[':courseId']['lessons'][':lessonId']['submissions']['$get']
+>;
+export type SubmissionsGrid = Extract<SubmissionsResp, { success: true }>['data'];
+export type SubmissionsGridRow = SubmissionsGrid['rows'][number];
+export type GridVersion = SubmissionsGridRow['versions'][number];
 
 export interface CaseloadState {
   key: string;
@@ -195,6 +211,75 @@ class CaseloadApi extends BaseApi {
   // Monotonic id so a slow earlier course-filter response can't overwrite a newer one (stale-rows race).
   #progressionReqId = 0;
 
+  // Tutor course view + submissions grid.
+  courseContent = $state<TutorCourseContent | null>(null);
+  submissionsGrid = $state<SubmissionsGrid | null>(null);
+  #submissionsReqId = 0;
+
+  /** Read-only course outline (units, materials, assessments w/ per-workbook stats). Allocation-scoped. */
+  async loadCourseContent(courseId: string) {
+    this.courseContent = null;
+    return this.execute<(typeof classroomio.caseload.courses)[':courseId']['content']['$get']>({
+      requestFn: () => classroomio.caseload.courses[':courseId'].content.$get({ param: { courseId } }),
+      logContext: 'loading course content',
+      onSuccess: (result) => {
+        this.courseContent = result.data as TutorCourseContent;
+      },
+      onError: (result) => {
+        if (typeof result === 'string') snackbar.error(result);
+      }
+    });
+  }
+
+  /** The submissions grid for one assessment (workbook) on a unit. */
+  async loadSubmissions(courseId: string, lessonId: string, assessmentKey: string) {
+    const reqId = ++this.#submissionsReqId;
+    return this.execute<
+      (typeof classroomio.caseload.courses)[':courseId']['lessons'][':lessonId']['submissions']['$get']
+    >({
+      requestFn: () =>
+        classroomio.caseload.courses[':courseId'].lessons[':lessonId'].submissions.$get({
+          param: { courseId, lessonId },
+          query: { assessmentKey }
+        }),
+      logContext: 'loading submissions',
+      onSuccess: (result) => {
+        if (reqId === this.#submissionsReqId) this.submissionsGrid = result.data as SubmissionsGrid;
+      },
+      onError: (result) => {
+        if (typeof result === 'string') snackbar.error(result);
+      }
+    });
+  }
+
+  /**
+   * Upload tutor feedback files for a submission (presign → PUT). Returns the registered file metadata to
+   * pass into markResult; null on failure. Only an allocated tutor / admin is permitted (server-enforced).
+   */
+  async uploadFeedbackFiles(submissionId: string, files: File[]): Promise<CourseworkFile[] | null> {
+    try {
+      const presignRes = await classroomio.caseload.submissions[':submissionId'].feedback.presign.$post({
+        param: { submissionId },
+        json: { files: files.map((f) => ({ fileName: f.name, fileType: f.type, fileSize: f.size })) }
+      });
+      const presign = (await presignRes.json()) as
+        | { success: true; data: { files: { fileName: string; fileKey: string; uploadUrl: string }[] } }
+        | { success: false; error?: string };
+      if (!presign.success) {
+        snackbar.error(presign.error ?? 'Could not prepare the feedback upload.');
+        return null;
+      }
+      const presigned = presign.data.files;
+      for (let i = 0; i < files.length; i++) {
+        await axios.put(presigned[i].uploadUrl, files[i], { headers: { 'Content-Type': files[i].type } });
+      }
+      return files.map((f, i) => ({ key: presigned[i].fileKey, name: f.name, size: f.size, type: f.type }));
+    } catch {
+      snackbar.error('Feedback upload failed. Please try again.');
+      return null;
+    }
+  }
+
   /** The grading pipeline — queue lists + headline stats (Phase 8). Allocation-scoped server-side. */
   async loadPipeline() {
     return this.execute<typeof classroomio.caseload.pipeline.$get>({
@@ -274,12 +359,21 @@ class CaseloadApi extends BaseApi {
    * Record a tutor response on a submission version (allocated tutor / Admin). A FINAL takes a verdict
    * (result = Pass/Refer); a DRAFT takes feedback only (result undefined). Returns true on success.
    */
-  async markResult(submissionId: string, result: string | undefined, feedback: string): Promise<boolean> {
+  async markResult(
+    submissionId: string,
+    result: string | undefined,
+    feedback: string,
+    feedbackFiles?: CourseworkFile[]
+  ): Promise<boolean> {
     const res = await this.execute<(typeof classroomio.caseload.submissions)[':submissionId']['result']['$post']>({
       requestFn: () =>
         classroomio.caseload.submissions[':submissionId'].result.$post({
           param: { submissionId },
-          json: { result, feedback: feedback.trim() ? feedback.trim() : undefined }
+          json: {
+            result,
+            feedback: feedback.trim() ? feedback.trim() : undefined,
+            ...(feedbackFiles && feedbackFiles.length ? { feedbackFiles } : {})
+          }
         }),
       logContext: 'recording result',
       onSuccess: () => snackbar.success(result ? 'Result recorded' : 'Draft feedback sent'),
@@ -294,6 +388,32 @@ class CaseloadApi extends BaseApi {
   /** Open one coursework file via the shared guarded download endpoint (allocated tutor / Admin only). */
   openFile(courseId: string, lessonId: string, key: string) {
     return courseworkApi.openFile(courseId, lessonId, key);
+  }
+
+  /** Download a zip of every roster learner's latest submission for one workbook. */
+  async downloadAllSubmissions(courseId: string, lessonId: string, assessmentKey: string): Promise<void> {
+    try {
+      const res = await classroomio.caseload.courses[':courseId'].lessons[':lessonId'].submissions[
+        'download-all'
+      ].$get({ param: { courseId, lessonId }, query: { assessmentKey } });
+      if (!res.ok) {
+        snackbar.error('Could not prepare the download (no submitted files yet?).');
+        return;
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get('content-disposition') ?? '';
+      const filename = cd.match(/filename="?([^"]+)"?/)?.[1] ?? 'submissions.zip';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      snackbar.error('Could not download submissions.');
+    }
   }
 }
 

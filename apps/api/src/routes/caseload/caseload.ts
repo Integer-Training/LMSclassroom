@@ -10,6 +10,7 @@ import {
 } from '@cio/utils/validation/coursework';
 import { getCaseloadLearnerDetail, getTutorCaseload, getTutorPipeline } from '@api/services/caseload/caseload';
 import { getTutorCourseContent, getAssessmentSubmissions } from '@api/services/caseload/course-view';
+import { buildAssessmentSubmissionsZip } from '@api/services/caseload/download-all';
 import { getProgression, getProgressionDetail } from '@api/services/progression/progression';
 import { recordResult } from '@api/services/coursework/marking';
 import { presignFeedbackUploads } from '@api/services/coursework/coursework';
@@ -147,6 +148,27 @@ export const caseloadRouter = new Hono()
         return c.json({ success: true, data }, 200);
       } catch (error) {
         return handleError(c, error, 'Failed to load submissions');
+      }
+    }
+  )
+  // "Download all submissions" — a zip of every roster learner's latest files for one workbook. Same
+  // access scope as the grid (reuses getAssessmentSubmissions inside the zip builder).
+  .get(
+    '/courses/:courseId/lessons/:lessonId/submissions/download-all',
+    requireStaff,
+    zValidator('param', ZCourseLessonParam),
+    zValidator('query', ZAssessmentKeyQuery),
+    async (c) => {
+      try {
+        const actor = c.get('actor') as Actor;
+        const { courseId, lessonId } = c.req.valid('param');
+        const { assessmentKey } = c.req.valid('query');
+        const { filename, buffer } = await buildAssessmentSubmissionsZip(actor, courseId, lessonId, assessmentKey);
+        c.header('Content-Type', 'application/zip');
+        c.header('Content-Disposition', `attachment; filename="${filename}"`);
+        return c.body(buffer as unknown as ArrayBuffer);
+      } catch (error) {
+        return handleError(c, error, 'Failed to build submissions zip');
       }
     }
   );

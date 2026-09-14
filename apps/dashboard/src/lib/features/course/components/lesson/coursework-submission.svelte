@@ -39,6 +39,7 @@
 
   let selected = $state<File[]>([]);
   let mode = $state<'draft' | 'final'>('final');
+  let comment = $state('');
 
   onMount(() => {
     courseworkApi.ensureLoaded(courseId, lessonId);
@@ -101,8 +102,11 @@
   async function submit() {
     if (selected.length === 0) return;
     const submissionType = assessment.allowDrafts ? mode : 'final';
-    const ok = await courseworkApi.submit(courseId, lessonId, assessment.key, submissionType, selected);
-    if (ok) selected = [];
+    const ok = await courseworkApi.submit(courseId, lessonId, assessment.key, submissionType, selected, comment);
+    if (ok) {
+      selected = [];
+      comment = '';
+    }
   }
   function openFile(file: CourseworkFile) {
     courseworkApi.openFile(courseId, lessonId, file.key);
@@ -214,7 +218,21 @@
     {/if}
 
     {#if selected.length > 0}
-      <div class="mt-4 flex justify-end gap-2">
+      <div class="mt-3">
+        <label for="coursework-comment-{assessment.key}" class="text-muted-foreground mb-1 block text-xs font-medium">
+          Comment for your tutor (optional)
+        </label>
+        <textarea
+          id="coursework-comment-{assessment.key}"
+          bind:value={comment}
+          rows="2"
+          maxlength="5000"
+          placeholder="Add a note with your submission…"
+          class="border-border bg-background focus:ring-primary/40 w-full rounded-md border p-2 text-sm focus:ring-2 focus:outline-none"
+        ></textarea>
+      </div>
+
+      <div class="mt-3 flex justify-end gap-2">
         <Button variant="outline" onclick={() => (selected = [])} disabled={courseworkApi.isUploading}>Clear</Button>
         <Button onclick={submit} loading={courseworkApi.isUploading} disabled={courseworkApi.isUploading}>
           {assessment.allowDrafts && mode === 'draft' ? 'Submit draft' : 'Submit final'}
@@ -265,10 +283,33 @@
                 </li>
               {/each}
             </ul>
-            {#if sub.feedback}
+            {#if sub.comment}
+              <div class="mt-2 rounded-md border border-dashed p-2.5">
+                <p class="text-muted-foreground mb-0.5 text-xs font-medium">Your comment</p>
+                <p class="text-sm whitespace-pre-wrap">{sub.comment}</p>
+              </div>
+            {/if}
+            {#if sub.feedback || sub.feedbackFiles.length > 0}
               <div class="bg-muted/40 mt-2 rounded-md p-2.5">
                 <p class="text-muted-foreground mb-0.5 text-xs font-medium">Tutor feedback</p>
-                <p class="text-sm whitespace-pre-wrap">{sub.feedback}</p>
+                {#if sub.feedback}<p class="text-sm whitespace-pre-wrap">{sub.feedback}</p>{/if}
+                {#if sub.feedbackFiles.length > 0}
+                  <ul class="mt-1.5 space-y-1">
+                    {#each sub.feedbackFiles as file (file.key)}
+                      <li>
+                        <button
+                          type="button"
+                          class="ui:text-primary inline-flex items-center gap-1.5 text-sm hover:underline"
+                          onclick={() => openFile(file)}
+                        >
+                          <DownloadIcon class="size-4 shrink-0" />
+                          <span class="truncate">{file.name}</span>
+                          {#if file.size}<span class="text-muted-foreground text-xs">({formatSize(file.size)})</span>{/if}
+                        </button>
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
               </div>
             {/if}
           </li>

@@ -21,6 +21,8 @@ export interface CourseworkSubmission {
   submissionType: string;
   version: number;
   files: CourseworkFile[];
+  /** The learner's optional note attached to this submission. */
+  comment: string | null;
   status: string;
   submittedAt: string;
   /** 'verdict' | 'draft' | null (unmarked). */
@@ -29,6 +31,8 @@ export interface CourseworkSubmission {
   result: string | null;
   /** The tutor's written feedback for this version, or null. */
   feedback: string | null;
+  /** The tutor's uploaded feedback files (marked-up workbook) — the learner may download their own. */
+  feedbackFiles: CourseworkFile[];
 }
 
 // Allowed document types + limit mirror the server config (validation/constants + upload-limits). The
@@ -104,7 +108,8 @@ class CourseworkApi extends BaseApi {
     lessonId: string,
     assessmentKey: string,
     submissionType: 'draft' | 'final',
-    files: File[]
+    files: File[],
+    comment?: string
   ): Promise<boolean> {
     this.isUploading = true;
     this.uploadError = null;
@@ -150,7 +155,8 @@ class CourseworkApi extends BaseApi {
             name: f.name,
             size: f.size,
             type: f.type
-          }))
+          })),
+          ...(comment && comment.trim() ? { comment: comment.trim() } : {})
         }
       });
       const created = (await createRes.json()) as
