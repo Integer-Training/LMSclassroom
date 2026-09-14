@@ -19,6 +19,11 @@ export type SubmissionsGrid = Extract<SubmissionsResp, { success: true }>['data'
 export type SubmissionsGridRow = SubmissionsGrid['rows'][number];
 export type GridVersion = SubmissionsGridRow['versions'][number];
 
+type UnitContentResp = InferResponseType<
+  (typeof classroomio.caseload.courses)[':courseId']['lessons'][':lessonId']['unit']['$get']
+>;
+export type TutorUnitContent = Extract<UnitContentResp, { success: true }>['data'];
+
 export interface CaseloadState {
   key: string;
   label: string;
@@ -214,7 +219,49 @@ class CaseloadApi extends BaseApi {
   // Tutor course view + submissions grid.
   courseContent = $state<TutorCourseContent | null>(null);
   submissionsGrid = $state<SubmissionsGrid | null>(null);
+  unitContent = $state<TutorUnitContent | null>(null);
   #submissionsReqId = 0;
+  #unitReqId = 0;
+
+  /** One unit's full content (read-only) for the tutor unit-by-unit view. */
+  async loadUnitContent(courseId: string, lessonId: string) {
+    const reqId = ++this.#unitReqId;
+    this.unitContent = null;
+    return this.execute<
+      (typeof classroomio.caseload.courses)[':courseId']['lessons'][':lessonId']['unit']['$get']
+    >({
+      requestFn: () =>
+        classroomio.caseload.courses[':courseId'].lessons[':lessonId'].unit.$get({ param: { courseId, lessonId } }),
+      logContext: 'loading unit content',
+      onSuccess: (result) => {
+        if (reqId === this.#unitReqId) this.unitContent = result.data as TutorUnitContent;
+      },
+      onError: (result) => {
+        if (typeof result === 'string') snackbar.error(result);
+      }
+    });
+  }
+
+  /** Open a course MATERIAL (resource / assessment brief) via the allocation-gated tutor download. */
+  async openMaterial(courseId: string, key: string): Promise<void> {
+    try {
+      const res = await classroomio.caseload.courses[':courseId'].materials.download.$post({
+        param: { courseId },
+        json: { keys: [key] }
+      });
+      const body = (await res.json()) as
+        | { success: true; urls: Record<string, string> }
+        | { success: false; error?: string };
+      if (!body.success) {
+        snackbar.error(body.error ?? 'Could not open the file.');
+        return;
+      }
+      const url = body.urls[key];
+      if (url) window.open(url, '_blank', 'noopener');
+    } catch {
+      snackbar.error('Could not open the file.');
+    }
+  }
 
   /** Read-only course outline (units, materials, assessments w/ per-workbook stats). Allocation-scoped. */
   async loadCourseContent(courseId: string) {

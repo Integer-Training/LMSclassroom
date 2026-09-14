@@ -1,19 +1,17 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { Badge } from '@cio/ui/base/badge';
-  import { Button } from '@cio/ui/base/button';
   import { Spinner } from '@cio/ui/base/spinner';
   import { Empty } from '@cio/ui/custom/empty';
   import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
   import LibraryBigIcon from '@lucide/svelte/icons/library-big';
   import UsersIcon from '@lucide/svelte/icons/users';
-  import ClipboardListIcon from '@lucide/svelte/icons/clipboard-list';
-  import PaperclipIcon from '@lucide/svelte/icons/paperclip';
+  import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
   import { caseloadApi } from '$features/caseload/api/caseload.svelte';
 
-  // Tutor read-only course view (PearlLMS — courses-assigned phase). Renders the allocation-scoped
-  // outline: units in order, each unit's materials (read-only) and its assessments with per-workbook
-  // stats (submitted / needs grading / passed) and a link into the Moodle-style submissions grid.
+  // Tutor read-only course view (PearlLMS — unit-by-unit rebuild). This page is now a compact UNITS
+  // OVERVIEW: a flat, ordered list of units, each linking into its own read-only unit page. The old
+  // single long-scroll page (every unit's content stacked) is replaced to stop the endless scroll.
 
   let { data }: { data: { courseId: string } } = $props();
 
@@ -24,14 +22,8 @@
   const content = $derived(caseloadApi.courseContent);
   const units = $derived(content?.units ?? []);
 
-  function formatDate(iso: string | null): string {
-    if (!iso) return '—';
-    const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString();
-  }
-
-  function submissionsHref(lessonId: string, assessmentKey: string): string {
-    return `/caseload/courses/${data.courseId}/submissions?lessonId=${lessonId}&assessmentKey=${encodeURIComponent(assessmentKey)}`;
+  function needsGradingTotal(unit: (typeof units)[number]): number {
+    return unit.assessments.reduce((sum, a) => sum + a.needsGrading, 0);
   }
 </script>
 
@@ -67,84 +59,42 @@
     variant="page"
   />
 {:else}
-  <div class="flex flex-col gap-4">
+  <div class="flex flex-col gap-2">
     {#each units as unit (unit.lessonId)}
-      <section class="bg-card rounded-lg border">
-        <!-- Unit header -->
-        <div class="flex flex-wrap items-center gap-2 border-b px-4 py-3">
-          {#if unit.sectionTitle}
-            <span class="text-muted-foreground text-xs font-medium uppercase tracking-wide">
-              {unit.sectionTitle}
+      {@const grading = needsGradingTotal(unit)}
+      <a
+        href={`/caseload/courses/${data.courseId}/units/${unit.lessonId}`}
+        class="bg-card hover:border-primary/40 hover:bg-accent/40 group flex items-center gap-3 rounded-lg border px-4 py-3 transition-colors"
+      >
+        <div class="min-w-0 flex-1 space-y-1.5">
+          <div class="flex flex-wrap items-center gap-2">
+            <h2 class="truncate text-base font-semibold">{unit.title}</h2>
+            {#if unit.unitType}
+              <Badge variant="outline" class="capitalize">{unit.unitType}</Badge>
+            {/if}
+            {#if unit.isOptional}
+              <Badge variant="secondary">Optional</Badge>
+            {/if}
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-muted-foreground text-xs tabular-nums">
+              {unit.materials.length} material{unit.materials.length === 1 ? '' : 's'} ·
+              {unit.assessments.length} assessment{unit.assessments.length === 1 ? '' : 's'}
             </span>
-            <span class="text-muted-foreground">·</span>
-          {/if}
-          <h2 class="text-base font-semibold">{unit.title}</h2>
-          {#if unit.unitType}
-            <Badge variant="outline" class="capitalize">{unit.unitType}</Badge>
-          {/if}
+            {#if grading > 0}
+              <span
+                class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 tabular-nums dark:bg-amber-500/20 dark:text-amber-300"
+              >
+                {grading} need grading
+              </span>
+            {/if}
+          </div>
         </div>
-
-        <div class="space-y-3 p-4">
-          <!-- Assessments -->
-          {#if unit.assessments.length > 0}
-            <div class="space-y-2">
-              {#each unit.assessments as assessment (assessment.key)}
-                <div
-                  class="bg-background flex flex-col gap-3 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div class="min-w-0 space-y-1.5">
-                    <div class="flex flex-wrap items-center gap-2">
-                      <ClipboardListIcon size={16} class="text-muted-foreground shrink-0" />
-                      <span class="font-medium">{assessment.name}</span>
-                      <Badge variant="secondary" class="capitalize">{assessment.kind}</Badge>
-                      {#if assessment.dueAt}
-                        <span class="text-muted-foreground text-xs tabular-nums">
-                          Due {formatDate(assessment.dueAt)}
-                        </span>
-                      {/if}
-                    </div>
-                    <div class="flex flex-wrap items-center gap-1.5">
-                      <Badge variant="outline" class="tabular-nums">{assessment.submitted} submitted</Badge>
-                      {#if assessment.needsGrading > 0}
-                        <Badge variant="warning" class="tabular-nums">{assessment.needsGrading} need grading</Badge>
-                      {:else}
-                        <Badge variant="outline" class="tabular-nums">0 need grading</Badge>
-                      {/if}
-                      {#if assessment.passed > 0}
-                        <Badge variant="success" class="tabular-nums">{assessment.passed} passed</Badge>
-                      {:else}
-                        <Badge variant="outline" class="tabular-nums">0 passed</Badge>
-                      {/if}
-                    </div>
-                  </div>
-                  <div class="shrink-0">
-                    <Button href={submissionsHref(unit.lessonId, assessment.key)} size="sm">
-                      View submissions
-                    </Button>
-                  </div>
-                </div>
-              {/each}
-            </div>
-          {:else}
-            <p class="text-muted-foreground text-sm">No assessments in this unit.</p>
-          {/if}
-
-          <!-- Materials (read-only) -->
-          {#if unit.materials.length > 0}
-            <div class="border-t pt-3">
-              <p class="text-muted-foreground mb-1.5 text-xs font-medium uppercase tracking-wide">Materials</p>
-              <ul class="flex flex-wrap gap-x-4 gap-y-1">
-                {#each unit.materials as material (material.key)}
-                  <li class="text-muted-foreground inline-flex items-center gap-1.5 text-sm">
-                    <PaperclipIcon size={14} class="shrink-0" />
-                    {material.name}
-                  </li>
-                {/each}
-              </ul>
-            </div>
-          {/if}
-        </div>
-      </section>
+        <ChevronRightIcon
+          size={18}
+          class="text-muted-foreground group-hover:text-foreground shrink-0 transition-colors"
+        />
+      </a>
     {/each}
   </div>
 {/if}

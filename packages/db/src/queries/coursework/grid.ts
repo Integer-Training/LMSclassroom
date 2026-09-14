@@ -82,6 +82,7 @@ export interface OutlineUnit {
   lessonId: string;
   title: string;
   unitType: string | null;
+  isOptional: boolean;
   sectionId: string | null;
   sectionTitle: string | null;
   documents: OutlineDoc[];
@@ -117,6 +118,7 @@ export async function getCourseOutline(courseId: string, client: DbOrTxClient = 
       lessonId: schema.lesson.id,
       title: schema.lesson.title,
       unitType: schema.lesson.unitType,
+      isOptional: schema.lesson.isOptional,
       lessonOrder: schema.lesson.order,
       sectionId: schema.courseSection.id,
       sectionTitle: schema.courseSection.title,
@@ -139,6 +141,7 @@ export async function getCourseOutline(courseId: string, client: DbOrTxClient = 
     lessonId: r.lessonId,
     title: r.title ?? 'Untitled unit',
     unitType: r.unitType ?? null,
+    isOptional: r.isOptional === true,
     sectionId: r.sectionId ?? null,
     sectionTitle: r.sectionTitle ?? null,
     documents: ((r.documents ?? []) as RawDoc[]).map((d) => ({
@@ -163,6 +166,72 @@ export async function getLessonTitle(lessonId: string, client: DbOrTxClient = db
     .where(eq(schema.lesson.id, lessonId))
     .limit(1);
   return row?.title ?? null;
+}
+
+export interface UnitVideo {
+  type: string;
+  link: string | null;
+  key: string | null;
+  fileName: string | null;
+}
+export interface UnitContent {
+  lessonId: string;
+  courseId: string;
+  title: string;
+  unitType: string | null;
+  isOptional: boolean;
+  note: string | null;
+  videos: UnitVideo[];
+  documents: OutlineDoc[]; // resources + assessments (with kind + download key)
+  links: { label: string; url: string }[];
+}
+
+type RawVideo = { type?: string; link?: string; key?: string; fileName?: string };
+
+/** The full content of ONE unit (lesson) — note, videos, documents (materials + assessments), links —
+ *  for the tutor read-only unit view. No access control here (the service gates it). */
+export async function getUnitContent(lessonId: string, client: DbOrTxClient = db): Promise<UnitContent | null> {
+  const [row] = await client
+    .select({
+      lessonId: schema.lesson.id,
+      courseId: schema.lesson.courseId,
+      title: schema.lesson.title,
+      unitType: schema.lesson.unitType,
+      isOptional: schema.lesson.isOptional,
+      note: schema.lesson.note,
+      videos: schema.lesson.videos,
+      documents: schema.lesson.documents,
+      links: schema.lesson.links
+    })
+    .from(schema.lesson)
+    .where(eq(schema.lesson.id, lessonId))
+    .limit(1);
+  if (!row) return null;
+
+  return {
+    lessonId: row.lessonId,
+    courseId: row.courseId ?? '',
+    title: row.title ?? 'Untitled unit',
+    unitType: row.unitType ?? null,
+    isOptional: row.isOptional === true,
+    note: row.note ?? null,
+    videos: ((row.videos ?? []) as RawVideo[]).map((v) => ({
+      type: v.type ?? 'generic',
+      link: v.link ?? null,
+      key: v.key ?? null,
+      fileName: v.fileName ?? null
+    })),
+    documents: ((row.documents ?? []) as RawDoc[]).map((d) => ({
+      key: d.key,
+      name: d.name ?? 'Untitled',
+      kind: d.kind ?? null,
+      dueAt: d.dueAt ?? null,
+      allowDrafts: d.allowDrafts !== false,
+      downloadable: d.downloadable === true,
+      link: d.link ?? null
+    })),
+    links: ((row.links ?? []) as { label: string; url: string }[]).map((l) => ({ label: l.label, url: l.url }))
+  };
 }
 
 export interface GridSubmission {

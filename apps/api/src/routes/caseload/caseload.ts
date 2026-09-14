@@ -3,13 +3,19 @@ import {
   ZCaseloadLearnerParam,
   ZCourseIdParam,
   ZCourseLessonParam,
+  ZCourseworkDownload,
   ZFeedbackPresign,
   ZMarkSubmission,
   ZProgressionQuery,
   ZSubmissionIdParam
 } from '@cio/utils/validation/coursework';
 import { getCaseloadLearnerDetail, getTutorCaseload, getTutorPipeline } from '@api/services/caseload/caseload';
-import { getTutorCourseContent, getAssessmentSubmissions } from '@api/services/caseload/course-view';
+import {
+  getTutorCourseContent,
+  getAssessmentSubmissions,
+  getTutorUnitContent,
+  signCourseMaterialsForTutor
+} from '@api/services/caseload/course-view';
 import { buildAssessmentSubmissionsZip } from '@api/services/caseload/download-all';
 import { getProgression, getProgressionDetail } from '@api/services/progression/progression';
 import { recordResult } from '@api/services/coursework/marking';
@@ -130,6 +136,30 @@ export const caseloadRouter = new Hono()
       return c.json({ success: true, data }, 200);
     } catch (error) {
       return handleError(c, error, 'Failed to load course content');
+    }
+  })
+  // One unit's full content (read-only) for the tutor unit-by-unit view. Allocation-gated.
+  .get('/courses/:courseId/lessons/:lessonId/unit', requireStaff, zValidator('param', ZCourseLessonParam), async (c) => {
+    try {
+      const actor = c.get('actor') as Actor;
+      const { courseId, lessonId } = c.req.valid('param');
+      const data = await getTutorUnitContent(actor, courseId, lessonId);
+      return c.json({ success: true, data }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to load unit');
+    }
+  })
+  // Sign downloads for a course's MATERIALS (resources + assessment briefs) for an allocated tutor. Each key
+  // must be a real document on one of the course's units (service-enforced).
+  .post('/courses/:courseId/materials/download', requireStaff, zValidator('param', ZCourseIdParam), zValidator('json', ZCourseworkDownload), async (c) => {
+    try {
+      const actor = c.get('actor') as Actor;
+      const { courseId } = c.req.valid('param');
+      const { keys } = c.req.valid('json');
+      const urls = await signCourseMaterialsForTutor(actor, courseId, keys);
+      return c.json({ success: true, urls }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to sign material downloads');
     }
   })
   // The submissions grid for one assessment (workbook) on a unit — every roster learner's submission +

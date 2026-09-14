@@ -3,13 +3,16 @@ import { AppError, ErrorCodes } from '@api/utils/errors';
 import { isPassingResult } from '@cio/utils/constants';
 import { isTutorAllocatedToCourse, listAllocatedLearnerIdsForCourse } from '@cio/db/queries/allocation';
 import { listEnrolledLearnersWithName } from '@cio/db/queries/reports';
+import { generateDocumentDownloadPresignedUrls } from '@cio/core/utils/s3';
 import {
   getCourseOutline,
   getCourseGridLearners,
   getSubmissionsForAssessment,
   getLessonTitle,
+  getUnitContent,
   getAssessmentItemsForLesson,
   getSubmissionsWithContextForLearners,
+  type UnitContent,
   type CourseOutline,
   type GridLearner,
   type GridSubmission,
@@ -84,6 +87,7 @@ export interface TutorOutlineUnit {
   lessonId: string;
   title: string;
   unitType: string | null;
+  isOptional: boolean;
   sectionTitle: string | null;
   materials: OutlineMaterial[];
   assessments: OutlineAssessmentStat[];
@@ -153,6 +157,7 @@ export async function getTutorCourseContent(actor: Actor, courseId: string): Pro
       lessonId: u.lessonId,
       title: u.title,
       unitType: u.unitType,
+      isOptional: u.isOptional,
       sectionTitle: u.sectionTitle,
       materials,
       assessments
@@ -181,6 +186,47 @@ function toGridLike(s: SubmissionWithContext): GridSubmission {
     recordedById: null,
     recordedByName: null
   };
+}
+
+// ── Tutor per-unit content (read-only) + material downloads ──────────────────────────────────────────
+
+/** The full content of ONE unit for the tutor read-only view. Allocation-gated (resolveRoster); the
+ *  unit must belong to the course in the path (else 404). Read-only — no submit, no edit. */
+export async function getTutorUnitContent(
+  actor: Actor,
+  courseId: string,
+  lessonId: string
+): Promise<UnitContent> {
+  await resolveRoster(actor, courseId); // access gate (403 if not allocated / not admin)
+  const content = await getUnitContent(lessonId);
+  if (!content || content.courseId !== courseId) {
+    throw new AppError('Unit not found in this course', ErrorCodes.NOT_FOUND, 404);
+  }
+  return content;
+}
+
+/**
+ * Sign download URLs for a tutor viewing a course's MATERIALS (resources + assessment briefs). Allocation-
+ * gated, and every requested key must be a real document key on one of THIS course's units (so a tutor can
+ * never sign an arbitrary object). Coursework submission files are NOT here — those go through the
+ * per-submission coursework download guard.
+ */
+export async function signCourseMaterialsForTutor(
+  actor: Actor,
+  courseId: string,
+  keys: string[]
+): Promise<Record<string, string>> {
+  await resolveRoster(actor, courseId); // access gate
+  const outline = await getCourseOutline(courseId);
+  if (!outline) throw new AppError('Course not found', ErrorCodes.NOT_FOUND, 404);
+  const valid = new Set<string>();
+  for (const u of outline.units) for (const d of u.documents) valid.add(d.key);
+  for (const k of keys) {
+    if (!valid.has(k)) {
+      throw new AppError('You do not have access to this file', ErrorCodes.FORBIDDEN, 403);
+    }
+  }
+  return generateDocumentDownloadPresignedUrls(keys);
 }
 
 // ── Phase 2: the submissions grid for one assessment ─────────────────────────────────────────────────
