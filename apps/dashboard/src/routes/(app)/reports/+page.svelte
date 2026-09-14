@@ -74,7 +74,7 @@
                       {#if row.completed}
                         —
                       {:else if row.currentPosition}
-                        Session {row.currentPosition.index} of {row.total}
+                        Unit {row.currentPosition.index} of {row.total}
                       {:else}
                         —
                       {/if}

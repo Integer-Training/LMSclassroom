@@ -1,7 +1,7 @@
 import * as schema from '@db/schema';
 
 import { and, db, desc, eq, sql, type DbOrTxClient } from '@db/drizzle';
-import { isExemptUnitType, isPassingResult } from '@cio/utils/constants';
+import { isNonGatingUnit, isPassingResult } from '@cio/utils/constants';
 import { getOrderedUnitsForCourse } from '../gating';
 import { hasLearnerPassedUnit } from '../coursework';
 
@@ -32,7 +32,7 @@ export async function isCourseComplete(
   client: DbOrTxClient = db
 ): Promise<boolean> {
   const units = await getOrderedUnitsForCourse(courseId, client);
-  const required = units.filter((u) => !isExemptUnitType(u.unitType));
+  const required = units.filter((u) => !isNonGatingUnit(u));
   if (required.length === 0) return false;
   for (const u of required) {
     if (!(await hasLearnerPassedUnit(learnerId, u.lessonId, client))) return false;

@@ -124,6 +124,7 @@
   // it maps back to null on save (the lesson.unit_type column is nullable).
   const NO_UNIT_TYPE = '__none__';
   const unitType = $derived(lessonApi.lesson?.unitType ?? null);
+  const isOptional = $derived(lessonApi.lesson?.isOptional ?? false);
 
   function unitTypeTriggerLabel(value: string | null): string {
     return value && value in UNIT_TYPE_LABELS ? UNIT_TYPE_LABELS[value as UnitType] : 'No type';
@@ -256,6 +257,20 @@
             {/each}
           </Select.Content>
         </Select.Root>
+      </Field.Field>
+
+      <Field.Field orientation="horizontal">
+        <Checkbox
+          id="lesson-is-optional"
+          checked={isOptional}
+          onCheckedChange={(v) => lessonApi.updateLessonState('isOptional', v === true)}
+        />
+        <Field.Content>
+          <Field.Label for="lesson-is-optional">Optional unit</Field.Label>
+          <Field.Description>
+            An optional unit never blocks the next unit and is excluded from the learner's % complete.
+          </Field.Description>
+        </Field.Content>
       </Field.Field>
     </Field.Set>
 

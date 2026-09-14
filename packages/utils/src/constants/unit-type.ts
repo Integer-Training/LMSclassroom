@@ -37,17 +37,27 @@ export function isExemptUnitType(value: unknown): boolean {
 }
 
 /**
- * The index of the nearest preceding NON-exempt unit for `units[idx]`, or null if none precedes it — the
- * ONE place the "look back past exempt units" chain walk lives (Phase 4). Both the isUnitUnlocked guard and
- * the outline unlock-map compose this pure function, so there is no duplicated chain logic anywhere. Generic
- * over the ordered unit shape (only `unitType` is read).
+ * Is this unit NON-GATING — always open, transparent to the unlock chain, and excluded from required
+ * progress? True for an exempt unit TYPE (induction/id-check) OR an explicitly OPTIONAL unit (author toggle,
+ * `lesson.is_optional`). The single predicate gating + progress + completion use so the two exemption
+ * mechanisms stay in lockstep. Reads only `unitType` + `isOptional`; a missing `isOptional` = false.
+ */
+export function isNonGatingUnit(unit: { unitType: string | null; isOptional?: boolean | null }): boolean {
+  return isExemptUnitType(unit.unitType) || unit.isOptional === true;
+}
+
+/**
+ * The index of the nearest preceding GATING unit for `units[idx]`, or null if none precedes it — the ONE
+ * place the "look back past exempt/optional units" chain walk lives (Phase 4). Both the isUnitUnlocked guard
+ * and the outline unlock-map compose this pure function, so there is no duplicated chain logic anywhere.
+ * Generic over the ordered unit shape (reads `unitType` + optional `isOptional`).
  */
 export function findGatePredecessorIndex(
-  units: ReadonlyArray<{ unitType: string | null }>,
+  units: ReadonlyArray<{ unitType: string | null; isOptional?: boolean | null }>,
   idx: number
 ): number | null {
   for (let p = idx - 1; p >= 0; p--) {
-    if (!isExemptUnitType(units[p].unitType)) return p;
+    if (!isNonGatingUnit(units[p])) return p;
   }
   return null;
 }

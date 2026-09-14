@@ -546,7 +546,7 @@
                     </span>
                     <div class="text-sm">
                       <p class="font-semibold text-amber-900 dark:text-amber-200">
-                        This session has {assessmentItems.length > 1 ? `${assessmentItems.length} assessments` : 'an assessment'} to submit
+                        This unit has {assessmentItems.length > 1 ? `${assessmentItems.length} assessments` : 'an assessment'} to submit
                       </p>
                       <p class="text-amber-700/90 dark:text-amber-300/80">{assessmentSummary} — download the brief, complete it, then upload your work.</p>
                     </div>

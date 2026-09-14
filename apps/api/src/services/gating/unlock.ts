@@ -1,7 +1,7 @@
 import type { Actor } from '@cio/db/actor';
 import { getCourseSequentialUnlock, getOrderedUnitsForCourse } from '@cio/db/queries/gating';
 import { hasLearnerPassedUnit } from '@cio/db/queries/coursework';
-import { findGatePredecessorIndex, isExemptUnitType } from '@cio/utils/constants';
+import { findGatePredecessorIndex, isNonGatingUnit } from '@cio/utils/constants';
 import { isRole } from '@cio/utils/auth';
 
 // Per-unit lock state for a learner's course OUTLINE (PearlLMS Phase 4 Step 3). PRESENTATION only — the
@@ -37,7 +37,7 @@ export async function getCourseUnlockMap(actor: Actor, courseId: string): Promis
   };
 
   for (let i = 0; i < units.length; i++) {
-    if (isExemptUnitType(units[i].unitType)) {
+    if (isNonGatingUnit(units[i])) {
       map[units[i].lessonId] = { unlocked: true, lockedByTitle: null };
       continue;
     }
@@ -73,7 +73,7 @@ export async function getUnitsUnlockedByPass(
 
   const opened: { lessonId: string; title: string | null }[] = [];
   for (let i = 0; i < units.length; i++) {
-    if (isExemptUnitType(units[i].unitType)) continue; // exempt units are always open — never "newly unlocked"
+    if (isNonGatingUnit(units[i])) continue; // exempt units are always open — never "newly unlocked"
     if (findGatePredecessorIndex(units, i) === passedIndex) {
       opened.push({ lessonId: units[i].lessonId, title: units[i].title ?? null });
     }

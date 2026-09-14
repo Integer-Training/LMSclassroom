@@ -1048,7 +1048,10 @@ export const lesson = pgTable(
     // PearlLMS Phase 2: optional unit/session type label. Plain nullable varchar — allowed values
     // come from the UNIT_TYPES config (@cio/utils/constants), enforced at the validation layer, not
     // a Postgres enum. Phase 4 reads exemptions against these; Phase 2 only stores the label.
-    unitType: varchar('unit_type')
+    unitType: varchar('unit_type'),
+    // PearlLMS — an OPTIONAL unit: non-gating (never blocks the next unit) AND excluded from required
+    // progress / % complete. Like an exempt unit type, but an explicit author toggle independent of type.
+    isOptional: boolean('is_optional').default(false).notNull()
   },
   (table) => [
     foreignKey({

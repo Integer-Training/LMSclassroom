@@ -1,5 +1,5 @@
 import { db, type DbOrTxClient } from '@db/drizzle';
-import { isExemptUnitType } from '@cio/utils/constants';
+import { isNonGatingUnit } from '@cio/utils/constants';
 import { getOrderedUnitsForCourse } from '../gating';
 import { hasLearnerPassedUnit } from '../coursework';
 import { getCourseCompletion } from '../completion';
@@ -36,6 +36,7 @@ export interface OrderedUnitLite {
   lessonId: string;
   unitType: string | null;
   title: string | null;
+  isOptional?: boolean | null;
 }
 
 /**
@@ -50,7 +51,7 @@ export function computeProgress(
   isUnitPassed: (lessonId: string) => boolean,
   completedAt: string | null
 ): CourseProgress {
-  const nonExempt = units.filter((u) => !isExemptUnitType(u.unitType));
+  const nonExempt = units.filter((u) => !isNonGatingUnit(u));
   const total = nonExempt.length;
 
   let passed = 0;
@@ -84,7 +85,7 @@ export async function computeLearnerCourseProgress(
   const units = await getOrderedUnitsForCourse(courseId, client);
   const passed = new Set<string>();
   for (const u of units) {
-    if (!isExemptUnitType(u.unitType) && (await hasLearnerPassedUnit(learnerId, u.lessonId, client))) {
+    if (!isNonGatingUnit(u) && (await hasLearnerPassedUnit(learnerId, u.lessonId, client))) {
       passed.add(u.lessonId);
     }
   }

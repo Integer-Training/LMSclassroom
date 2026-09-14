@@ -19,7 +19,7 @@ export const MATERIAL_KIND_LABELS: Record<MaterialKind, string> = {
   resource: 'Resource',
   workbook: 'Workbook',
   casestudy: 'Case study',
-  assignment: 'Assignment'
+  assignment: 'Workbook'
 };
 
 /** Runtime membership check against the configured material-kind list. */

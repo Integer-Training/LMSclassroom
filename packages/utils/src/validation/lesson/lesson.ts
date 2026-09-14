@@ -81,7 +81,9 @@ export const ZLessonUpdate = z.object({
     )
     .optional(),
   // PearlLMS Phase 2: optional unit/session type label (config-driven; null clears it)
-  unitType: ZUnitTypeNullable
+  unitType: ZUnitTypeNullable,
+  // PearlLMS: an OPTIONAL unit — non-gating + excluded from required progress.
+  isOptional: z.boolean().optional()
 });
 export type TLessonUpdate = z.infer<typeof ZLessonUpdate>;
 

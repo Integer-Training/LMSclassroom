@@ -330,9 +330,9 @@
         <!-- PearlLMS Phase 8 — material type. Resource = read-only reference; the three assessment kinds
              turn this file into a brief the learner downloads, answers, and uploads a submission against. -->
         <div class="border-border mb-4 rounded-lg border p-3 text-sm">
-          <p class="ui:text-foreground mb-2 font-medium">Material type</p>
+          <p class="ui:text-foreground mb-2 font-medium">Content type</p>
           <div class="flex flex-wrap gap-2">
-            {#each MATERIAL_KINDS as kind (kind)}
+            {#each MATERIAL_KINDS.filter((k) => k !== 'assignment') as kind (kind)}
               <button
                 type="button"
                 onclick={() => (materialKind = kind)}

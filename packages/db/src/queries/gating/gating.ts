@@ -20,6 +20,8 @@ export interface OrderedUnit {
   lessonId: string;
   unitType: string | null;
   title: string | null;
+  /** An explicitly OPTIONAL unit — non-gating + excluded from required progress (like an exempt type). */
+  isOptional: boolean;
 }
 
 // The pure chain walk `findGatePredecessorIndex` lives in @cio/utils/constants (beside the exempt config)
@@ -38,6 +40,7 @@ export async function getOrderedUnitsForCourse(courseId: string, client: DbOrTxC
       lessonId: schema.lesson.id,
       unitType: schema.lesson.unitType,
       title: schema.lesson.title,
+      isOptional: schema.lesson.isOptional,
       sectionOrder: schema.courseSection.order,
       lessonOrder: schema.lesson.order
     })
@@ -53,5 +56,10 @@ export async function getOrderedUnitsForCourse(courseId: string, client: DbOrTxC
       a.lessonId.localeCompare(b.lessonId)
   );
 
-  return rows.map((r) => ({ lessonId: r.lessonId, unitType: r.unitType ?? null, title: r.title ?? null }));
+  return rows.map((r) => ({
+    lessonId: r.lessonId,
+    unitType: r.unitType ?? null,
+    title: r.title ?? null,
+    isOptional: r.isOptional === true
+  }));
 }

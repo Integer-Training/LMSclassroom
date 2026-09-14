@@ -13,7 +13,7 @@ import {
 } from '@cio/db/queries/coursework';
 import { getCourseMaterialKeys, getMaterialKeyLessonMap } from '@cio/db/queries/lesson';
 import { getCourseSequentialUnlock, getOrderedUnitsForCourse } from '@cio/db/queries/gating';
-import { findGatePredecessorIndex, isExemptUnitType } from '@cio/utils/constants';
+import { findGatePredecessorIndex, isNonGatingUnit } from '@cio/utils/constants';
 import { getCourseById } from '@cio/db/queries/course';
 import { forbidden, unauthorized } from '@api/middlewares/guards/require-role';
 
@@ -190,7 +190,7 @@ export async function isUnitUnlocked(courseId: string, lessonId: string, learner
   const units = await getOrderedUnitsForCourse(courseId);
   const idx = units.findIndex((u) => u.lessonId === lessonId);
   if (idx === -1) return true; // unit not in the course's ordering — do not block (defensive)
-  if (isExemptUnitType(units[idx].unitType)) return true;
+  if (isNonGatingUnit(units[idx])) return true; // exempt-type OR optional units are always open
 
   const predecessor = findGatePredecessorIndex(units, idx);
   if (predecessor === null) return true; // no preceding non-exempt unit — the first gated unit is open
