@@ -385,6 +385,13 @@ class AppInitApi extends BaseApi {
     // This allows you to be on the landing page of an organization site and not be redirected
     const path = window.location.pathname;
 
+    // Force a password change on first login for admin-provisioned accounts. settings.mustChangePassword
+    // is set at creation / password-reset and cleared by /change-password on success.
+    const mustChangePassword = !!(get(profile)?.settings as Record<string, unknown> | undefined)?.mustChangePassword;
+    if (mustChangePassword && path !== '/change-password') {
+      return goto(resolve('/change-password', {}));
+    }
+
     // PearlLMS self-hosted (closed system): this domain is the whole app for EVERY role — there is no
     // public catalog. After auth, on a landing/login path, route EVERY role to their own home
     // (homeForRole: admin→/org/{siteName}/dash, tutor→/caseload, manager→/reports, student→/lms) so no one

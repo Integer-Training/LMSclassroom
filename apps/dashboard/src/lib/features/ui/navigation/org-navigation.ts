@@ -23,9 +23,12 @@ import { isActive } from '$lib/utils/functions/app';
 import {
   AI_ENABLED,
   API_ACCESS_ENABLED,
+  AUDIENCE_NAV_ENABLED,
   BILLING_ENABLED,
   COHORTS_ENABLED,
   LANDING_PAGE_ENABLED,
+  LEGACY_ALLOCATION_NAV_ENABLED,
+  LEGACY_USERS_NAV_ENABLED,
   ORG_HOME_ENABLED,
   TAGS_ENABLED,
   WIDGETS_ENABLED,
@@ -191,34 +194,60 @@ export const baseNavConfig: NavItemConfig[] = [
       }
     ]
   },
+  // Admin Learner Management — replaces the generic Users/Audience list.
   {
     group: 'people',
-    titleKey: 'org_navigation.audience',
-    path: '/audience',
-    icon: PeopleIcon,
-    upgradeResource: 'students',
-    matchPattern: '^/org/[^/]+/audience(/.*)?$' // Matches nested routes
-  },
-  {
-    // Admin-only user management (Phase 1 Step 7): create/role/deactivate. Hidden for non-admins;
-    // the server route is requireAdmin regardless.
-    group: 'people',
-    titleKey: 'org_navigation.users',
-    path: '/users',
+    titleKey: 'org_navigation.learners',
+    path: '/learners',
     icon: PeopleIcon,
     requiresAdmin: true,
-    matchPattern: '^/org/[^/]+/users(/.*)?$'
+    matchPattern: '^/org/[^/]+/learners(/.*)?$'
   },
+  // Admin Tutor Management — replaces the Tutor allocation page.
   {
-    // Tutor↔learner allocation (Phase 3). Shown in the admin shell (Admin-only today); the API is
-    // requireManagerOrAdmin, so it already permits Managers for a future manager surface.
     group: 'people',
-    titleKey: 'org_navigation.allocation',
-    path: '/allocation',
+    titleKey: 'org_navigation.tutors',
+    path: '/tutors',
     icon: PeopleIcon,
     requiresAdmin: true,
-    matchPattern: '^/org/[^/]+/allocation(/.*)?$'
+    matchPattern: '^/org/[^/]+/tutors(/.*)?$'
   },
+  ...(AUDIENCE_NAV_ENABLED
+    ? [
+        {
+          group: 'people',
+          titleKey: 'org_navigation.audience',
+          path: '/audience',
+          icon: PeopleIcon,
+          upgradeResource: 'students' as const,
+          matchPattern: '^/org/[^/]+/audience(/.*)?$'
+        }
+      ]
+    : []),
+  ...(LEGACY_USERS_NAV_ENABLED
+    ? [
+        {
+          group: 'people',
+          titleKey: 'org_navigation.users',
+          path: '/users',
+          icon: PeopleIcon,
+          requiresAdmin: true,
+          matchPattern: '^/org/[^/]+/users(/.*)?$'
+        }
+      ]
+    : []),
+  ...(LEGACY_ALLOCATION_NAV_ENABLED
+    ? [
+        {
+          group: 'people',
+          titleKey: 'org_navigation.allocation',
+          path: '/allocation',
+          icon: PeopleIcon,
+          requiresAdmin: true,
+          matchPattern: '^/org/[^/]+/allocation(/.*)?$'
+        }
+      ]
+    : []),
   {
     // Admin broadcasts — send targeted announcements to learners/tutors. Admin-only (the API enforces it).
     group: 'people',

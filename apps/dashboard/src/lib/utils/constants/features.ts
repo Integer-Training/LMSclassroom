@@ -52,3 +52,10 @@ export const LANDING_PAGE_ENABLED = false;
 
 // BILLING: self-hosted deployment has no in-app billing. Hides the Settings → "Billing" tab.
 export const BILLING_ENABLED = false;
+
+// The generic "Audience", "Users" and "Tutor allocation" admin nav items are REPLACED by the richer
+// Learner Management / Tutor Management pages (which fold their function in). Hidden from the sidebar; the
+// underlying routes stay reachable by URL. Flip to `true` to bring an old item back.
+export const AUDIENCE_NAV_ENABLED = false;
+export const LEGACY_USERS_NAV_ENABLED = false;
+export const LEGACY_ALLOCATION_NAV_ENABLED = false;

@@ -4,9 +4,19 @@ import { Hono } from '@api/utils/hono';
 import { ZUpdateProfile } from '@cio/utils/validation/account';
 import { accountWorkspacesRouter } from '@api/routes/account/workspaces';
 import { authMiddleware } from '@api/middlewares/auth';
-import { getProfileById } from '@cio/db/queries/auth';
-import { handleError } from '@api/utils/errors';
+import { getProfileById, updateProfile } from '@cio/db/queries/auth';
+import { auth } from '@cio/db/auth';
+import { AppError, ErrorCodes, handleError } from '@api/utils/errors';
 import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
+
+// better-auth changePassword isn't on the inferred api type; narrow locally.
+const changePasswordApi = auth.api as unknown as {
+  changePassword: (args: {
+    body: { currentPassword: string; newPassword: string; revokeOtherSessions?: boolean };
+    headers: Headers;
+  }) => Promise<unknown>;
+};
 
 export const accountRouter = new Hono()
   .route('/', accountWorkspacesRouter)
@@ -70,6 +80,32 @@ export const accountRouter = new Hono()
       return handleError(c, error, 'Failed to create view-as-student token');
     }
   })
+  // Self-service password change. Clears the mustChangePassword flag (force-change-on-first-login) on
+  // success. Used both by the forced first-login gate and normal settings.
+  .post(
+    '/change-password',
+    authMiddleware,
+    zValidator('json', z.object({ currentPassword: z.string().min(1), newPassword: z.string().min(10).max(128) })),
+    async (c) => {
+      const user = c.get('user')!;
+      const { currentPassword, newPassword } = c.req.valid('json');
+      try {
+        await changePasswordApi.changePassword({
+          body: { currentPassword, newPassword, revokeOtherSessions: false },
+          headers: c.req.raw.headers
+        });
+      } catch {
+        // better-auth throws when the current password is wrong or the new one fails policy.
+        throw new AppError(
+          'Could not change password. Check your current password and that the new one is at least 10 characters.',
+          ErrorCodes.VALIDATION_ERROR,
+          400
+        );
+      }
+      await updateProfile(user.id, { settings: { mustChangePassword: false } });
+      return c.json({ success: true }, 200);
+    }
+  )
   .get('/profile', authMiddleware, async (c) => {
     const user = c.get('user')!;
 

@@ -74,6 +74,7 @@ import { requireAdmin, requireAdminOrApiKey } from '@api/middlewares/guards';
 import { quizRouter } from '@api/routes/organization/quiz';
 import { searchRouter } from '@api/routes/organization/search';
 import { usersRouter } from '@api/routes/organization/users';
+import { managementRouter } from '@api/routes/organization/management';
 import { allocationsRouter } from '@api/routes/organization/allocations';
 import { registrationsRouter } from '@api/routes/organization/registrations';
 import { idVerificationRouter } from '@api/routes/organization/id-verification';
@@ -776,6 +777,7 @@ export const organizationRouter = new Hono()
   // /users, /allocations and /registrations must be registered before the /:orgId param route so they aren't
   // captured as orgId.
   .route('/users', usersRouter)
+  .route('/management', managementRouter)
   .route('/allocations', allocationsRouter)
   .route('/registrations', registrationsRouter)
   .route('/id-verification', idVerificationRouter)

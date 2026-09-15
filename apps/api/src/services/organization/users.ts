@@ -3,15 +3,14 @@ import { randomBytes } from 'crypto';
 import { AppError, ErrorCodes } from '@api/utils/errors';
 import type { Actor } from '@cio/db/actor';
 import { auth } from '@cio/db/auth';
-import { env } from '@cio/core/config/env';
 
-// The admin plugin + password-reset server methods exist at runtime but aren't surfaced on the
-// inferred `auth.api` type (better-auth/minimal). Narrow, local typing for just what we call.
+// The admin plugin server methods exist at runtime but aren't surfaced on the inferred `auth.api` type
+// (better-auth/minimal). Narrow, local typing for just what we call.
 const authApi = auth.api as unknown as {
   createUser: (args: {
     body: { email: string; name: string; password: string; role?: string };
   }) => Promise<{ user?: { id?: string } }>;
-  requestPasswordReset: (args: { body: { email: string; redirectTo?: string } }) => Promise<unknown>;
+  setUserPassword: (args: { body: { userId: string; newPassword: string } }) => Promise<unknown>;
 };
 import {
   countActiveOrgAdmins,
@@ -36,6 +35,28 @@ import { ROLE, roleIdToName } from '@cio/utils/constants';
 
 type MemberStatus = 'ACTIVE' | 'DEACTIVATED';
 
+// Ambiguous characters (0/O/1/l/I) removed so a hand-copied temporary password isn't misread.
+const PW_LOWER = 'abcdefghijkmnpqrstuvwxyz';
+const PW_UPPER = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+const PW_DIGIT = '23456789';
+const PW_SPECIAL = '!@#$%*?-';
+
+function pick(set: string): string {
+  return set[randomBytes(1)[0] % set.length];
+}
+
+/**
+ * A readable 12-char temporary password that satisfies the policy (≥10, upper+lower+digit+special).
+ * Admin-created accounts get this REVEALED once to the admin (email delivery is dormant), and are flagged
+ * `mustChangePassword` so the learner/tutor is forced to set their own on first login.
+ */
+export function generateTemporaryPassword(): string {
+  const all = PW_LOWER + PW_UPPER + PW_DIGIT;
+  let core = '';
+  for (let i = 0; i < 8; i++) core += pick(all);
+  return pick(PW_UPPER) + pick(PW_LOWER) + core + pick(PW_DIGIT) + pick(PW_SPECIAL);
+}
+
 /** List/search users in an org across all roles, with role + account status. */
 export async function listOrgUsers(orgId: string, options: GetOrganizationUsersOptions) {
   return getOrganizationUsers(orgId, options);
@@ -50,12 +71,13 @@ export async function createOrgUser(
   orgId: string,
   actor: Actor,
   input: { name: string; email: string; roleId: number }
-) {
+): Promise<{ userId: string; roleId: number; temporaryPassword: string }> {
   const email = input.email.trim().toLowerCase();
   const name = input.name.trim();
 
-  // A throwaway password — the user sets their own via the reset link below. Never returned/logged.
-  const tempPassword = `${randomBytes(24).toString('base64url')}Aa1!`;
+  // A readable temporary password, REVEALED once to the admin (email delivery is dormant). The account is
+  // flagged mustChangePassword so the user must set their own on first login.
+  const temporaryPassword = generateTemporaryPassword();
 
   let newUserId: string;
   try {
@@ -63,7 +85,7 @@ export async function createOrgUser(
     // Better Auth's admin.createUser permission check keys on its own user.role (not our org role),
     // so a header-less server call is the intended provisioning path.
     const created = await authApi.createUser({
-      body: { email, name, password: tempPassword, role: 'user' }
+      body: { email, name, password: temporaryPassword, role: 'user' }
     });
 
     const id = created?.user?.id;
@@ -91,17 +113,12 @@ export async function createOrgUser(
 
   // Closed system: an admin-provisioned account is trusted — there is no self-signup, and email
   // verification can't complete while SMTP is dormant. Mark it verified so the learner/tutor isn't nagged
-  // forever by the "Verify your email" modal. (The set-password link below is what actually lets them in.)
+  // forever by the "Verify your email" modal.
   await markUserAndProfileEmailVerified(newUserId);
 
-  // Set-password email (works despite disableSignUp). Best-effort — the account already exists.
-  try {
-    await authApi.requestPasswordReset({
-      body: { email, redirectTo: `${env.DASHBOARD_ORIGIN ?? ''}/reset` }
-    });
-  } catch (error) {
-    console.error('createOrgUser: set-password email failed (account still created):', error);
-  }
+  // Force a password change on first login (the admin hands over the revealed temp password). Merged into
+  // profile.settings (updateProfile merges settings, never overwrites).
+  await updateProfile(newUserId, { settings: { mustChangePassword: true } });
 
   await recordAudit({
     actor,
@@ -111,7 +128,7 @@ export async function createOrgUser(
     metadata: { role: input.roleId } // id only, never name/email
   });
 
-  return { userId: newUserId, roleId: input.roleId };
+  return { userId: newUserId, roleId: input.roleId, temporaryPassword };
 }
 
 /** Resolve an org member row (scoped to the org) or throw 404. */
@@ -198,6 +215,40 @@ export async function changeOrgUserStatus(orgId: string, actor: Actor, memberId:
   });
 
   return { userId: member.profileId, status };
+}
+
+/**
+ * Admin: reset a member's password to a fresh readable temp password (revealed once), force a change on
+ * next login, and kill live sessions so the old password stops working immediately. This is the "Send login"
+ * action in a closed system where email can't deliver a reset link — the admin hands the password over.
+ */
+export async function resetUserPassword(
+  orgId: string,
+  actor: Actor,
+  memberId: number
+): Promise<{ userId: string; temporaryPassword: string }> {
+  const userId = await resolveMemberUserId(orgId, memberId);
+  const temporaryPassword = generateTemporaryPassword();
+
+  try {
+    await authApi.setUserPassword({ body: { userId, newPassword: temporaryPassword } });
+  } catch (error) {
+    console.error('resetUserPassword: setUserPassword failed:', error);
+    throw new AppError('Failed to reset password', ErrorCodes.INTERNAL_ERROR, 500);
+  }
+
+  await updateProfile(userId, { settings: { mustChangePassword: true } });
+  await deleteSessionsByUserId(userId); // old sessions can no longer act; user re-logs in with the new pw
+
+  await recordAudit({
+    actor,
+    action: AUDIT_ACTIONS.USER_STATUS_CHANGED,
+    entityType: 'user',
+    entityId: userId,
+    metadata: { password_reset: true }
+  });
+
+  return { userId, temporaryPassword };
 }
 
 /** Fetch a member's current roleId in this org (for from→to audit + the last-admin guards). */
