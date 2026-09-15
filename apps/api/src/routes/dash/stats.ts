@@ -1,4 +1,5 @@
 import { Hono } from '@api/utils/hono';
+import type { Actor } from '@cio/db/actor';
 import {
   ZDashAnalyticsRange,
   ZDashComplianceOverview,
@@ -9,6 +10,7 @@ import {
 } from '@cio/utils/validation/dash';
 import { authMiddleware } from '@api/middlewares/auth';
 import { getCurrentUserLoginStreak, getOrganisationAnalytics, getStudentLoginActivity } from '@api/services/dash';
+import { getAdminOverview, getOnlineNow, type AdminOverview } from '@api/services/dash/admin-overview';
 import { getOrgComplianceOverview } from '@api/services/course/compliance';
 import { handleError } from '@api/utils/errors';
 import { requireManagerOrAdmin, requireSameOrg } from '@api/middlewares/guards';
@@ -172,4 +174,53 @@ export const dashAnalyticsRouter = new Hono()
         return handleError(c, error, 'Failed to load compliance overview');
       }
     }
+  )
+  // Admin analytics command-center bundle (Manager/Admin). Cached ~60s per org (heavy aggregate).
+  .get(
+    '/admin-overview',
+    authMiddleware,
+    requireManagerOrAdmin,
+    requireSameOrg(),
+    zValidator('query', ZDashComplianceOverview),
+    async (c) => {
+      try {
+        const { orgId } = c.req.valid('query');
+        const cached = readOverviewCache(orgId);
+        if (cached) return c.json({ success: true, data: cached }, 200);
+        const result = await getAdminOverview(c.get('actor') as Actor);
+        writeOverviewCache(orgId, result);
+        return c.json({ success: true, data: result }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to load admin overview');
+      }
+    }
+  )
+  // Near-live "online now" panel (Manager/Admin). Uncached — the dashboard polls it every ~45s.
+  .get(
+    '/online-now',
+    authMiddleware,
+    requireManagerOrAdmin,
+    requireSameOrg(),
+    zValidator('query', ZDashComplianceOverview),
+    async (c) => {
+      try {
+        const result = await getOnlineNow(c.get('actor') as Actor);
+        return c.json({ success: true, data: result }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to load online users');
+      }
+    }
   );
+
+// Tiny in-memory TTL cache for the admin-overview bundle (single-node droplet). 60s is well within the
+// dashboard's usefulness window and keeps the heavy per-tutor/per-course aggregation off every refresh.
+const OVERVIEW_TTL_MS = 60_000;
+const overviewCache = new Map<string, { at: number; data: AdminOverview }>();
+function readOverviewCache(orgId: string): AdminOverview | null {
+  const hit = overviewCache.get(orgId);
+  if (hit && Date.now() - hit.at < OVERVIEW_TTL_MS) return hit.data;
+  return null;
+}
+function writeOverviewCache(orgId: string, data: AdminOverview): void {
+  overviewCache.set(orgId, { at: Date.now(), data });
+}

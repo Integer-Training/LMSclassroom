@@ -227,6 +227,16 @@ export async function getTutorPipeline(actor: Actor): Promise<TutorPipeline> {
 
   const roster: AllocatedLearner[] =
     actor.role === 'ADMIN' ? await listAllocatedLearnersForOrg(actor.orgId) : await listLearnersForTutor(actor.userId);
+  return computePipelineForRoster(roster);
+}
+
+/**
+ * The marking pipeline + activity/outcome stats for an EXPLICIT learner roster. Extracted verbatim from
+ * getTutorPipeline so the admin dashboard can run the identical computation over the ORG-WIDE learner set
+ * (getOrgLearnerIds) or a single tutor's roster — independent of tutor_allocation. Counts-only callers can
+ * pass a roster with name/email null.
+ */
+export async function computePipelineForRoster(roster: AllocatedLearner[]): Promise<TutorPipeline> {
   const nameOf = new Map(roster.map((l) => [l.learnerId, l.name] as const));
   const subs = await getSubmissionsWithContextForLearners(roster.map((l) => l.learnerId));
 
