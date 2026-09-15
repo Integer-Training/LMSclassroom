@@ -34,7 +34,7 @@
 </script>
 
 <svelte:head>
-  <title>{$t('widgets.heading')} - ClassroomIO</title>
+  <title>{$t('widgets.heading')} - Integer Training LMS</title>
 </svelte:head>
 
 <Page.Root class="w-full">

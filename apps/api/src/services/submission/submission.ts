@@ -961,7 +961,7 @@ async function sendSubmissionUpdateEmail(submissionId: string, newStatusId: numb
   // Get organization name and URL info
   const orgResult = await getCourseWithOrgData(fullSubmission.courseId || '');
 
-  const orgName = orgResult?.orgName || 'ClassroomIO';
+  const orgName = orgResult?.orgName || 'Integer Training LMS';
 
   const statusText = LEGACY_BOARD_STATUS_LABELS[newStatusId] || 'Updated';
   const baseUrl = getDashboardBaseUrl({
@@ -997,7 +997,7 @@ async function sendSubmissionUpdateEmail(submissionId: string, newStatusId: numb
           theme: orgResult?.orgTheme
         })
       },
-      from: buildEmailFromName(`${orgName} (via ClassroomIO.com)`),
+      from: buildEmailFromName(`${orgName} (via Integer Training LMS)`),
       idempotencyKey: `submission-update:${submissionId}:${newStatusId}`,
       preference: {
         organizationId: orgResult?.orgId,
@@ -1042,7 +1042,7 @@ async function sendExerciseSubmissionUpdateEmail(courseId: string, exerciseId: s
   // Get organization name and URL info
   const orgResult = await getCourseWithOrgData(courseId);
 
-  const orgName = orgResult?.orgName || 'ClassroomIO';
+  const orgName = orgResult?.orgName || 'Integer Training LMS';
 
   const baseUrl = getDashboardBaseUrl({
     siteName: orgResult?.orgSiteName,
@@ -1072,7 +1072,7 @@ async function sendExerciseSubmissionUpdateEmail(courseId: string, exerciseId: s
           theme: orgResult?.orgTheme
         })
       },
-      from: buildEmailFromName(`${orgName} (via ClassroomIO.com)`),
+      from: buildEmailFromName(`${orgName} (via Integer Training LMS)`),
       idempotencyKey: `exercise-submitted:${courseId}:${exerciseId}:${submittedBy}`,
       preference: { organizationId: orgResult?.orgId }
     });

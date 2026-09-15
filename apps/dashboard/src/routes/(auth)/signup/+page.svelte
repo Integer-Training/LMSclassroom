@@ -174,7 +174,7 @@
 </script>
 
 <svelte:head>
-  <title>Join ClassroomIO</title>
+  <title>Join Integer Training LMS</title>
 </svelte:head>
 
 {#if !$globalStore.isOrgSite || $isFreePlan}

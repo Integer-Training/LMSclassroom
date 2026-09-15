@@ -1233,7 +1233,7 @@
           "audit_actor": "Aktør",
           "audit_ip": "IP",
           "scan_qr": "Scan QR",
-          "classroomio_brand": "ClassroomIO.com",
+          "classroomio_brand": "Integer Training LMS",
           "snackbar_invite_link_copied": "Invitationslinket er kopieret",
           "snackbar_invite_link_regenerated": "Et nyt invitationslink er blevet genereret",
           "snackbar_failed_generate_link": "Kunne ikke generere invitationslink",
@@ -2479,7 +2479,7 @@
     },
     "creator": {
       "heading": "Hvilket kursus vil du lave?",
-      "placeholder": "Bed ClassroomIO om at oprette et kursus til dig...",
+      "placeholder": "Bed Integer Training LMS om at oprette et kursus til dig...",
       "type": {
         "self_paced": "Selv tempo",
         "live_class": "Live klasse"
@@ -2833,12 +2833,12 @@
     "goto": "Gå til",
     "courses": "Kurser",
     "home": "Hjem",
-    "classroomio_home": "ClassroomIO Home",
+    "classroomio_home": "Integer Training LMS Home",
     "dashboard": "Dashboard",
     "discussion": "Diskussion",
     "people": "Mennesker",
     "goto_lms": "Gå til LMS",
-    "goto_home": "Gå til ClassroomIO Home",
+    "goto_home": "Gå til Integer Training LMS Home",
     "login": "Log ind",
     "signup": "Tilmeld dig",
     "redirecting": "Omdirigerer",
@@ -2942,7 +2942,7 @@
     "upgrade_left": "{count} tilbage"
   },
   "media_manager": {
-    "page_title": "Medieadministrator - ClassroomIO",
+    "page_title": "Medieadministrator - Integer Training LMS",
     "heading": "Mediemanager",
     "empty": "Ingen aktiver fundet",
     "usage": {
@@ -3094,7 +3094,7 @@
       "provider": "Vi bruger Polar til at hjælpe med at administrere din fakturering",
       "open_billing": "Åben fakturering",
       "error": "Der opstod en fejl under åbning af fakturering",
-      "page_subtitle": "Din plan, faktureringsportal og hvordan du betaler for ClassroomIO.",
+      "page_subtitle": "Din plan, faktureringsportal og hvordan du betaler for Integer Training LMS.",
       "ai_credits": "AI credits",
       "ai_tokens_used": "AI credits brugt denne måned",
       "ai_bonus_credits": "bonus AI credits tilgængelige"
@@ -3102,7 +3102,7 @@
     "integrations": {
       "heading": "Telegram",
       "sub_heading": "Tilslut din konto til telegram for at få besked om enhver ændring i applikationen.",
-      "step_authenticate": "Trin 1: Godkend din konto via ClassroomIO-bot.",
+      "step_authenticate": "Trin 1: Godkend din konto via Integer Training LMS-bot.",
       "open_bot_button": "Åbn Bot",
       "step_chatId": "Trin 2: Indtast det chat-id, du har fået af botten.",
       "connect_button": "Forbind",
@@ -3422,7 +3422,7 @@
       "gallery": {
         "heading": "Populære temaer",
         "description": "Lavet med kernefunktioner, du nemt kan tilpasse - ingen kodning nødvendig.",
-        "by_classroomio": "af ClassroomIO",
+        "by_classroomio": "af Integer Training LMS",
         "add": "Tilføj",
         "upgrade": "Opgrader",
         "apply_theme": "Anvend tema",
@@ -3500,7 +3500,7 @@
         "accepted": "Accepteret:",
         "validation_error": "Filstørrelsen overstiger den maksimale grænse:"
       },
-      "page_subtitle": "Dit navn, din e-mail og hvordan du fremstår, uanset hvor du arbejder i ClassroomIO."
+      "page_subtitle": "Dit navn, din e-mail og hvordan du fremstår, uanset hvor du arbejder i Integer Training LMS."
     },
     "tabs": {
       "profile_tab": "Profil",
@@ -3761,7 +3761,7 @@
           "description": "Tilmeldinger, afleveringer, lektioner, meddelelser og gennemførelser i dine kurser."
         }
       },
-      "personal_page_subtitle": "Vælg hvilke e-mailnotifikationer du modtager fra ClassroomIO."
+      "personal_page_subtitle": "Vælg hvilke e-mailnotifikationer du modtager fra Integer Training LMS."
     }
   },
   "profileMenu": {
@@ -3937,7 +3937,7 @@
     "snackbar_error": "fejl under afsendelse af kode"
   },
   "public_courses": {
-    "page_title": "Kurser - ClassroomIO",
+    "page_title": "Kurser - Integer Training LMS",
     "heading": "Kurser",
     "subtitle": "Gennemse alle offentliggjorte kurser",
     "clear_filters": "Ryd filtre",
@@ -3962,7 +3962,7 @@
     }
   },
   "tags_admin": {
-    "page_title": "Mærker - ClassroomIO",
+    "page_title": "Mærker - Integer Training LMS",
     "heading": "Mærker",
     "create": "Opret",
     "tag_modal": {
@@ -4014,7 +4014,7 @@
   },
   "invite": {
     "organization": {
-      "page_title": "Tilmeld dig {orgName} på ClassroomIO",
+      "page_title": "Tilmeld dig {orgName} på Integer Training LMS",
       "invitation_student": "Du er blevet inviteret til {orgName} som elev.",
       "invitation_teacher": "Du er blevet inviteret til {orgName} som lærer.",
       "invitation_admin": "Du er blevet inviteret til {orgName} som administrator.",
@@ -4033,7 +4033,7 @@
       }
     },
     "link": {
-      "page_title": "Tilmeld dig {orgName} på ClassroomIO",
+      "page_title": "Tilmeld dig {orgName} på Integer Training LMS",
       "invitation_student": "Du er blevet inviteret til at deltage i {orgName} som elev.",
       "invitation_teacher": "Du er blevet inviteret til at deltage i {orgName} som lærer.",
       "invitation_admin": "Du er blevet inviteret til at deltage i {orgName} som administrator.",
@@ -4054,20 +4054,20 @@
         "title": "Klient opsætning",
         "description": "Brug én nøgle med organisationsomfang pr. integration. Hvis en nøgle roteres eller tilbagekaldes, holder klienten op med at arbejde, indtil den nye hemmelighed er konfigureret.",
         "claude_code_description": "Registrerer `@classroomio/mcp` med Claude Code ved hjælp af den genererede org-omfangede nøgle.",
-        "codex_description": "Tilføjer ClassroomIO MCP-serveren til Codex med den samme org-omfattede nøgle.",
+        "codex_description": "Tilføjer Integer Training LMS MCP-serveren til Codex med den samme org-omfattede nøgle.",
         "cursor_description": "Indsæt dette i `~/.cursor/mcp.json` eller dit arbejdsområde MCP-konfiguration.",
         "opencode_description": "Tilføj dette til `opencode.json` i projektroden eller `~/.config/opencode/opencode.json`."
       },
       "keys": {
         "title": "MCP nøgler",
-        "description": "Disse nøgler autentificerer den aktuelle organisation, når en MCP-klient ringer til ClassroomIO gennem `@classroomio/mcp`.",
+        "description": "Disse nøgler autentificerer den aktuelle organisation, når en MCP-klient ringer til Integer Training LMS gennem `@classroomio/mcp`.",
         "generate": "Generer MCP-nøgle",
         "secret_once": "Denne hemmelighed vises én gang. Kopier det til din MCP-klient nu.",
         "modal": {
           "title": "Opret MCP-nøgle",
           "description": "Vælg et navn til denne MCP-nøgle, før den genereres.",
           "name_label": "Nøglenavn",
-          "name_placeholder": "ClassroomIO OpenCode",
+          "name_placeholder": "Integer Training LMS OpenCode",
           "cancel": "Annuller",
           "save": "Opret nøgle"
         }
@@ -4083,17 +4083,17 @@
         "rate_limits_description": "Læs/skriv/publicér anmodninger tilladt pr. minut.",
         "used_label": "Brugt:"
       },
-      "page_subtitle": "Forbind AI-værktøjer til ClassroomIO med organisationsnøgler, du kan rotere når som helst."
+      "page_subtitle": "Forbind AI-værktøjer til Integer Training LMS med organisationsnøgler, du kan rotere når som helst."
     },
     "api": {
-      "subtitle": "Administrer API-nøgler til integration med ClassroomIOs offentlige API.",
+      "subtitle": "Administrer API-nøgler til integration med Integer Training LMSs offentlige API.",
       "keys": {
         "title": "API-nøgler",
-        "description": "Disse nøgler autentificerer den aktuelle organisation, når der kaldes til ClassroomIOs offentlige API.",
+        "description": "Disse nøgler autentificerer den aktuelle organisation, når der kaldes til Integer Training LMSs offentlige API.",
         "generate": "Generer API-nøgle",
         "secret_once": "Denne hemmelighed vises kun én gang. Kopiér den og opbevar den sikkert.",
         "empty_title": "Ingen API-nøgler endnu",
-        "empty_description": "Opret den første organisationsnøgle til API for at bruge ClassroomIOs offentlige API.",
+        "empty_description": "Opret den første organisationsnøgle til API for at bruge Integer Training LMSs offentlige API.",
         "modal": {
           "title": "Opret API-nøgle",
           "description": "Vælg et navn til denne API-nøgle, før den genereres.",
@@ -4147,7 +4147,7 @@
       "disabled_description": "Kun organisationsadministratorer kan oprette, rotere eller tilbagekalde automatiseringsnøgler. Lærere kan gennemgå opsætningsinstruktionerne her."
     },
     "zapier": {
-      "page_subtitle": "Automatiser ClassroomIO med tusindvis af apps via Zapier. Kommer snart."
+      "page_subtitle": "Automatiser Integer Training LMS med tusindvis af apps via Zapier. Kommer snart."
     }
   },
   "ai_assistant": {

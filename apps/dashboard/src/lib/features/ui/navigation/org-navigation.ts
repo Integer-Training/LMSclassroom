@@ -17,9 +17,20 @@ import {
 
 import type { AccountOrg } from '$features/app/types';
 import BotIcon from '@lucide/svelte/icons/bot';
+import MegaphoneIcon from '@lucide/svelte/icons/megaphone';
 import type { Component } from 'svelte';
 import { isActive } from '$lib/utils/functions/app';
-import { AI_ENABLED } from '$lib/utils/constants/features';
+import {
+  AI_ENABLED,
+  API_ACCESS_ENABLED,
+  BILLING_ENABLED,
+  COHORTS_ENABLED,
+  LANDING_PAGE_ENABLED,
+  ORG_HOME_ENABLED,
+  TAGS_ENABLED,
+  WIDGETS_ENABLED,
+  ZAPIER_ENABLED
+} from '$lib/utils/constants/features';
 import type { PlanLimitResource } from '@cio/utils/plans';
 
 export interface NavItem {
@@ -71,13 +82,17 @@ export interface NestedRouteConfig {
 
 // Base navigation configuration structure
 export const baseNavConfig: NavItemConfig[] = [
-  {
-    group: 'home',
-    titleKey: 'org_navigation.home',
-    path: '',
-    icon: HomeIcon,
-    matchPattern: '^/org/[^/]+/?$'
-  },
+  ...(ORG_HOME_ENABLED
+    ? [
+        {
+          group: 'home',
+          titleKey: 'org_navigation.home',
+          path: '',
+          icon: HomeIcon,
+          matchPattern: '^/org/[^/]+/?$'
+        }
+      ]
+    : []),
   {
     group: 'home',
     titleKey: 'org_navigation.dashboard',
@@ -121,13 +136,17 @@ export const baseNavConfig: NavItemConfig[] = [
     icon: CourseIcon,
     matchPattern: '^/org/[^/]+/courses(/.*)?$' // Matches nested routes
   },
-  {
-    group: 'content',
-    titleKey: 'org_navigation.cohorts',
-    path: '/cohorts',
-    icon: GoalIcon,
-    matchPattern: '^/org/[^/]+/cohorts(/.*)?$'
-  },
+  ...(COHORTS_ENABLED
+    ? [
+        {
+          group: 'content',
+          titleKey: 'org_navigation.cohorts',
+          path: '/cohorts',
+          icon: GoalIcon,
+          matchPattern: '^/org/[^/]+/cohorts(/.*)?$'
+        }
+      ]
+    : []),
   {
     group: 'content',
     titleKey: 'org_navigation.media',
@@ -135,21 +154,29 @@ export const baseNavConfig: NavItemConfig[] = [
     icon: AttachmentIcon,
     matchPattern: '^/org/[^/]+/media(/.*)?$'
   },
-  {
-    group: 'content',
-    titleKey: 'org_navigation.tags',
-    path: '/tags',
-    icon: TagIcon,
-    requiresAdmin: true,
-    matchPattern: '^/org/[^/]+/tags(/.*)?$'
-  },
-  {
-    group: 'content',
-    titleKey: 'org_navigation.widgets',
-    path: '/widgets',
-    icon: LandingPageIcon,
-    matchPattern: '^(/org/[^/]+/widgets(/.*)?|/widgets/[^/]+(/.*)?)$'
-  },
+  ...(TAGS_ENABLED
+    ? [
+        {
+          group: 'content',
+          titleKey: 'org_navigation.tags',
+          path: '/tags',
+          icon: TagIcon,
+          requiresAdmin: true,
+          matchPattern: '^/org/[^/]+/tags(/.*)?$'
+        }
+      ]
+    : []),
+  ...(WIDGETS_ENABLED
+    ? [
+        {
+          group: 'content',
+          titleKey: 'org_navigation.widgets',
+          path: '/widgets',
+          icon: LandingPageIcon,
+          matchPattern: '^(/org/[^/]+/widgets(/.*)?|/widgets/[^/]+(/.*)?)$'
+        }
+      ]
+    : []),
   {
     group: 'people',
     titleKey: 'org_navigation.community',
@@ -192,6 +219,15 @@ export const baseNavConfig: NavItemConfig[] = [
     requiresAdmin: true,
     matchPattern: '^/org/[^/]+/allocation(/.*)?$'
   },
+  {
+    // Admin broadcasts — send targeted announcements to learners/tutors. Admin-only (the API enforces it).
+    group: 'people',
+    titleKey: 'org_navigation.broadcasts',
+    path: '/broadcasts',
+    icon: MegaphoneIcon,
+    requiresAdmin: true,
+    matchPattern: '^/org/[^/]+/broadcasts(/.*)?$'
+  },
   ...(AI_ENABLED
     ? [
         {
@@ -205,24 +241,32 @@ export const baseNavConfig: NavItemConfig[] = [
         }
       ]
     : []),
-  {
-    group: 'automation',
-    titleKey: 'automation.tabs.api',
-    path: '/api',
-    icon: ApiIcon,
-    requiresAdmin: true,
-    disableWhenNotAdmin: true,
-    matchPattern: '^/org/[^/]+/api(/.*)?$'
-  },
-  {
-    group: 'automation',
-    titleKey: 'automation.tabs.zapier',
-    path: '/zapier',
-    icon: ZapIcon,
-    requiresAdmin: true,
-    disableWhenNotAdmin: true,
-    matchPattern: '^/org/[^/]+/zapier(/.*)?$'
-  },
+  ...(API_ACCESS_ENABLED
+    ? [
+        {
+          group: 'automation',
+          titleKey: 'automation.tabs.api',
+          path: '/api',
+          icon: ApiIcon,
+          requiresAdmin: true,
+          disableWhenNotAdmin: true,
+          matchPattern: '^/org/[^/]+/api(/.*)?$'
+        }
+      ]
+    : []),
+  ...(ZAPIER_ENABLED
+    ? [
+        {
+          group: 'automation',
+          titleKey: 'automation.tabs.zapier',
+          path: '/zapier',
+          icon: ZapIcon,
+          requiresAdmin: true,
+          disableWhenNotAdmin: true,
+          matchPattern: '^/org/[^/]+/zapier(/.*)?$'
+        }
+      ]
+    : []),
   {
     titleKey: 'org_navigation.settings',
     path: '/settings',
@@ -259,14 +303,22 @@ export const baseNavConfig: NavItemConfig[] = [
           }
         ]
       },
-      {
-        titleKey: 'settings.tabs.landing_page_tab',
-        path: '/settings/landingpage'
-      },
-      {
-        titleKey: 'settings.tabs.billing_tab',
-        path: '/settings/billing'
-      },
+      ...(LANDING_PAGE_ENABLED
+        ? [
+            {
+              titleKey: 'settings.tabs.landing_page_tab',
+              path: '/settings/landingpage'
+            }
+          ]
+        : []),
+      ...(BILLING_ENABLED
+        ? [
+            {
+              titleKey: 'settings.tabs.billing_tab',
+              path: '/settings/billing'
+            }
+          ]
+        : []),
       ...(AI_ENABLED
         ? [
             {

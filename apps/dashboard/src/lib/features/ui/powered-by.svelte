@@ -63,7 +63,7 @@
       />
       <img src="/logo-192.png" alt="logo" class="h-[24px] opacity-100 group-hover:opacity-0" />
       {#if !showOnlyLogo}
-        {$t('course.navItem.landing_page.powered_by')} ClassroomIO
+        {$t('course.navItem.landing_page.powered_by')} Integer Training LMS
       {/if}
     </span>
   </a>

@@ -1233,7 +1233,7 @@
           "audit_actor": "Участник",
           "audit_ip": "ИП",
           "scan_qr": "Сканировать QR",
-          "classroomio_brand": "ClassroomIO.com",
+          "classroomio_brand": "Integer Training LMS",
           "snackbar_invite_link_copied": "Ссылка для приглашения скопирована.",
           "snackbar_invite_link_regenerated": "Создана новая ссылка для приглашения.",
           "snackbar_failed_generate_link": "Не удалось создать ссылку для приглашения.",
@@ -2479,7 +2479,7 @@
     },
     "creator": {
       "heading": "Какой курс вы хотите создать?",
-      "placeholder": "Попросите ClassroomIO создать для вас курс...",
+      "placeholder": "Попросите Integer Training LMS создать для вас курс...",
       "type": {
         "self_paced": "Самостоятельный темп",
         "live_class": "Живой урок"
@@ -2833,12 +2833,12 @@
     "goto": "Перейти к",
     "courses": "Курсы",
     "home": "Главная",
-    "classroomio_home": "Главная ClassroomIO",
+    "classroomio_home": "Главная Integer Training LMS",
     "dashboard": "Панель управления",
     "discussion": "Обсуждение",
     "people": "Люди",
     "goto_lms": "Перейти в СДО",
-    "goto_home": "Перейти на главную страницу ClassroomIO",
+    "goto_home": "Перейти на главную страницу Integer Training LMS",
     "login": "Войти",
     "signup": "Зарегистрироваться",
     "redirecting": "Перенаправление",
@@ -2942,7 +2942,7 @@
     "upgrade_left": "{count} осталось"
   },
   "media_manager": {
-    "page_title": "Медиаменеджер — ClassroomIO",
+    "page_title": "Медиаменеджер — Integer Training LMS",
     "heading": "Медиа-менеджер",
     "empty": "Активы не найдены",
     "usage": {
@@ -3094,7 +3094,7 @@
       "provider": "Мы используем Polar, чтобы управлять вашими платежами.",
       "open_billing": "Открыть биллинг",
       "error": "Произошла ошибка при открытии счета.",
-      "page_subtitle": "Ваш тариф, портал оплаты и способы оплаты ClassroomIO.",
+      "page_subtitle": "Ваш тариф, портал оплаты и способы оплаты Integer Training LMS.",
       "ai_credits": "AI credits",
       "ai_tokens_used": "AI credits использовано в этом месяце",
       "ai_bonus_credits": "доступны bonus AI credits"
@@ -3102,7 +3102,7 @@
     "integrations": {
       "heading": "Telegram",
       "sub_heading": "Подключите свою учетную запись к Telegram, чтобы получать уведомления о любых изменениях в приложении.",
-      "step_authenticate": "Шаг 1. Подтвердите свою учетную запись с помощью бота ClassroomIO.",
+      "step_authenticate": "Шаг 1. Подтвердите свою учетную запись с помощью бота Integer Training LMS.",
       "open_bot_button": "Открыть бот",
       "step_chatId": "Шаг 2. Введите идентификатор чата, предоставленный вам ботом.",
       "connect_button": "Подключиться",
@@ -3422,7 +3422,7 @@
       "gallery": {
         "heading": "Популярные темы",
         "description": "Создан с использованием основных функций, которые можно легко настроить — кодирование не требуется.",
-        "by_classroomio": "от ClassroomIO",
+        "by_classroomio": "от Integer Training LMS",
         "add": "Добавить",
         "upgrade": "Обновить",
         "apply_theme": "Применить тему",
@@ -3500,7 +3500,7 @@
         "accepted": "Принято:",
         "validation_error": "Размер файла превышает максимальный предел:"
       },
-      "page_subtitle": "Ваше имя, эл. почта и то, как вы отображаетесь в ClassroomIO."
+      "page_subtitle": "Ваше имя, эл. почта и то, как вы отображаетесь в Integer Training LMS."
     },
     "tabs": {
       "profile_tab": "Профиль",
@@ -3761,7 +3761,7 @@
           "description": "Записи, сдачи, уроки, объявления и завершения в ваших курсах."
         }
       },
-      "personal_page_subtitle": "Выберите, какие уведомления по электронной почте вы получаете от ClassroomIO."
+      "personal_page_subtitle": "Выберите, какие уведомления по электронной почте вы получаете от Integer Training LMS."
     }
   },
   "profileMenu": {
@@ -3937,7 +3937,7 @@
     "snackbar_error": "ошибка при отправке кода"
   },
   "public_courses": {
-    "page_title": "Курсы - ClassroomIO",
+    "page_title": "Курсы - Integer Training LMS",
     "heading": "Курсы",
     "subtitle": "Просмотреть все опубликованные курсы",
     "clear_filters": "Очистить фильтры",
@@ -3962,7 +3962,7 @@
     }
   },
   "tags_admin": {
-    "page_title": "Теги — ClassroomIO",
+    "page_title": "Теги — Integer Training LMS",
     "heading": "Теги",
     "create": "Создать",
     "tag_modal": {
@@ -4014,7 +4014,7 @@
   },
   "invite": {
     "organization": {
-      "page_title": "Присоединяйтесь к {orgName} в ClassroomIO.",
+      "page_title": "Присоединяйтесь к {orgName} в Integer Training LMS.",
       "invitation_student": "Вас пригласили в {orgName} в качестве ученика.",
       "invitation_teacher": "Вас пригласили в {orgName} в качестве преподавателя.",
       "invitation_admin": "Вас пригласили в {orgName} в качестве администратора.",
@@ -4033,7 +4033,7 @@
       }
     },
     "link": {
-      "page_title": "Присоединяйтесь к {orgName} в ClassroomIO.",
+      "page_title": "Присоединяйтесь к {orgName} в Integer Training LMS.",
       "invitation_student": "Вас пригласили присоединиться к {orgName} в качестве студента.",
       "invitation_teacher": "Вас пригласили присоединиться к {orgName} в качестве преподавателя.",
       "invitation_admin": "Вас пригласили присоединиться к {orgName} в качестве администратора.",
@@ -4054,20 +4054,20 @@
         "title": "Настройка клиента",
         "description": "Используйте один ключ на уровне организации для каждой интеграции. Если ключ заменен или отозван, клиент перестает работать до тех пор, пока не будет настроен новый секрет.",
         "claude_code_description": "Регистрирует `@classroomio/mcp` в Claude Code, используя сгенерированный ключ на уровне организации.",
-        "codex_description": "Добавляет сервер ClassroomIO MCP в Кодекс с тем же ключом на уровне организации.",
+        "codex_description": "Добавляет сервер Integer Training LMS MCP в Кодекс с тем же ключом на уровне организации.",
         "cursor_description": "Вставьте это в `~/.cursor/mcp.json` или в конфигурацию MCP вашей рабочей области.",
         "opencode_description": "Добавьте это в `opencode.json` в корне проекта или в `~/.config/opencode/opencode.json`."
       },
       "keys": {
         "title": "Ключи MCP",
-        "description": "Эти ключи аутентифицируют текущую организацию, когда клиент MCP вызывает ClassroomIO через @classroomio/mcp.",
+        "description": "Эти ключи аутентифицируют текущую организацию, когда клиент MCP вызывает Integer Training LMS через @classroomio/mcp.",
         "generate": "Создать ключ MCP",
         "secret_once": "Этот секрет раскрывается один раз. Скопируйте его в свой клиент MCP сейчас.",
         "modal": {
           "title": "Создать MCP-ключ",
           "description": "Выберите имя для этого MCP-ключа перед его созданием.",
           "name_label": "Имя ключа",
-          "name_placeholder": "ClassroomIO OpenCode",
+          "name_placeholder": "Integer Training LMS OpenCode",
           "cancel": "Отмена",
           "save": "Создать ключ"
         }
@@ -4083,17 +4083,17 @@
         "rate_limits_description": "Запросы на чтение/запись/публикацию разрешены в минуту.",
         "used_label": "Использовано:"
       },
-      "page_subtitle": "Подключайте ИИ-инструменты к ClassroomIO с помощью ключей организации, которые можно менять в любое время."
+      "page_subtitle": "Подключайте ИИ-инструменты к Integer Training LMS с помощью ключей организации, которые можно менять в любое время."
     },
     "api": {
-      "subtitle": "Управляйте API-ключами для интеграции с публичным API ClassroomIO.",
+      "subtitle": "Управляйте API-ключами для интеграции с публичным API Integer Training LMS.",
       "keys": {
         "title": "API-ключи",
-        "description": "Эти ключи аутентифицируют текущую организацию при вызове публичного API ClassroomIO.",
+        "description": "Эти ключи аутентифицируют текущую организацию при вызове публичного API Integer Training LMS.",
         "generate": "Сгенерировать API-ключ",
         "secret_once": "Этот секрет показывается один раз. Скопируйте и сохраните его в надёжном месте.",
         "empty_title": "API-ключей пока нет",
-        "empty_description": "Создайте первый API-ключ организации для использования публичного API ClassroomIO.",
+        "empty_description": "Создайте первый API-ключ организации для использования публичного API Integer Training LMS.",
         "modal": {
           "title": "Создать API-ключ",
           "description": "Выберите имя для этого API-ключа перед его созданием.",
@@ -4147,7 +4147,7 @@
       "disabled_description": "Только администраторы организации могут создавать, менять или отзывать ключи автоматизации. Учителя могут ознакомиться с инструкциями по настройке здесь."
     },
     "zapier": {
-      "page_subtitle": "Автоматизируйте ClassroomIO с тысячами приложений через Zapier. Скоро."
+      "page_subtitle": "Автоматизируйте Integer Training LMS с тысячами приложений через Zapier. Скоро."
     }
   },
   "ai_assistant": {

@@ -14,7 +14,7 @@
 </script>
 
 <svelte:head>
-  <title>Reset Password - ClassroomIO</title>
+  <title>Reset Password - Integer Training LMS</title>
 </svelte:head>
 
 <AuthUI isLogin={false} showOnlyContent={true}>
@@ -22,9 +22,9 @@
     <Avatar.Root>
       <Avatar.Image
         src={$currentOrg.avatarUrl ? $currentOrg.avatarUrl : '/logo-192.png'}
-        alt={$currentOrg.name ? $currentOrg.name : 'ClassroomIO'}
+        alt={$currentOrg.name ? $currentOrg.name : 'Integer Training LMS'}
       />
-      <Avatar.Fallback>{$currentOrg.name ? $currentOrg.name : 'ClassroomIO'}</Avatar.Fallback>
+      <Avatar.Fallback>{$currentOrg.name ? $currentOrg.name : 'Integer Training LMS'}</Avatar.Fallback>
     </Avatar.Root>
 
     <p class="text-xl font-semibold">Something went wrong</p>

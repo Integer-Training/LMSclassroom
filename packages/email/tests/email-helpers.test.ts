@@ -7,7 +7,7 @@ import {
   sanitizeEmailSubject
 } from '../src/utils/functions/email-helpers';
 
-const DEFAULT_FROM = '"Best from ClassroomIO" <notify@mail.classroomio.com>';
+const DEFAULT_FROM = '"Best from Integer Training LMS" <notify@mail.classroomio.com>';
 
 describe('escapeHtml', () => {
   it('escapes HTML metacharacters', () => {

@@ -156,7 +156,7 @@ function renderOrgSiteOgTemplate(input: OrgSiteOgInput): { body: string; styles:
   const taglineMarkup = tagline ? `<p class="tagline">${escapeHtml(tagline)}</p>` : '';
 
   const watermarkMarkup = input.showWatermark
-    ? `<div class="watermark">Powered by <strong>ClassroomIO</strong></div>`
+    ? `<div class="watermark">Powered by <strong>Integer Training LMS</strong></div>`
     : '';
 
   const body = `

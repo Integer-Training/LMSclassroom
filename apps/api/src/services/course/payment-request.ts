@@ -27,7 +27,7 @@ export async function createPaymentRequest(data: PaymentRequestData) {
     }
 
     const courseName = course.courseTitle || '';
-    const orgName = course.orgName || 'ClassroomIO';
+    const orgName = course.orgName || 'Integer Training LMS';
     const branding = buildEmailBranding({
       name: course.orgName,
       avatarUrl: course.orgAvatarUrl,
@@ -63,7 +63,7 @@ export async function createPaymentRequest(data: PaymentRequestData) {
           autoEnrollUrl,
           branding
         },
-        from: buildEmailFromName('ClassroomIO'),
+        from: buildEmailFromName('Integer Training LMS'),
         idempotencyKey: `payment-request:teacher:${data.courseId}:${data.studentEmail}`
       });
     } catch (emailError) {
@@ -80,7 +80,7 @@ export async function createPaymentRequest(data: PaymentRequestData) {
           orgName,
           branding
         },
-        from: buildEmailFromName(`${orgName} - ClassroomIO`),
+        from: buildEmailFromName(`${orgName} - Integer Training LMS`),
         replyTo: teacherEmail,
         idempotencyKey: `payment-request:student:${data.courseId}:${data.studentEmail}`
       });

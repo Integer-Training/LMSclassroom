@@ -44,7 +44,7 @@
     editableStorageKey = 'edra-editable',
     class: className = '',
     editorClass = '',
-    placeholder = 'Welcome to ClassroomIO',
+    placeholder = 'Welcome to Integer Training LMS',
     onChange,
     onReady,
     onEditorDestroy

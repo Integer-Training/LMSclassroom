@@ -46,7 +46,7 @@ export async function processNotifyCourseSessionUpdate(rawPayload: unknown): Pro
   }
 
   const sessionTimezone = course.metadata?.sessionTimezone ?? null;
-  const orgName = orgData.orgName || 'ClassroomIO';
+  const orgName = orgData.orgName || 'Integer Training LMS';
   const branding = buildEmailBranding({
     name: orgData.orgName,
     avatarUrl: orgData.orgAvatarUrl,
@@ -104,7 +104,7 @@ export async function processNotifyCourseSessionUpdate(rawPayload: unknown): Pro
             joinUrl: lesson.callUrl,
             branding
           },
-          from: buildEmailFromName(`${orgName} (via ClassroomIO.com)`),
+          from: buildEmailFromName(`${orgName} (via Integer Training LMS)`),
           ics
         },
         { idempotencyKey: `session-updated:${lesson.id}:${recipient.email}:${sequence}` }

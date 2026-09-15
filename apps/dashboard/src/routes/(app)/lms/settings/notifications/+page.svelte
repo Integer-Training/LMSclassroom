@@ -22,7 +22,7 @@
 </script>
 
 <svelte:head>
-  <title>{t.get('settings.notifications.page_title')} - ClassroomIO</title>
+  <title>{t.get('settings.notifications.page_title')} - Integer Training LMS</title>
 </svelte:head>
 
 <Page.Header>

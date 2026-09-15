@@ -7,10 +7,9 @@ import { resolveOrgSiteOgImageUrl } from '$lib/utils/functions/org-site-og-url';
 
 const isSelfHosted = PUBLIC_IS_SELFHOSTED === 'true';
 
-const DEFAULT_TITLE = 'ClassroomIO | One Platform for Customer, Partner, and Employee Training';
+const DEFAULT_TITLE = 'Integer Training LMS';
 const DEFAULT_DESCRIPTION =
-  'One platform for customer academies, partner certification, and employee training. Build courses with AI, publish under your domain, and track completions.';
-const CLOUD_OG_IMAGE = 'https://brand.cdn.clsrio.com/og/classroomio-opengraph.jpg';
+  'The Integer Training learning platform — access your courses, workbooks and progress in one place.';
 const ORG_OG_WIDTH = 1200;
 const ORG_OG_HEIGHT = 630;
 
@@ -36,7 +35,7 @@ async function resolveOgImageUrl(url: URL, orgSiteInfo: OrgSiteInfo): Promise<st
   if (isSelfHosted) {
     const org = orgSiteInfo.org;
     if (!org) {
-      return CLOUD_OG_IMAGE;
+      return new URL('/logo-512.png', url.origin).href;
     }
 
     const orgImage =
@@ -52,7 +51,7 @@ async function resolveOgImageUrl(url: URL, orgSiteInfo: OrgSiteInfo): Promise<st
     }
   }
 
-  return CLOUD_OG_IMAGE;
+  return new URL('/logo-512.png', url.origin).href;
 }
 
 function buildOrgOpenGraphImages(ogImageUrl: string, orgName: string) {
@@ -105,7 +104,7 @@ export async function getBaseMetaTags(url: URL, orgSiteInfo: OrgSiteInfo): Promi
     orgMeta?.siteName ||
     publicEnv.PUBLIC_APP_TITLE?.trim() ||
     (isSelfHosted && orgSiteInfo.org?.name ? orgSiteInfo.org.name : null) ||
-    'ClassroomIO';
+    'Integer Training LMS';
 
   const ogImageUrl = await resolveOgImageUrl(url, orgSiteInfo);
   const usesDynamicOrgOg =
@@ -123,12 +122,12 @@ export async function getBaseMetaTags(url: URL, orgSiteInfo: OrgSiteInfo): Promi
           type: 'image/jpeg'
         },
         {
-          url: 'https://brand.cdn.clsrio.com/og/classroomio-opengraph.webp',
+          url: new URL('/logo-512.png', url.origin).href,
           alt: `${siteName} platform for customer, partner, and employee education`,
           width: 1920,
           height: 1080,
-          secureUrl: 'https://brand.cdn.clsrio.com/og/classroomio-opengraph.webp',
-          type: 'image/webp'
+          secureUrl: new URL('/logo-512.png', url.origin).href,
+          type: 'image/png'
         }
       ];
 
@@ -150,8 +149,8 @@ export async function getBaseMetaTags(url: URL, orgSiteInfo: OrgSiteInfo): Promi
       images: openGraphImages
     },
     twitter: {
-      handle: '@classroomio',
-      site: '@classroomio',
+      handle: undefined,
+      site: undefined,
       cardType: 'summary_large_image' as const,
       title,
       description,

@@ -5,7 +5,7 @@
 </script>
 
 <svelte:head>
-  <title>My Learning - ClassroomIO</title>
+  <title>My Learning - Integer Training LMS</title>
 </svelte:head>
 
 <Page.Root class="w-full">

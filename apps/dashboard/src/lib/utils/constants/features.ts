@@ -23,3 +23,32 @@ export const COMMUNITY_ENABLED = false;
 // CERTIFICATES: PearlLMS issues certificates off-platform / manually, so the learner certificates page is
 // empty and hidden. Nav item + /lms/certificates route gated on this.
 export const CERTIFICATES_ENABLED = false;
+
+// ---------------------------------------------------------------------------
+// ORG (admin) sidebar switches. Same reversible pattern — these hide upstream
+// ClassroomIO admin surfaces the apprenticeship deployment does not use. Each
+// only removes the sidebar link / settings tab; flip to `true` to restore.
+// ---------------------------------------------------------------------------
+
+// ORG_HOME: the admin "Home" landing tile page is redundant here (admins work from Courses / People /
+// Broadcasts). Hides the "Home" nav item on /org/[slug] (and the same sidebar on /org/[slug]/setup).
+export const ORG_HOME_ENABLED = false;
+
+// TAGS: audience tagging is unused in the closed apprenticeship model. Hides the org "Tags" nav item.
+export const TAGS_ENABLED = false;
+
+// WIDGETS: embeddable course widgets have no place in the private LMS. Hides the org "Widgets" nav item.
+export const WIDGETS_ENABLED = false;
+
+// API_ACCESS: the public REST API surface is not exposed for this deployment. Hides the "API" nav item.
+export const API_ACCESS_ENABLED = false;
+
+// ZAPIER: no Zapier integration is used. Hides the "Zapier" nav item.
+export const ZAPIER_ENABLED = false;
+
+// LANDING_PAGE: the org public landing-page builder is unused (invite-only, no marketing site). Hides the
+// Settings → "Landing page" tab.
+export const LANDING_PAGE_ENABLED = false;
+
+// BILLING: self-hosted deployment has no in-app billing. Hides the Settings → "Billing" tab.
+export const BILLING_ENABLED = false;

@@ -23,7 +23,7 @@
 </script>
 
 <svelte:head>
-  <title>Settings - ClassroomIO</title>
+  <title>Settings - Integer Training LMS</title>
 </svelte:head>
 
 <Page.Header>

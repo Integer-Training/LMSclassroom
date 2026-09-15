@@ -6,6 +6,8 @@
   import { caseloadApi, type PipelineItem } from '$features/caseload/api/caseload.svelte';
   import ActivityPie from '$features/caseload/components/activity-pie.svelte';
   import OutcomesDonut from '$features/caseload/components/outcomes-donut.svelte';
+  import { announcementsApi } from '$features/announcements/api/announcements.svelte';
+  import AnnouncementsList from '$features/announcements/components/announcements-list.svelte';
 
   // Tutor dashboard (PearlLMS Phase 8) — a rich caseload overview: KPI tiles, activity/outcome charts,
   // the grading pipeline + programmes tables, and per-queue drill-downs. Allocation-scoped server-side
@@ -17,6 +19,7 @@
   onMount(() => {
     caseloadApi.loadCaseload();
     caseloadApi.loadPipeline();
+    announcementsApi.loadFeed();
   });
 
   const stats = $derived(caseloadApi.pipeline?.stats ?? null);
@@ -81,7 +84,11 @@
 
   const pipelineRows = $derived([
     { label: 'Awaiting Marking', count: stats?.awaitingMarking ?? 0, view: 'awaiting' as QueueView | null },
-    { label: 'Resubmissions Awaiting Review', count: stats?.resubmissions ?? 0, view: 'resubmissions' as QueueView | null },
+    {
+      label: 'Resubmissions Awaiting Review',
+      count: stats?.resubmissions ?? 0,
+      view: 'resubmissions' as QueueView | null
+    },
     { label: 'Overdue (>72h)', count: stats?.overdue ?? 0, view: 'overdue' as QueueView | null },
     { label: 'Due Within 3 Days', count: stats?.dueSoon ?? 0, view: 'dueSoon' as QueueView | null },
     { label: 'Total Graded', count: stats?.totalGraded ?? 0, view: null },
@@ -91,9 +98,24 @@
   const secondaryTiles = $derived([
     { label: 'Overdue', value: stats?.overdue ?? 0, view: 'overdue' as QueueView, tone: 'amber' },
     { label: 'Due Within 3 Days', value: stats?.dueSoon ?? 0, view: 'dueSoon' as QueueView, tone: 'amber' },
-    { label: 'Inactive Learners 30+ days', value: stats?.inactiveLearners ?? 0, view: 'learners' as QueueView, tone: 'muted' },
-    { label: 'Awaiting Draft Feedback', value: stats?.awaitingDraftFeedback ?? 0, view: 'drafts' as QueueView, tone: 'muted' },
-    { label: 'Learners With Pending Work', value: stats?.learnersWithPendingWork ?? 0, view: 'learners' as QueueView, tone: 'muted' }
+    {
+      label: 'Inactive Learners 30+ days',
+      value: stats?.inactiveLearners ?? 0,
+      view: 'learners' as QueueView,
+      tone: 'muted'
+    },
+    {
+      label: 'Awaiting Draft Feedback',
+      value: stats?.awaitingDraftFeedback ?? 0,
+      view: 'drafts' as QueueView,
+      tone: 'muted'
+    },
+    {
+      label: 'Learners With Pending Work',
+      value: stats?.learnersWithPendingWork ?? 0,
+      view: 'learners' as QueueView,
+      tone: 'muted'
+    }
   ]);
 </script>
 
@@ -102,6 +124,14 @@
   <p class="text-muted-foreground text-sm">Your caseload overview · Grading pipeline</p>
 </div>
 
+<!-- Broadcasts from admin (tutor-addressed only) -->
+{#if announcementsApi.items.length}
+  <div class="mb-6">
+    <h2 class="mb-2 text-lg font-semibold tracking-tight">Announcements</h2>
+    <AnnouncementsList items={announcementsApi.items} showScope={false} />
+  </div>
+{/if}
+
 <!-- Primary KPI tiles -->
 <div class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
   <!-- Your Learners -->
@@ -109,7 +139,9 @@
     <p class="text-muted-foreground text-xs font-medium">Your Learners</p>
     <p class="mt-1 text-3xl font-semibold">{stats?.learners ?? caseloadApi.learners.length}</p>
     <div class="mt-2 flex flex-wrap gap-1">
-      <Badge variant="secondary" class="text-emerald-600 dark:text-emerald-400">{stats?.activeLearners ?? 0} Active</Badge>
+      <Badge variant="secondary" class="text-emerald-600 dark:text-emerald-400"
+        >{stats?.activeLearners ?? 0} Active</Badge
+      >
       <Badge variant="secondary">{stats?.inactiveLearners ?? 0} Inactive</Badge>
       <Badge variant="secondary">{stats?.neverLoggedIn ?? 0} Never in</Badge>
     </div>
@@ -132,7 +164,9 @@
   <!-- Grading Stats -->
   <div class="bg-card rounded-xl border p-4">
     <p class="text-muted-foreground text-xs font-medium">Grading Stats</p>
-    <p class="mt-1 text-3xl font-semibold">{stats?.totalGraded ?? 0} <span class="text-muted-foreground text-base font-normal">graded</span></p>
+    <p class="mt-1 text-3xl font-semibold">
+      {stats?.totalGraded ?? 0} <span class="text-muted-foreground text-base font-normal">graded</span>
+    </p>
     <div class="mt-2 flex flex-wrap gap-1">
       {#if passRate !== null}
         <Badge variant="secondary" class="text-emerald-600 dark:text-emerald-400">{passRate}% Pass Rate</Badge>

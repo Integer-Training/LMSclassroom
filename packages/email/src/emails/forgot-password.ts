@@ -5,7 +5,7 @@ import { getDefaultTemplate } from '../templates';
 
 export const forgotPasswordEmail = defineEmail({
   id: 'forgotPassword',
-  subject: 'Password reset notification - ClassroomIO',
+  subject: 'Password reset notification - Integer Training LMS',
   schema: z.object({
     email: z.email(),
     name: z.string().min(1),
@@ -13,7 +13,7 @@ export const forgotPasswordEmail = defineEmail({
   }),
   render: (fields) => {
     const content = `Hello ${fields.name},
-    <p>You are receiving this email because you have requested a password reset for your ClassroomIO account.</p>
+    <p>You are receiving this email because you have requested a password reset for your Integer Training LMS account.</p>
     <p>Please click the button below to reset your password:</p>
     
     <div>

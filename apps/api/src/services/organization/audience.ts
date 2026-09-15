@@ -222,7 +222,7 @@ async function enrollAudienceStudentProfilesInCourses(
               customMessage: welcomeMessageByGroupId.get(p.groupId) ?? undefined,
               branding: buildEmailBranding(organization)
             },
-            from: buildEmailFromName(`${organization.name} (via ClassroomIO.com)`),
+            from: buildEmailFromName(`${organization.name} (via Integer Training LMS)`),
             idempotencyKey: `audience-course-welcome:${p.groupId}:${p.profileId}`,
             ics: icsByGroupId.get(p.groupId),
             preference: { organizationId: orgId, recipientProfileId: p.profileId }
@@ -310,7 +310,7 @@ async function enrollAudienceStudentProfilesInCohorts(
                 loginUrl,
                 branding: buildEmailBranding(organization)
               },
-              from: buildEmailFromName(`${organization.name} (via ClassroomIO.com)`),
+              from: buildEmailFromName(`${organization.name} (via Integer Training LMS)`),
               idempotencyKey: `audience-cohort-welcome:${pair.cohortId}:${pair.profileId}`,
               preference: { organizationId: orgId, recipientProfileId: pair.profileId }
             });
@@ -420,7 +420,7 @@ async function createStudentOrgInvitesAndSendEmails(input: {
             courseNames: accessNamesLabel,
             branding: buildEmailBranding(organization)
           },
-          from: buildEmailFromName(`${organization.name} (via ClassroomIO.com)`),
+          from: buildEmailFromName(`${organization.name} (via Integer Training LMS)`),
           idempotencyKey: `student-org-invite:${invite.id}`
         });
 
@@ -713,7 +713,7 @@ export async function resendAudienceInvite(orgId: string, data: TAudienceInviteB
         courseNames: accessNamesLabel,
         branding: buildEmailBranding(organization)
       },
-      from: buildEmailFromName(`${organization.name} (via ClassroomIO.com)`),
+      from: buildEmailFromName(`${organization.name} (via Integer Training LMS)`),
       idempotencyKey: `student-org-invite:${invite.id}`
     });
 

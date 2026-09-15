@@ -130,7 +130,7 @@
 </script>
 
 <svelte:head>
-  <title>Landing Page Editor - ClassroomIO</title>
+  <title>Landing Page Editor - Integer Training LMS</title>
 </svelte:head>
 
 <div

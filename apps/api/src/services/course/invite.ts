@@ -378,7 +378,7 @@ async function sendStudentJoinEmails(input: {
         customMessage: input.welcomeEmailMessage ?? undefined,
         branding: input.branding
       },
-      from: buildEmailFromName(`${input.orgName} (via ClassroomIO.com)`),
+      from: buildEmailFromName(`${input.orgName} (via Integer Training LMS)`),
       idempotencyKey: `course-welcome:${input.courseId}:${input.studentId}`,
       ics,
       preference: { organizationId: input.organizationId, recipientProfileId: input.studentId }
@@ -408,7 +408,7 @@ async function sendStudentJoinEmails(input: {
         studentEmail: input.studentEmail,
         branding: input.branding
       },
-      from: buildEmailFromName('ClassroomIO'),
+      from: buildEmailFromName('Integer Training LMS'),
       idempotencyKey: `teacher-student-joined:${input.courseId}:${input.studentId}`,
       preference: { organizationId: input.organizationId }
     });
@@ -466,7 +466,7 @@ async function createEmailInviteAndSend(input: {
         expiresAt: getExpiryLabel(createdInvite.expiresAt),
         branding: input.branding
       },
-      from: buildEmailFromName(`${input.orgName} (via ClassroomIO.com)`),
+      from: buildEmailFromName(`${input.orgName} (via Integer Training LMS)`),
       idempotencyKey: `course-invite-email:${createdInvite.id}`
     });
 
@@ -561,7 +561,7 @@ export async function createStudentInvite(courseId: string, createdByProfileId: 
     };
   }
 
-  const orgName = courseOrgData.orgName || 'ClassroomIO';
+  const orgName = courseOrgData.orgName || 'Integer Training LMS';
   const courseName = courseOrgData.courseTitle || course[0].title || 'Course';
   const orgBranding = buildEmailBranding({
     name: courseOrgData.orgName,

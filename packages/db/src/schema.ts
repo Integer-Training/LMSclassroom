@@ -4289,10 +4289,19 @@ export const messageRead = pgTable(
   ]
 );
 
-// PearlLMS Phase 6 Step 5 — a staff announcement (docs/COMMS-MODEL.md §4). course_id NULL = PROVIDER-WIDE;
-// non-null = scoped to that course's enrolment. Publish-immediate (no drafts/scheduling). Slim by design —
-// no reactions, no comments (the stock newsfeed's baggage is deliberately not inherited). author_id is
-// nullable set-null so the row survives the author's deletion.
+// PearlLMS Phase 6 Step 5 — a staff announcement / broadcast (docs/COMMS-MODEL.md §4). Publish-immediate (no
+// drafts/scheduling). Slim by design — no reactions, no comments (the stock newsfeed's baggage is deliberately
+// not inherited). author_id is nullable set-null so the row survives the author's deletion.
+//
+// PearlLMS broadcast extension — `audience_type` is the source of truth for who receives it:
+//   all_learners : every STUDENT in the org (legacy provider-wide; course_id NULL)
+//   all_tutors   : every TUTOR in the org
+//   course       : the enrolled learners of `course_id`
+//   learner      : the single learner `target_user_id`
+//   tutor        : the learners allocated under the tutor `target_user_id`
+// `course_id` is kept for the `course` audience; `target_user_id` carries the learner/tutor for the targeted
+// audiences. archived_at (admin-hidden from recipients, kept in history) and deleted_at (soft-delete) let an
+// admin retract a broadcast sent by mistake without hard-deleting the row.
 export const announcement = pgTable(
   'announcement',
   {
@@ -4300,10 +4309,14 @@ export const announcement = pgTable(
     organizationId: uuid('organization_id').notNull(),
     authorId: uuid('author_id'),
     courseId: uuid('course_id'),
+    audienceType: varchar('audience_type').default('all_learners').notNull(),
+    targetUserId: uuid('target_user_id'),
     title: varchar().notNull(),
     body: text().notNull(),
     publishedAt: timestamp('published_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull()
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    archivedAt: timestamp('archived_at', { withTimezone: true, mode: 'string' }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'string' })
   },
   (table) => [
     foreignKey({
@@ -4321,8 +4334,14 @@ export const announcement = pgTable(
       foreignColumns: [course.id],
       name: 'announcement_course_id_fkey'
     }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.targetUserId],
+      foreignColumns: [profile.id],
+      name: 'announcement_target_user_id_fkey'
+    }).onDelete('cascade'),
     index('idx_announcement_org').on(table.organizationId),
     index('idx_announcement_course').on(table.courseId),
+    index('idx_announcement_target_user').on(table.targetUserId),
     index('idx_announcement_published').on(table.publishedAt)
   ]
 );

@@ -20,7 +20,7 @@
       {#snippet child({ props })}
         <a href={home} {...props}>
           <Avatar.Root class="ui:flex ui:size-6 ui:items-center ui:justify-center">
-            <Avatar.Image src="/logo-192.png" alt="{$currentOrg.name || 'Home'} logo" />
+            <Avatar.Image src={$currentOrg.avatarUrl || '/logo-192.png'} alt="{$currentOrg.name || 'Home'} logo" />
           </Avatar.Root>
 
           <span class="truncate font-normal">{$currentOrg.name || 'Home'}</span>

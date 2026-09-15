@@ -1,13 +1,18 @@
 import { classroomio } from '$lib/utils/services/api';
 import { BaseApi } from '$lib/utils/services/api/base.svelte';
 
+export type AnnouncementAudience = 'all_learners' | 'all_tutors' | 'course' | 'learner' | 'tutor';
+
 export interface AnnouncementItem {
   id: string;
+  audienceType: AnnouncementAudience;
   courseId: string | null;
-  scope: 'course' | 'provider-wide';
+  targetUserId: string | null;
+  targetLabel: string | null;
   title: string;
   body: string;
   publishedAt: string;
+  archived: boolean;
 }
 
 export interface AnnouncementCourse {
@@ -15,14 +20,38 @@ export interface AnnouncementCourse {
   title: string | null;
 }
 
+export interface AnnouncementTutor {
+  id: string;
+  name: string | null;
+  email: string | null;
+}
+
+export interface AnnouncementLearner {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export interface PublishBroadcastInput {
+  audienceType: AnnouncementAudience;
+  courseId: string | null;
+  targetUserId: string | null;
+  title: string;
+  body: string;
+}
+
 /**
- * Announcements (PearlLMS Phase 6 Step 5). Reads are server-scoped (a learner sees provider-wide + their
- * enrolled courses'); publishing is Admin/Manager only (the API enforces it). No drafts/scheduling.
+ * Broadcasts (PearlLMS). Reads are server-scoped (admin → all org [manage]; tutor → tutor-addressed; learner →
+ * all_learners + enrolled + directly-targeted + their tutor's group). Compose + manage is Admin-only (the API
+ * enforces it). No drafts/scheduling.
  */
 class AnnouncementsApi extends BaseApi {
   items = $state<AnnouncementItem[]>([]);
   courses = $state<AnnouncementCourse[]>([]);
+  tutors = $state<AnnouncementTutor[]>([]);
+  learners = $state<AnnouncementLearner[]>([]);
   publishing = $state(false);
+  busyId = $state<string | null>(null);
 
   async loadFeed() {
     return this.execute<typeof classroomio.announcements.$get>({
@@ -54,12 +83,32 @@ class AnnouncementsApi extends BaseApi {
     });
   }
 
-  async publish(input: { courseId: string | null; title: string; body: string }) {
+  async loadTutors() {
+    return this.execute<typeof classroomio.announcements.tutors.$get>({
+      requestFn: () => classroomio.announcements.tutors.$get(),
+      logContext: 'loading tutors',
+      onSuccess: (result) => {
+        this.tutors = result.data as AnnouncementTutor[];
+      }
+    });
+  }
+
+  async searchLearners(search: string) {
+    return this.execute<typeof classroomio.announcements.learners.$get>({
+      requestFn: () => classroomio.announcements.learners.$get({ query: { search } }),
+      logContext: 'searching learners',
+      onSuccess: (result) => {
+        this.learners = result.data as AnnouncementLearner[];
+      }
+    });
+  }
+
+  async publish(input: PublishBroadcastInput) {
     this.publishing = true;
     try {
       return await this.execute<typeof classroomio.announcements.$post>({
         requestFn: () => classroomio.announcements.$post({ json: input }),
-        logContext: 'publishing announcement',
+        logContext: 'publishing broadcast',
         onSuccess: (result) => {
           this.items = [result.data as AnnouncementItem, ...this.items];
         }
@@ -69,10 +118,44 @@ class AnnouncementsApi extends BaseApi {
     }
   }
 
+  async setArchived(id: string, archived: boolean) {
+    this.busyId = id;
+    try {
+      return await this.execute<(typeof classroomio.announcements)[':id']['archive']['$post']>({
+        requestFn: () => classroomio.announcements[':id'].archive.$post({ param: { id }, json: { archived } }),
+        logContext: 'archiving broadcast',
+        onSuccess: (result) => {
+          const updated = result.data as AnnouncementItem;
+          this.items = this.items.map((a) => (a.id === updated.id ? updated : a));
+        }
+      });
+    } finally {
+      this.busyId = null;
+    }
+  }
+
+  async remove(id: string) {
+    this.busyId = id;
+    try {
+      return await this.execute<(typeof classroomio.announcements)[':id']['$delete']>({
+        requestFn: () => classroomio.announcements[':id'].$delete({ param: { id } }),
+        logContext: 'deleting broadcast',
+        onSuccess: () => {
+          this.items = this.items.filter((a) => a.id !== id);
+        }
+      });
+    } finally {
+      this.busyId = null;
+    }
+  }
+
   reset() {
     this.items = [];
     this.courses = [];
+    this.tutors = [];
+    this.learners = [];
     this.publishing = false;
+    this.busyId = null;
   }
 }
 

@@ -1233,7 +1233,7 @@
           "audit_actor": "Ator",
           "audit_ip": "PI",
           "scan_qr": "Escanear QR",
-          "classroomio_brand": "ClassroomIO.com",
+          "classroomio_brand": "Integer Training LMS",
           "snackbar_invite_link_copied": "Link de convite copiado",
           "snackbar_invite_link_regenerated": "Um novo link de convite foi gerado",
           "snackbar_failed_generate_link": "Falha ao gerar link de convite",
@@ -2479,7 +2479,7 @@
     },
     "creator": {
       "heading": "Qual curso você deseja criar?",
-      "placeholder": "Peça ao ClassroomIO para criar um curso para você...",
+      "placeholder": "Peça ao Integer Training LMS para criar um curso para você...",
       "type": {
         "self_paced": "Individualizado",
         "live_class": "Aula ao vivo"
@@ -2833,12 +2833,12 @@
     "goto": "Vá para",
     "courses": "Cursos",
     "home": "Página inicial",
-    "classroomio_home": "Início do ClassroomIO",
+    "classroomio_home": "Início do Integer Training LMS",
     "dashboard": "Painel",
     "discussion": "Discussão",
     "people": "Pessoas",
     "goto_lms": "Acesse o LMS",
-    "goto_home": "Vá para a página inicial do ClassroomIO",
+    "goto_home": "Vá para a página inicial do Integer Training LMS",
     "login": "Entrar",
     "signup": "Inscreva-se",
     "redirecting": "Redirecionando",
@@ -2942,7 +2942,7 @@
     "upgrade_left": "{contagem} restantes"
   },
   "media_manager": {
-    "page_title": "Gerenciador de mídia - ClassroomIO",
+    "page_title": "Gerenciador de mídia - Integer Training LMS",
     "heading": "Gerente de mídia",
     "empty": "Nenhum recurso encontrado",
     "usage": {
@@ -3094,7 +3094,7 @@
       "provider": "Usamos a Polar para ajudar a gerenciar seu faturamento",
       "open_billing": "Faturamento aberto",
       "error": "Ocorreu um erro ao abrir o faturamento",
-      "page_subtitle": "Seu plano, portal de cobrança e como você paga pelo ClassroomIO.",
+      "page_subtitle": "Seu plano, portal de cobrança e como você paga pelo Integer Training LMS.",
       "ai_credits": "AI credits",
       "ai_tokens_used": "AI credits usados este mês",
       "ai_bonus_credits": "AI credits bônus disponíveis"
@@ -3102,7 +3102,7 @@
     "integrations": {
       "heading": "Telegram",
       "sub_heading": "Conecte sua conta ao Telegram para ser notificado sobre qualquer alteração no aplicativo.",
-      "step_authenticate": "Passo 1: Autentique sua conta por meio do bot ClassroomIO.",
+      "step_authenticate": "Passo 1: Autentique sua conta por meio do bot Integer Training LMS.",
       "open_bot_button": "Abrir bot",
       "step_chatId": "Passo 2: Insira o ID de bate-papo fornecido pelo bot.",
       "connect_button": "Conectar",
@@ -3422,7 +3422,7 @@
       "gallery": {
         "heading": "Temas populares",
         "description": "Feito com recursos básicos que você pode personalizar facilmente – sem necessidade de codificação.",
-        "by_classroomio": "da ClassroomIO",
+        "by_classroomio": "da Integer Training LMS",
         "add": "Adicionar",
         "upgrade": "Atualizar",
         "apply_theme": "Aplicar tema",
@@ -3500,7 +3500,7 @@
         "accepted": "Aceito:",
         "validation_error": "O tamanho do arquivo excede o limite máximo:"
       },
-      "page_subtitle": "Seu nome, e-mail e como você aparece em qualquer lugar em que trabalhe no ClassroomIO."
+      "page_subtitle": "Seu nome, e-mail e como você aparece em qualquer lugar em que trabalhe no Integer Training LMS."
     },
     "tabs": {
       "profile_tab": "Perfil",
@@ -3761,7 +3761,7 @@
           "description": "Matrículas, envios, aulas, anúncios e conclusões nos seus cursos."
         }
       },
-      "personal_page_subtitle": "Escolha quais notificações por e-mail você recebe do ClassroomIO."
+      "personal_page_subtitle": "Escolha quais notificações por e-mail você recebe do Integer Training LMS."
     }
   },
   "profileMenu": {
@@ -3937,7 +3937,7 @@
     "snackbar_error": "erro ao enviar código"
   },
   "public_courses": {
-    "page_title": "Cursos - ClassroomIO",
+    "page_title": "Cursos - Integer Training LMS",
     "heading": "Cursos",
     "subtitle": "Navegue por todos os cursos publicados",
     "clear_filters": "Limpar filtros",
@@ -3962,7 +3962,7 @@
     }
   },
   "tags_admin": {
-    "page_title": "Etiquetas - ClassroomIO",
+    "page_title": "Etiquetas - Integer Training LMS",
     "heading": "Etiquetas",
     "create": "Criar",
     "tag_modal": {
@@ -4014,7 +4014,7 @@
   },
   "invite": {
     "organization": {
-      "page_title": "Junte-se a {orgName} no ClassroomIO",
+      "page_title": "Junte-se a {orgName} no Integer Training LMS",
       "invitation_student": "Você foi convidado para {orgName} como aluno.",
       "invitation_teacher": "Você foi convidado para {orgName} como professor.",
       "invitation_admin": "Você foi convidado para {orgName} como administrador.",
@@ -4033,7 +4033,7 @@
       }
     },
     "link": {
-      "page_title": "Junte-se a {orgName} no ClassroomIO",
+      "page_title": "Junte-se a {orgName} no Integer Training LMS",
       "invitation_student": "Você foi convidado para ingressar em {orgName} como estudante.",
       "invitation_teacher": "Você foi convidado para ingressar em {orgName} como professor.",
       "invitation_admin": "Você foi convidado para ingressar em {orgName} como administrador.",
@@ -4054,20 +4054,20 @@
         "title": "Configuração do cliente",
         "description": "Use uma chave com escopo organizacional por integração. Se uma chave for rotacionada ou revogada, o cliente para de funcionar até que o novo segredo seja configurado.",
         "claude_code_description": "Registra `@classroomio/mcp` com Claude Code usando a chave gerada com escopo organizacional.",
-        "codex_description": "Adiciona o servidor ClassroomIO MCP ao Codex com a mesma chave com escopo organizacional.",
+        "codex_description": "Adiciona o servidor Integer Training LMS MCP ao Codex com a mesma chave com escopo organizacional.",
         "cursor_description": "Cole isso em `~/.cursor/mcp.json` ou na configuração do MCP do seu espaço de trabalho.",
         "opencode_description": "Adicione isso a `opencode.json` na raiz do projeto ou a `~/.config/opencode/opencode.json`."
       },
       "keys": {
         "title": "Chaves MCP",
-        "description": "Essas chaves autenticam a organização atual quando um cliente MCP chama ClassroomIO por meio de `@classroomio/mcp`.",
+        "description": "Essas chaves autenticam a organização atual quando um cliente MCP chama Integer Training LMS por meio de `@classroomio/mcp`.",
         "generate": "Gerar chave MCP",
         "secret_once": "Este segredo é mostrado uma vez. Copie-o para o seu cliente MCP agora.",
         "modal": {
           "title": "Criar chave MCP",
           "description": "Escolha um nome para esta chave MCP antes de gerá-la.",
           "name_label": "Nome da chave",
-          "name_placeholder": "ClassroomIO OpenCode",
+          "name_placeholder": "Integer Training LMS OpenCode",
           "cancel": "Cancelar",
           "save": "Criar chave"
         }
@@ -4083,17 +4083,17 @@
         "rate_limits_description": "Solicitações de leitura/gravação/publicação permitidas por minuto.",
         "used_label": "Usado:"
       },
-      "page_subtitle": "Conecte ferramentas de IA ao ClassroomIO com chaves da organização que você pode rotacionar a qualquer momento."
+      "page_subtitle": "Conecte ferramentas de IA ao Integer Training LMS com chaves da organização que você pode rotacionar a qualquer momento."
     },
     "api": {
-      "subtitle": "Gerencie chaves de API para integrar com a API pública do ClassroomIO.",
+      "subtitle": "Gerencie chaves de API para integrar com a API pública do Integer Training LMS.",
       "keys": {
         "title": "Chaves de API",
-        "description": "Essas chaves autenticam a organização atual ao chamar a API pública do ClassroomIO.",
+        "description": "Essas chaves autenticam a organização atual ao chamar a API pública do Integer Training LMS.",
         "generate": "Gerar chave de API",
         "secret_once": "Este segredo é exibido apenas uma vez. Copie-o e armazene-o com segurança.",
         "empty_title": "Ainda não há chaves de API",
-        "empty_description": "Crie a primeira chave de API da organização para usar a API pública do ClassroomIO.",
+        "empty_description": "Crie a primeira chave de API da organização para usar a API pública do Integer Training LMS.",
         "modal": {
           "title": "Criar chave de API",
           "description": "Escolha um nome para esta chave de API antes de gerá-la.",
@@ -4147,7 +4147,7 @@
       "disabled_description": "Somente administradores da organização podem criar, alternar ou revogar chaves de automação. Os professores podem revisar as instruções de configuração aqui."
     },
     "zapier": {
-      "page_subtitle": "Automatize o ClassroomIO com milhares de aplicativos pelo Zapier. Em breve."
+      "page_subtitle": "Automatize o Integer Training LMS com milhares de aplicativos pelo Zapier. Em breve."
     }
   },
   "ai_assistant": {

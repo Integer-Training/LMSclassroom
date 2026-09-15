@@ -69,7 +69,7 @@ export async function addMember(
 
         if (courseOrgData) {
           const courseName = courseOrgData.courseTitle || '';
-          const orgName = courseOrgData.orgName || 'ClassroomIO';
+          const orgName = courseOrgData.orgName || 'Integer Training LMS';
           const branding = buildEmailBranding({
             name: courseOrgData.orgName,
             avatarUrl: courseOrgData.orgAvatarUrl,
@@ -108,7 +108,7 @@ export async function addMember(
                   customMessage: courseOrgData.welcomeEmailMessage ?? undefined,
                   branding
                 },
-                from: buildEmailFromName(`${orgName} (via ClassroomIO.com)`),
+                from: buildEmailFromName(`${orgName} (via Integer Training LMS)`),
                 idempotencyKey: `course-people-student-welcome:${courseId}:${studentEmail}`,
                 ics: await getWelcomeSessionIcs(courseId),
                 preference: { organizationId: courseOrgData.orgId, recipientProfileId: data.profileId }
@@ -133,7 +133,7 @@ export async function addMember(
                     studentEmail,
                     branding
                   },
-                  from: buildEmailFromName('ClassroomIO'),
+                  from: buildEmailFromName('Integer Training LMS'),
                   idempotencyKey: `course-people-teacher-joined:${courseId}:${studentEmail}`,
                   preference: { organizationId: courseOrgData.orgId }
                 });
@@ -193,7 +193,7 @@ export async function addMembers(courseId: string, members: TAddCourseMembers) {
     }
 
     const courseName = courseOrgData.courseTitle || '';
-    const orgName = courseOrgData.orgName || 'ClassroomIO';
+    const orgName = courseOrgData.orgName || 'Integer Training LMS';
     const orgSiteName = courseOrgData.orgSiteName || '';
     const branding = buildEmailBranding({
       name: courseOrgData.orgName,
@@ -238,7 +238,7 @@ export async function addMembers(courseId: string, members: TAddCourseMembers) {
               inviteLink,
               branding
             },
-            from: buildEmailFromName(`${orgName} (via ClassroomIO.com)`),
+            from: buildEmailFromName(`${orgName} (via Integer Training LMS)`),
             idempotencyKey: `teacher-course-welcome:${courseId}:${email}`,
             preference: { organizationId: courseOrgData.orgId }
           }).catch((emailError) => {

@@ -1233,7 +1233,7 @@
           "audit_actor": "अभिनेता",
           "audit_ip": "आईपी",
           "scan_qr": "QR स्कैन करें",
-          "classroomio_brand": "ClassroomIO.com",
+          "classroomio_brand": "Integer Training LMS",
           "snackbar_invite_link_copied": "आमंत्रण लिंक कॉपी किया गया",
           "snackbar_invite_link_regenerated": "एक नया आमंत्रण लिंक तैयार किया गया है",
           "snackbar_failed_generate_link": "आमंत्रण लिंक जनरेट करने में विफल",
@@ -2479,7 +2479,7 @@
     },
     "creator": {
       "heading": "आप कौन सा कोर्स बनाना चाहते हैं?",
-      "placeholder": "ClassroomIO से आपके लिए एक पाठ्यक्रम बनाने के लिए कहें...",
+      "placeholder": "Integer Training LMS से आपके लिए एक पाठ्यक्रम बनाने के लिए कहें...",
       "type": {
         "self_paced": "स्वयं गति",
         "live_class": "लाइव क्लास"
@@ -3094,7 +3094,7 @@
       "provider": "हम आपकी बिलिंग प्रबंधित करने में सहायता के लिए पोलर का उपयोग करते हैं",
       "open_billing": "बिलिंग खोलें",
       "error": "बिलिंग खोलते समय एक त्रुटि उत्पन्न हुई",
-      "page_subtitle": "आपकी योजना, बिलिंग पोर्टल और ClassroomIO के लिए भुगतान का तरीका।",
+      "page_subtitle": "आपकी योजना, बिलिंग पोर्टल और Integer Training LMS के लिए भुगतान का तरीका।",
       "ai_credits": "AI credits",
       "ai_tokens_used": "इस महीने उपयोग किए गए AI credits",
       "ai_bonus_credits": "bonus AI credits उपलब्ध"
@@ -3102,7 +3102,7 @@
     "integrations": {
       "heading": "टेलीग्राम",
       "sub_heading": "एप्लिकेशन में किसी भी बदलाव की सूचना पाने के लिए अपने खाते को टेलीग्राम से कनेक्ट करें।",
-      "step_authenticate": "चरण 1: ClassroomIO बॉट के माध्यम से अपने खाते को प्रमाणित करें।",
+      "step_authenticate": "चरण 1: Integer Training LMS बॉट के माध्यम से अपने खाते को प्रमाणित करें।",
       "open_bot_button": "बॉट खोलें",
       "step_chatId": "चरण 2: बॉट द्वारा आपको दी गई चैट आईडी दर्ज करें।",
       "connect_button": "कनेक्ट करें",
@@ -3500,7 +3500,7 @@
         "accepted": "स्वीकृत:",
         "validation_error": "फ़ाइल का आकार अधिकतम सीमा से अधिक है:"
       },
-      "page_subtitle": "आपका नाम, ईमेल और ClassroomIO में कहीं भी काम करते समय आप कैसे दिखते हैं।"
+      "page_subtitle": "आपका नाम, ईमेल और Integer Training LMS में कहीं भी काम करते समय आप कैसे दिखते हैं।"
     },
     "tabs": {
       "profile_tab": "प्रोफाइल",
@@ -3761,7 +3761,7 @@
           "description": "आपके पाठ्यक्रमों में नामांकन, सबमिशन, पाठ, घोषणाएँ और पूर्णता।"
         }
       },
-      "personal_page_subtitle": "चुनें कि आप ClassroomIO से कौन सी ईमेल सूचनाएँ प्राप्त करते हैं।"
+      "personal_page_subtitle": "चुनें कि आप Integer Training LMS से कौन सी ईमेल सूचनाएँ प्राप्त करते हैं।"
     }
   },
   "profileMenu": {
@@ -4014,7 +4014,7 @@
   },
   "invite": {
     "organization": {
-      "page_title": "ClassroomIO पर {orgName} से जुड़ें",
+      "page_title": "Integer Training LMS पर {orgName} से जुड़ें",
       "invitation_student": "आपको {orgName} में छात्र के रूप में आमंत्रित किया गया है।",
       "invitation_teacher": "आपको {orgName} में शिक्षक के रूप में आमंत्रित किया गया है।",
       "invitation_admin": "आपको {orgName} में व्यवस्थापक के रूप में आमंत्रित किया गया है।",
@@ -4033,7 +4033,7 @@
       }
     },
     "link": {
-      "page_title": "ClassroomIO पर {orgName} से जुड़ें",
+      "page_title": "Integer Training LMS पर {orgName} से जुड़ें",
       "invitation_student": "आपको एक छात्र के रूप में {orgName} में शामिल होने के लिए आमंत्रित किया गया है।",
       "invitation_teacher": "आपको एक शिक्षक के रूप में {orgName} में शामिल होने के लिए आमंत्रित किया गया है।",
       "invitation_admin": "आपको एक व्यवस्थापक के रूप में {orgName} से जुड़ने के लिए आमंत्रित किया गया है।",
@@ -4060,14 +4060,14 @@
       },
       "keys": {
         "title": "एमसीपी कुंजी",
-        "description": "जब कोई MCP क्लाइंट `@classroomio/mcp` के माध्यम से ClassroomIO को कॉल करता है तो ये कुंजियाँ वर्तमान संगठन को प्रमाणित करती हैं।",
+        "description": "जब कोई MCP क्लाइंट `@classroomio/mcp` के माध्यम से Integer Training LMS को कॉल करता है तो ये कुंजियाँ वर्तमान संगठन को प्रमाणित करती हैं।",
         "generate": "MCP कुंजी जनरेट करें",
         "secret_once": "यह रहस्य एक बार दिखाया गया है। अब इसे अपने MCP क्लाइंट में कॉपी करें।",
         "modal": {
           "title": "MCP कुंजी बनाएं",
           "description": "इस MCP कुंजी को बनाने से पहले इसका नाम चुनें।",
           "name_label": "कुंजी का नाम",
-          "name_placeholder": "ClassroomIO OpenCode",
+          "name_placeholder": "Integer Training LMS OpenCode",
           "cancel": "रद्द करें",
           "save": "कुंजी बनाएं"
         }
@@ -4083,17 +4083,17 @@
         "rate_limits_description": "प्रति मिनट पढ़ने/लिखने/प्रकाशित करने के अनुरोधों की अनुमति है।",
         "used_label": "प्रयुक्त:"
       },
-      "page_subtitle": "किसी भी समय घुमाने योग्य संगठन-स्तरीय कुंजियों के साथ AI टूल्स को ClassroomIO से कनेक्ट करें।"
+      "page_subtitle": "किसी भी समय घुमाने योग्य संगठन-स्तरीय कुंजियों के साथ AI टूल्स को Integer Training LMS से कनेक्ट करें।"
     },
     "api": {
-      "subtitle": "ClassroomIO सार्वजनिक API के साथ एकीकृत करने के लिए API कुंजियाँ प्रबंधित करें।",
+      "subtitle": "Integer Training LMS सार्वजनिक API के साथ एकीकृत करने के लिए API कुंजियाँ प्रबंधित करें।",
       "keys": {
         "title": "API कुंजियाँ",
-        "description": "ये कुंजियाँ ClassroomIO सार्वजनिक API को कॉल करते समय वर्तमान संगठन को प्रमाणित करती हैं।",
+        "description": "ये कुंजियाँ Integer Training LMS सार्वजनिक API को कॉल करते समय वर्तमान संगठन को प्रमाणित करती हैं।",
         "generate": "API कुंजी बनाएं",
         "secret_once": "यह गुप्त कुंजी केवल एक बार दिखाई जाती है। इसे कॉपी करें और सुरक्षित रूप से संग्रहीत करें।",
         "empty_title": "अभी तक कोई API कुंजी नहीं",
-        "empty_description": "ClassroomIO सार्वजनिक API का उपयोग करने के लिए पहली संगठन-स्तरीय API कुंजी बनाएं।",
+        "empty_description": "Integer Training LMS सार्वजनिक API का उपयोग करने के लिए पहली संगठन-स्तरीय API कुंजी बनाएं।",
         "modal": {
           "title": "API कुंजी बनाएं",
           "description": "इस API कुंजी को बनाने से पहले इसका नाम चुनें।",
@@ -4147,7 +4147,7 @@
       "disabled_description": "केवल संगठन व्यवस्थापक ही स्वचालन कुंजियाँ बना सकते हैं, घुमा सकते हैं या निरस्त कर सकते हैं। शिक्षक यहां सेटअप निर्देशों की समीक्षा कर सकते हैं।"
     },
     "zapier": {
-      "page_subtitle": "Zapier के माध्यम से हज़ारों ऐप्स के साथ ClassroomIO को स्वचालित करें। जल्द आ रहा है।"
+      "page_subtitle": "Zapier के माध्यम से हज़ारों ऐप्स के साथ Integer Training LMS को स्वचालित करें। जल्द आ रहा है।"
     }
   },
   "ai_assistant": {

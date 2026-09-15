@@ -5,7 +5,7 @@
 </script>
 
 <svelte:head>
-  <title>{t.get('automation.tabs.zapier')} - ClassroomIO</title>
+  <title>{t.get('automation.tabs.zapier')} - Integer Training LMS</title>
 </svelte:head>
 
 <Page.Root class="mx-auto w-full max-w-4xl">

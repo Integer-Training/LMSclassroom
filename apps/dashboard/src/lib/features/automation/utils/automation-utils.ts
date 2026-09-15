@@ -157,11 +157,11 @@ export function getCursorSnippet(secret: string | null) {
 export function getDefaultAutomationKeyLabel(type: AutomationKeyType) {
   switch (type) {
     case 'mcp':
-      return 'ClassroomIO MCP';
+      return 'Integer Training LMS MCP';
     case 'api':
-      return 'ClassroomIO API';
+      return 'Integer Training LMS API';
     case 'zapier':
-      return 'ClassroomIO Zapier';
+      return 'Integer Training LMS Zapier';
   }
 }
 

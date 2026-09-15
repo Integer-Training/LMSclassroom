@@ -6,7 +6,7 @@
 </script>
 
 <svelte:head>
-  <title>{$t('account.workspaces.page_title')} - ClassroomIO</title>
+  <title>{$t('account.workspaces.page_title')} - Integer Training LMS</title>
 </svelte:head>
 
 <Page.Header>

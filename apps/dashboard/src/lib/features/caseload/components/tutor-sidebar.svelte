@@ -40,7 +40,7 @@
           {#snippet child({ props })}
             <a href="/caseload" {...props}>
               <Avatar.Root class="ui:flex ui:size-8 ui:items-center ui:justify-center ui:rounded-md">
-                <Avatar.Image src="/logo-192.png" alt="{$currentOrg.name || 'Home'} logo" />
+                <Avatar.Image src={$currentOrg.avatarUrl || '/logo-192.png'} alt="{$currentOrg.name || 'Home'} logo" />
               </Avatar.Root>
               <div class="grid flex-1 text-left text-sm leading-tight">
                 <span class="truncate font-medium">{$currentOrg.name || 'Home'}</span>

@@ -35,7 +35,7 @@ function buildMasthead(branding: EmailBranding): string {
   }
 
   return `<a href="https://classroomio.com" target="_blank">
-        <img src="${CLASSROOMIO_LOGO}" alt="ClassroomIO" width="130" style="width:130px;height:auto;display:block;" />
+        <img src="${CLASSROOMIO_LOGO}" alt="Integer Training LMS" width="130" style="width:130px;height:auto;display:block;" />
       </a>`;
 }
 
@@ -160,7 +160,7 @@ export const getDefaultTemplate = (content: string, branding?: EmailBranding): s
       color:#94a3b8;
       padding:24px 30px;
       border-top:1px solid #f0f0f0;">
-      ClassroomIO ${new Date().getFullYear()}. All rights reserved.
+      Integer Training LMS ${new Date().getFullYear()}. All rights reserved.
       <br />
       <a href="https://classroomio.com" style="color:#94a3b8;text-decoration:none;">Website</a>
       &nbsp;&middot;&nbsp;
