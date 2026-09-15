@@ -2,6 +2,7 @@ import { AppError, ErrorCodes } from '@api/utils/errors';
 import type { Actor } from '@cio/db/actor';
 import { isPassingResult } from '@cio/utils/constants';
 import { listAllocatedLearnersForOrg, listLearnersForTutor, type AllocatedLearner } from '@cio/db/queries/allocation';
+import { listOrgLearners } from '@cio/db/queries/dash';
 import {
   getCoursesForLearners,
   getEnrolmentsForLearners,
@@ -151,6 +152,22 @@ function activityOf(status: string | undefined, lastSeen: string | null | undefi
  */
 export async function getProgression(actor: Actor, courseId?: string): Promise<ProgressionList> {
   const roster = await loadRoster(actor);
+  return buildProgressionForRoster(roster, courseId);
+}
+
+/**
+ * Org-wide progression for the admin Learner-Progressions page — the SAME computation as the tutor view but
+ * over EVERY org learner (listOrgLearners), not just the allocated ones. Admin only.
+ */
+export async function getOrgProgression(actor: Actor, courseId?: string): Promise<ProgressionList> {
+  if (!actor.authenticated) throw new AppError('Unauthorized', ErrorCodes.UNAUTHORIZED, 401);
+  if (actor.role !== 'ADMIN') throw new AppError('Admins only', ErrorCodes.FORBIDDEN, 403);
+  const learners = await listOrgLearners(actor.orgId);
+  const roster: AllocatedLearner[] = learners.map((l) => ({ learnerId: l.learnerId, name: l.name, email: l.email }));
+  return buildProgressionForRoster(roster, courseId);
+}
+
+async function buildProgressionForRoster(roster: AllocatedLearner[], courseId?: string): Promise<ProgressionList> {
   const rosterIds = roster.map((l) => l.learnerId);
 
   const [statusMap, lastSeen, enrolments, rosterCourses] = await Promise.all([

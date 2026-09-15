@@ -212,6 +212,15 @@ export const baseNavConfig: NavItemConfig[] = [
     requiresAdmin: true,
     matchPattern: '^/org/[^/]+/tutors(/.*)?$'
   },
+  // Admin org-wide Learner Progressions (all learners, activity + completion + workbooks/case-studies).
+  {
+    group: 'people',
+    titleKey: 'org_navigation.progression',
+    path: '/progression',
+    icon: ChartColumnIcon,
+    requiresAdmin: true,
+    matchPattern: '^/org/[^/]+/progression(/.*)?$'
+  },
   ...(AUDIENCE_NAV_ENABLED
     ? [
         {

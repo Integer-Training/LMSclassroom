@@ -13,6 +13,8 @@
   import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
   import UsersIcon from '@lucide/svelte/icons/users';
   import KeyIcon from '@lucide/svelte/icons/key-round';
+  import LogInIcon from '@lucide/svelte/icons/log-in';
+  import { loginAsMember } from '$lib/utils/functions/impersonation';
   import { currentOrg } from '$lib/utils/store/org';
   import { downloadCsv } from '$features/admin-dashboard/utils/export-csv';
   import {
@@ -322,6 +324,14 @@
                       </Table.Cell>
                       <Table.Cell class="text-right whitespace-nowrap">
                         <div class="flex items-center justify-end gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={learnerManagementApi.busyMemberId === row.memberId}
+                            onclick={() => loginAsMember(row.memberId)}
+                          >
+                            <LogInIcon class="size-4" /> Login As
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"

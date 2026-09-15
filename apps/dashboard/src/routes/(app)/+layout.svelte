@@ -2,6 +2,7 @@
   import { page } from '$app/state';
 
   import { UpgradeModal, PageLoadProgress, PageRestricted } from '$features/ui';
+  import ImpersonationBanner from '$features/ui/impersonation-banner.svelte';
   import { VerifyEmailModal } from '$features/onboarding/components';
   import { CommandPalette, KeyboardShortcutListener } from '$features/search';
   import { isPublicRoute } from '$lib/utils/functions/routes/isPublicRoute';
@@ -44,6 +45,7 @@
 
 <UpgradeModal />
 <VerifyEmailModal />
+<ImpersonationBanner />
 <CommandPalette />
 <KeyboardShortcutListener />
 

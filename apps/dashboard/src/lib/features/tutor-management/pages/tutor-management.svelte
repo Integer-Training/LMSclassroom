@@ -9,7 +9,9 @@
   import SearchIcon from '@lucide/svelte/icons/search';
   import DownloadIcon from '@lucide/svelte/icons/download';
   import KeyIcon from '@lucide/svelte/icons/key-round';
+  import LogInIcon from '@lucide/svelte/icons/log-in';
   import UsersIcon from '@lucide/svelte/icons/users';
+  import { loginAsMember } from '$lib/utils/functions/impersonation';
   import { currentOrg } from '$lib/utils/store/org';
   import { downloadCsv } from '$features/admin-dashboard/utils/export-csv';
   import { tutorManagementApi, type TutorMgmtRow } from '$features/tutor-management/api/tutor-management.svelte';
@@ -171,6 +173,14 @@
                     </Table.Cell>
                     <Table.Cell class="text-right whitespace-nowrap">
                       <div class="flex items-center justify-end gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={tutorManagementApi.busyMemberId === row.memberId}
+                          onclick={() => loginAsMember(row.memberId)}
+                        >
+                          <LogInIcon class="size-4" /> Login As
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"

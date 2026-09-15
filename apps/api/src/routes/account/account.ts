@@ -9,6 +9,10 @@ import { auth } from '@cio/db/auth';
 import { AppError, ErrorCodes, handleError } from '@api/utils/errors';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
+import { deleteCookie, getSignedCookie } from 'hono/cookie';
+import { mintReturnToAdminToken } from '@api/services/organization/management';
+
+const IMP_COOKIE_SECRET = process.env.BETTER_AUTH_SECRET ?? 'insecure-dev-secret-change-me';
 
 // better-auth changePassword isn't on the inferred api type; narrow locally.
 const changePasswordApi = auth.api as unknown as {
@@ -106,6 +110,36 @@ export const accountRouter = new Hono()
       return c.json({ success: true }, 200);
     }
   )
+  // "Return to admin" — end an impersonation session. Proof is the signed imp_admin cookie (the current
+  // session is the impersonated learner/tutor, so this can't be admin-gated). Mints a login-link back to the
+  // admin and clears the impersonation cookies.
+  .post('/stop-impersonating', authMiddleware, async (c) => {
+    try {
+      const raw = await getSignedCookie(c, IMP_COOKIE_SECRET, 'imp_admin');
+      if (!raw) throw new AppError('You are not impersonating anyone', ErrorCodes.VALIDATION_ERROR, 400);
+      let parsed: { adminUserId?: string; adminEmail?: string };
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        throw new AppError('Invalid impersonation state', ErrorCodes.VALIDATION_ERROR, 400);
+      }
+      if (!parsed.adminUserId || !parsed.adminEmail) {
+        throw new AppError('Invalid impersonation state', ErrorCodes.VALIDATION_ERROR, 400);
+      }
+      const token = await mintReturnToAdminToken(parsed.adminUserId, parsed.adminEmail);
+      deleteCookie(c, 'imp_admin', { path: '/' });
+      deleteCookie(c, 'impersonating', { path: '/' });
+      return c.json(
+        {
+          success: true,
+          data: { loginLinkPath: `/api/auth/login-link?token=${encodeURIComponent(token)}&redirect=/` }
+        },
+        200
+      );
+    } catch (error) {
+      return handleError(c, error, 'Failed to return to admin');
+    }
+  })
   .get('/profile', authMiddleware, async (c) => {
     const user = c.get('user')!;
 

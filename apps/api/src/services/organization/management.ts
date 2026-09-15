@@ -12,6 +12,11 @@ import { addCourseMember } from '@cio/db/queries/course';
 import { ensureComplianceEnrollmentRecordsForProfiles } from '@api/services/course/compliance';
 import { createOrgUser } from '@api/services/organization/users';
 import { createTutorAllocation } from '@api/services/organization/allocation';
+import { getOrganizationMemberByIdAndOrg } from '@cio/db/queries/organization';
+import { getOrgMemberRoleId } from '@cio/db/queries/allocation';
+import { getProfileById } from '@cio/db/queries/auth';
+import { mintLoginLinkToken } from '@cio/db/auth';
+import { recordAudit, AUDIT_ACTIONS } from '@cio/db/audit';
 
 // Admin Learner-/Tutor-management — org-wide (organizationmember roleId, NOT allocation-scoped). Admin only.
 
@@ -231,6 +236,51 @@ export async function createTutor(actor: Actor, input: CreateTutorInput): Promis
     roleId: ROLE.TUTOR
   });
   return { userId, name, temporaryPassword };
+}
+
+export interface ImpersonationStart {
+  token: string;
+  adminUserId: string;
+  adminEmail: string;
+  targetName: string | null;
+}
+
+/**
+ * Admin "Login as" — mint a short-lived login-link token for a target learner/tutor. The route sets a
+ * signed cookie remembering the admin so "Return to admin" can restore them. Admin can only impersonate a
+ * LEARNER or TUTOR (never another admin/manager). Audited.
+ */
+export async function startImpersonation(actor: Actor, memberId: number): Promise<ImpersonationStart> {
+  assertAdmin(actor);
+  const orgId = actor.orgId;
+  const member = await getOrganizationMemberByIdAndOrg(memberId, orgId);
+  if (!member?.profileId) throw new AppError('User not found in this organization', ErrorCodes.NOT_FOUND, 404);
+
+  const targetRole = await getOrgMemberRoleId(orgId, member.profileId);
+  if (targetRole !== ROLE.STUDENT && targetRole !== ROLE.TUTOR) {
+    throw new AppError('You can only view as a learner or a tutor', ErrorCodes.FORBIDDEN, 403);
+  }
+
+  const [target, admin] = await Promise.all([getProfileById(member.profileId), getProfileById(actor.userId)]);
+  if (!target?.email) throw new AppError('This account has no email', ErrorCodes.NOT_FOUND, 404);
+  if (!admin?.email) throw new AppError('Your account has no email', ErrorCodes.INTERNAL_ERROR, 500);
+
+  const token = await mintLoginLinkToken({ userId: member.profileId, email: target.email, ttlMinutes: 5 });
+
+  await recordAudit({
+    actor,
+    action: AUDIT_ACTIONS.USER_STATUS_CHANGED,
+    entityType: 'user',
+    entityId: member.profileId,
+    metadata: { impersonation_started: true }
+  });
+
+  return { token, adminUserId: actor.userId, adminEmail: admin.email, targetName: target.fullname ?? null };
+}
+
+/** Mint a login-link token that returns an impersonating admin to their own account. */
+export async function mintReturnToAdminToken(adminUserId: string, adminEmail: string): Promise<string> {
+  return mintLoginLinkToken({ userId: adminUserId, email: adminEmail, ttlMinutes: 5 });
 }
 
 export type { OrgMemberRow };
