@@ -43,6 +43,8 @@ import {
 } from '@api/services/assets';
 
 import { Hono } from '@api/utils/hono';
+import type { Actor } from '@cio/db/actor';
+import { getGroupedMedia } from '@api/services/assets/grouped-media';
 import { authMiddleware } from '@api/middlewares/auth';
 import { handleError } from '@api/utils/errors';
 import { orgAdminMiddleware } from '@api/middlewares/org-admin';
@@ -81,6 +83,18 @@ export const assetsRouter = new Hono()
       );
     } catch (error) {
       return handleError(c, error, 'Failed to list assets');
+    }
+  })
+  /**
+   * GET /organization/assets/grouped
+   * All org media grouped by Course → Unit (+ an Unassigned bucket). Admin/Manager (asserted in the service).
+   */
+  .get('/grouped', authMiddleware, orgMemberMiddleware, async (c) => {
+    try {
+      const data = await getGroupedMedia(c.get('actor') as Actor);
+      return c.json({ success: true, data }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to load grouped media');
     }
   })
   /**

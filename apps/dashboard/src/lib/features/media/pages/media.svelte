@@ -1,8 +1,11 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
+
   import * as Item from '@cio/ui/base/item';
   import * as Page from '@cio/ui/base/page';
   import { Button } from '@cio/ui/base/button';
   import { Empty } from '@cio/ui/custom/empty';
+  import { Spinner } from '@cio/ui/base/spinner';
   import VideoIcon from '@lucide/svelte/icons/video';
 
   import type { TAssetUpdate } from '@cio/utils/validation/assets';
@@ -12,6 +15,7 @@
     AssetUsageDialog,
     DeleteAssetDialog,
     EditAssetDialog,
+    GroupedMediaView,
     ManageThumbnailsDialog,
     MediaFilters,
     StorageCards
@@ -48,6 +52,29 @@
   const assets = $derived(mediaApi.assets);
   const storageSummary = $derived(mediaApi.storageSummary);
   const pagination = $derived(mediaApi.pagination);
+
+  // View toggle: grouped by course (default) vs the existing flat grid.
+  let view = $state<'grouped' | 'all'>('grouped');
+
+  const grouped = $derived(mediaApi.grouped);
+  const groupedLoading = $derived(mediaApi.groupedLoading);
+  // Id → asset lookup for the grouped view (an id may repeat across units).
+  const groupedAssets = $derived(new Map((grouped?.assets ?? []).map((asset) => [asset.id, asset])));
+
+  async function ensureGroupedLoaded() {
+    if (mediaApi.grouped || mediaApi.groupedLoading) return;
+    await mediaApi.loadGrouped();
+  }
+
+  function setView(next: 'grouped' | 'all') {
+    view = next;
+    if (next === 'grouped') ensureGroupedLoaded();
+  }
+
+  onMount(() => {
+    // Default view is grouped — load it alongside the flat data hydrated by the route.
+    ensureGroupedLoaded();
+  });
 
   async function refreshAssets(page = 1) {
     isRefreshing = true;
@@ -179,66 +206,95 @@
   const nextPage = $derived((pagination?.page ?? 1) + 1);
 </script>
 
+<div class="bg-muted inline-flex w-fit items-center gap-1 rounded-lg p-1">
+  <Button variant={view === 'grouped' ? 'default' : 'ghost'} size="sm" onclick={() => setView('grouped')}>
+    {$t('media_manager.view.by_course')}
+  </Button>
+  <Button variant={view === 'all' ? 'default' : 'ghost'} size="sm" onclick={() => setView('all')}>
+    {$t('media_manager.view.all')}
+  </Button>
+</div>
+
 <StorageCards {storageSummary} />
 
-<Page.BodyHeader class="flex-col flex-wrap! items-start! gap-3 lg:flex-row">
-  <MediaFilters
-    bind:search
-    bind:kind
-    bind:status
-    {isRefreshing}
-    onApply={() => refreshAssets(1)}
-    onRefresh={refreshMediaData}
-  />
-</Page.BodyHeader>
-
-{#if assets.length === 0}
-  <Empty
-    title={$t('media_manager.empty')}
-    description={$t('media_manager.empty_description')}
-    icon={VideoIcon}
-    variant="page"
-  />
+{#if view === 'grouped'}
+  {#if groupedLoading && !grouped}
+    <div class="text-muted-foreground flex items-center justify-center gap-2 py-10 text-sm">
+      <Spinner class="size-4" />
+      {$t('media_manager.grouped.loading')}
+    </div>
+  {:else if grouped}
+    <GroupedMediaView
+      {grouped}
+      assets={groupedAssets}
+      {downloadingAssetId}
+      onEdit={openEditAsset}
+      onUsage={openUsage}
+      onDownload={downloadAsset}
+      onManageThumbnails={openManageThumbnails}
+      onDelete={openDelete}
+    />
+  {/if}
 {:else}
-  <Item.Group class="grid! w-full grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-    {#each assets as asset (asset.id)}
-      <AssetCard
-        {asset}
-        {downloadingAssetId}
-        onEdit={openEditAsset}
-        onUsage={openUsage}
-        onDownload={downloadAsset}
-        onManageThumbnails={openManageThumbnails}
-        onDelete={openDelete}
-      />
-    {/each}
-  </Item.Group>
-{/if}
+  <Page.BodyHeader class="flex-col flex-wrap! items-start! gap-3 lg:flex-row">
+    <MediaFilters
+      bind:search
+      bind:kind
+      bind:status
+      {isRefreshing}
+      onApply={() => refreshAssets(1)}
+      onRefresh={refreshMediaData}
+    />
+  </Page.BodyHeader>
 
-{#if pagination && pagination.totalPages > 1}
-  <div class="flex items-center justify-end gap-2">
-    <Button
-      variant="outline"
-      size="sm"
-      disabled={isRefreshing || (pagination?.page ?? 1) <= 1}
-      onclick={() => refreshAssets(prevPage)}
-    >
-      {$t('media_manager.pagination.previous')}
-    </Button>
-    <p class="ui:text-muted-foreground text-sm">
-      {$t('media_manager.pagination.page')}
-      {pagination.page}
-      / {pagination.totalPages}
-    </p>
-    <Button
-      variant="outline"
-      size="sm"
-      disabled={isRefreshing || (pagination?.page ?? 1) >= pagination.totalPages}
-      onclick={() => refreshAssets(nextPage)}
-    >
-      {$t('media_manager.pagination.next')}
-    </Button>
-  </div>
+  {#if assets.length === 0}
+    <Empty
+      title={$t('media_manager.empty')}
+      description={$t('media_manager.empty_description')}
+      icon={VideoIcon}
+      variant="page"
+    />
+  {:else}
+    <Item.Group class="grid! w-full grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+      {#each assets as asset (asset.id)}
+        <AssetCard
+          {asset}
+          {downloadingAssetId}
+          onEdit={openEditAsset}
+          onUsage={openUsage}
+          onDownload={downloadAsset}
+          onManageThumbnails={openManageThumbnails}
+          onDelete={openDelete}
+        />
+      {/each}
+    </Item.Group>
+  {/if}
+
+  {#if pagination && pagination.totalPages > 1}
+    <div class="flex items-center justify-end gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={isRefreshing || (pagination?.page ?? 1) <= 1}
+        onclick={() => refreshAssets(prevPage)}
+      >
+        {$t('media_manager.pagination.previous')}
+      </Button>
+      <p class="ui:text-muted-foreground text-sm">
+        {$t('media_manager.pagination.page')}
+        {pagination.page}
+        / {pagination.totalPages}
+      </p>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={isRefreshing || (pagination?.page ?? 1) >= pagination.totalPages}
+        onclick={() => refreshAssets(nextPage)}
+      >
+        {$t('media_manager.pagination.next')}
+      </Button>
+    </div>
+  {/if}
 {/if}
 
 <EditAssetDialog bind:open={editOpen} asset={selectedAsset} isSaving={isSavingAsset} onSave={saveAsset} />

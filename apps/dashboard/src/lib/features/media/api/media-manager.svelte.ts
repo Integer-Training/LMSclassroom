@@ -7,6 +7,7 @@ import type {
   AssetUsageGraph,
   CreateAssetRequest,
   DeleteAssetRequest,
+  GroupedMedia,
   GetAssetTranscriptRequest,
   GetAssetUsageRequest,
   GetYouTubeMetadataRequest,
@@ -55,6 +56,30 @@ export class MediaApi extends BaseApiWithErrors {
     total: number;
     totalPages: number;
   } | null>(null);
+  grouped = $state<GroupedMedia | null>(null);
+  groupedLoading = $state(false);
+
+  /**
+   * Load all org media grouped by Course → Unit (+ an Unassigned bucket) for the
+   * grouped media view. Keeps the flat `listAssets` state untouched.
+   */
+  async loadGrouped() {
+    this.groupedLoading = true;
+    try {
+      await this.execute<typeof classroomio.organization.assets.grouped.$get>({
+        requestFn: () => classroomio.organization.assets.grouped.$get(),
+        logContext: 'loading grouped organization media',
+        onSuccess: (response) => {
+          this.grouped = response.data as GroupedMedia;
+        },
+        onError: () => {
+          snackbar.error('snackbar.media_manager.list_failed');
+        }
+      });
+    } finally {
+      this.groupedLoading = false;
+    }
+  }
 
   private normalizeDurationSeconds(value: number | null | undefined): number | undefined {
     if (value == null || !Number.isFinite(value)) {

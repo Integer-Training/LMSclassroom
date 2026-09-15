@@ -1098,6 +1098,15 @@
     "page_subtitle": "Keep files, videos, and links for your courses in one library.",
     "empty": "No assets found",
     "empty_description": "The asset does not exist or is not available in this organization.",
+    "view": {
+      "by_course": "By course",
+      "all": "All"
+    },
+    "grouped": {
+      "loading": "Loading media…",
+      "empty": "No media yet.",
+      "unassigned": "Unassigned"
+    },
     "common": {
       "not_available": "N/A"
     },

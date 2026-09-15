@@ -74,3 +74,24 @@ export type RegenerateAssetThumbnailSuccess = Extract<RegenerateAssetThumbnailRe
 
 export type AssetKindFilter = 'all' | 'video' | 'document' | 'image' | 'audio' | 'other';
 export type AssetStatusFilter = 'all' | 'active' | 'archived';
+
+// Media manager grouped by Course → Unit (mirrors the API grouped-media service).
+// An asset id may appear under multiple units (many-to-many); `unassignedAssetIds`
+// are assets attached to no unit. `assets` reuse the flat list endpoint row shape.
+export interface GroupedMediaUnit {
+  lessonId: string;
+  unitTitle: string;
+  assetIds: string[];
+}
+
+export interface GroupedMediaCourse {
+  courseId: string;
+  courseTitle: string;
+  units: GroupedMediaUnit[];
+}
+
+export interface GroupedMedia {
+  groups: GroupedMediaCourse[];
+  unassignedAssetIds: string[];
+  assets: OrganizationAsset[];
+}
