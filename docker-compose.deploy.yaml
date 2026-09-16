@@ -94,6 +94,11 @@ services:
       NODE_ENV: production
       PORT: 3082
       PUBLIC_IS_SELFHOSTED: 'true'
+      # SvelteKit adapter-node buffers proxied request bodies and rejects anything over its default 512KB
+      # limit BEFORE the request reaches the api — this is what blocks server-proxied media uploads
+      # (cover-image crop / logos / avatars via /proxy/media/image). Raise it above the api image limit
+      # (UPLOAD_MAX_IMAGE_MB, default 5MB) with headroom for multipart overhead. Value in bytes.
+      BODY_SIZE_LIMIT: ${DASHBOARD_BODY_SIZE_LIMIT:-26214400}
       # SvelteKit CSRF origin = the public https URL.
       ORIGIN: ${PUBLIC_APP_URL:?set PUBLIC_APP_URL}
       # SSR proxy target for /proxy/* and /api/auth/* — the api over the internal network.
