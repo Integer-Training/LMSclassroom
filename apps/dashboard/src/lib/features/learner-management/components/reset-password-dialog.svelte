@@ -20,7 +20,7 @@
 <Dialog.Root bind:open {onOpenChange}>
   <Dialog.Content class="sm:max-w-md">
     <Dialog.Header>
-      <Dialog.Title>Login details</Dialog.Title>
+      <Dialog.Title>Password reset</Dialog.Title>
       <Dialog.Description>A new temporary password has been generated.</Dialog.Description>
     </Dialog.Header>
 

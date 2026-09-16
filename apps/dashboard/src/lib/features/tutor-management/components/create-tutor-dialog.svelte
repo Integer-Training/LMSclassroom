@@ -1,12 +1,14 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import * as Dialog from '@cio/ui/base/dialog';
   import { Button } from '@cio/ui/base/button';
   import { Input } from '@cio/ui/base/input';
   import { tutorManagementApi } from '$features/tutor-management/api/tutor-management.svelte';
   import RevealPanel from '$features/learner-management/components/reveal-panel.svelte';
+  import CourseMultiselect from '$features/tutor-management/components/course-multiselect.svelte';
 
-  // Create-tutor dialog. First/last name + email required. On success switches to a reveal panel with the
-  // temporary password (shared reveal component).
+  // Create-tutor dialog. First/last name + email required; optionally assign courses to teach. On success
+  // switches to a reveal panel with the temporary password (shared reveal component).
 
   interface Props {
     open: boolean;
@@ -17,6 +19,11 @@
   let firstName = $state('');
   let lastName = $state('');
   let email = $state('');
+  let selectedCourseIds = $state<string[]>([]);
+
+  onMount(() => {
+    tutorManagementApi.loadCourseOptions();
+  });
 
   const canSubmit = $derived(!!firstName.trim() && !!lastName.trim() && !!email.trim() && !tutorManagementApi.creating);
 
@@ -24,6 +31,7 @@
     firstName = '';
     lastName = '';
     email = '';
+    selectedCourseIds = [];
   }
 
   async function submit() {
@@ -31,7 +39,8 @@
     await tutorManagementApi.createTutor({
       firstName: firstName.trim(),
       lastName: lastName.trim(),
-      email: email.trim()
+      email: email.trim(),
+      courseIds: selectedCourseIds
     });
   }
 
@@ -80,6 +89,14 @@
         <div class="space-y-1">
           <label for="nt-email" class="text-sm font-medium">Email</label>
           <Input id="nt-email" type="email" bind:value={email} placeholder="jane@example.com" autocomplete="off" />
+        </div>
+
+        <div class="space-y-1">
+          <span class="text-sm font-medium">Courses to teach (optional)</span>
+          <p class="ui:text-muted-foreground text-xs">
+            The tutor can view progress and mark coursework for every learner enrolled in a selected course.
+          </p>
+          <CourseMultiselect courses={tutorManagementApi.courseOptions} bind:selected={selectedCourseIds} />
         </div>
       </div>
 

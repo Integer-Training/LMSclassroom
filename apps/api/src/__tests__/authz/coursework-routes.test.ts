@@ -21,7 +21,11 @@ vi.mock('@cio/db/queries/coursework', () => ({
   getSubmissionByFileKey: vi.fn(async () => null),
   isUnitUploadClosed: vi.fn(async () => false)
 }));
-vi.mock('@cio/db/queries/allocation', () => ({ isTutorAllocatedToLearner: vi.fn(async () => false) }));
+vi.mock('@cio/db/queries/allocation', () => ({
+  isTutorAllocatedToLearner: vi.fn(async () => false),
+  isCourseTutorForLearner: vi.fn(async () => false),
+  isCourseTutor: vi.fn(async () => false)
+}));
 // Phase 4 gating OFF here — requireCourseworkSubmit's isUnitUnlocked short-circuits open (submit-guard test).
 vi.mock('@cio/db/queries/gating', () => ({
   getCourseSequentialUnlock: vi.fn(async () => false),

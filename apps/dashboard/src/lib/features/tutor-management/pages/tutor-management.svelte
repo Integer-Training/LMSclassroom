@@ -11,19 +11,30 @@
   import KeyIcon from '@lucide/svelte/icons/key-round';
   import LogInIcon from '@lucide/svelte/icons/log-in';
   import UsersIcon from '@lucide/svelte/icons/users';
+  import BookIcon from '@lucide/svelte/icons/book-open';
   import { loginAsMember } from '$lib/utils/functions/impersonation';
   import { currentOrg } from '$lib/utils/store/org';
   import { downloadCsv } from '$features/admin-dashboard/utils/export-csv';
   import { tutorManagementApi, type TutorMgmtRow } from '$features/tutor-management/api/tutor-management.svelte';
   import CreateTutorDialog from '$features/tutor-management/components/create-tutor-dialog.svelte';
   import ResetPasswordDialog from '$features/tutor-management/components/reset-password-dialog.svelte';
+  import ManageCoursesDialog from '$features/tutor-management/components/manage-courses-dialog.svelte';
 
-  // Admin Tutor-management. Roster of tutors with caseloads (course titles) + learner counts, tutor
-  // creation, "Send login" (regenerate + reveal), and suspend/reactivate. Admin-only (API-enforced).
+  // Admin Tutor-management. Roster of tutors with taught/caseload courses + learner counts, tutor creation,
+  // course assignment, "Reset Password" (regenerate + reveal), and suspend/reactivate. Admin-only (API-enforced).
 
   let showCreate = $state(false);
   let showReveal = $state(false);
+  let showCourses = $state(false);
+  let coursesMemberId = $state<number | null>(null);
+  let coursesTutorName = $state('');
   let search = $state('');
+
+  function openCourses(row: TutorMgmtRow) {
+    coursesMemberId = row.memberId;
+    coursesTutorName = row.name ?? 'this tutor';
+    showCourses = true;
+  }
 
   onMount(() => {
     tutorManagementApi.load();
@@ -122,7 +133,7 @@
                 <Table.Head>First name</Table.Head>
                 <Table.Head>Last name</Table.Head>
                 <Table.Head>Email</Table.Head>
-                <Table.Head>Caseloads</Table.Head>
+                <Table.Head>Courses</Table.Head>
                 <Table.Head class="text-right">Learners</Table.Head>
                 <Table.Head>Status</Table.Head>
                 <Table.Head class="text-right">Actions</Table.Head>
@@ -173,6 +184,9 @@
                     </Table.Cell>
                     <Table.Cell class="text-right whitespace-nowrap">
                       <div class="flex items-center justify-end gap-1">
+                        <Button variant="outline" size="sm" onclick={() => openCourses(row)}>
+                          <BookIcon class="size-4" /> Courses
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"
@@ -188,7 +202,7 @@
                           disabled={tutorManagementApi.busyMemberId === row.memberId}
                           onclick={() => sendLogin(row.memberId)}
                         >
-                          <KeyIcon class="size-4" /> Send Login
+                          <KeyIcon class="size-4" /> Reset Password
                         </Button>
                         <Button
                           variant={row.status === 'DEACTIVATED' ? 'default' : 'ghost'}
@@ -213,3 +227,4 @@
 
 <CreateTutorDialog bind:open={showCreate} />
 <ResetPasswordDialog bind:open={showReveal} />
+<ManageCoursesDialog bind:open={showCourses} memberId={coursesMemberId} tutorName={coursesTutorName} />

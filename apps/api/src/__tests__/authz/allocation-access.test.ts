@@ -11,12 +11,17 @@ import type { AuthSession } from '@api/types/auth';
 //      body validator, so a denied role is 401/403 regardless of body).
 
 // ── (A) isAllocatedTutor predicate ───────────────────────────────────────────────────────────────
-vi.mock('@cio/db/queries/allocation', () => ({ isTutorAllocatedToLearner: vi.fn() }));
+vi.mock('@cio/db/queries/allocation', () => ({
+  isTutorAllocatedToLearner: vi.fn(),
+  isCourseTutorForLearner: vi.fn(async () => false),
+  isCourseTutor: vi.fn(async () => false)
+}));
 
-import { isTutorAllocatedToLearner } from '@cio/db/queries/allocation';
+import { isTutorAllocatedToLearner, isCourseTutorForLearner } from '@cio/db/queries/allocation';
 import { isAllocatedTutor } from '@api/middlewares/guards';
 
 const mockedIsAllocated = vi.mocked(isTutorAllocatedToLearner);
+const mockedIsCourseTutorForLearner = vi.mocked(isCourseTutorForLearner);
 
 const ORG = 'org-1';
 const learner: Actor = { authenticated: true, userId: 'u-learner', role: 'LEARNER', status: 'ACTIVE', orgId: ORG };
@@ -39,6 +44,26 @@ describe('isAllocatedTutor — DB-backed, TUTOR-only', () => {
   it('TUTOR NOT allocated → false', async () => {
     mockedIsAllocated.mockResolvedValue(false);
     expect(await isAllocatedTutor(tutor, 'u-learner')).toBe(false);
+  });
+
+  // Course→tutor assignment (Moodle course-teacher): responsibility also comes from course-team membership.
+  it('TUTOR not allocated but course-team TUTOR of a course the learner is in → true', async () => {
+    mockedIsAllocated.mockResolvedValue(false);
+    mockedIsCourseTutorForLearner.mockResolvedValue(true);
+    expect(await isAllocatedTutor(tutor, 'u-learner')).toBe(true);
+    expect(mockedIsCourseTutorForLearner).toHaveBeenCalledWith('u-tutor', 'u-learner');
+  });
+
+  it('TUTOR neither allocated nor a course-team tutor → false', async () => {
+    mockedIsAllocated.mockResolvedValue(false);
+    mockedIsCourseTutorForLearner.mockResolvedValue(false);
+    expect(await isAllocatedTutor(tutor, 'u-learner')).toBe(false);
+  });
+
+  it('allocation short-circuits — course-team not consulted when already allocated', async () => {
+    mockedIsAllocated.mockResolvedValue(true);
+    expect(await isAllocatedTutor(tutor, 'u-learner')).toBe(true);
+    expect(mockedIsCourseTutorForLearner).not.toHaveBeenCalled();
   });
 
   it('non-TUTOR roles never allocated — no table read (admin/manager/learner/anon → false)', async () => {

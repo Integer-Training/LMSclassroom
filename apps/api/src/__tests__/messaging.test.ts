@@ -7,6 +7,8 @@ import { MESSAGE_MAX_LENGTH } from '@cio/utils/constants';
 
 vi.mock('@cio/db/queries/allocation', () => ({
   isTutorAllocatedToLearner: vi.fn(async () => true),
+  isCourseTutorForLearner: vi.fn(async () => false),
+  isCourseTutor: vi.fn(async () => false),
   listTutorsForLearner: vi.fn(async () => [])
 }));
 vi.mock('@cio/db/queries/auth', () => ({

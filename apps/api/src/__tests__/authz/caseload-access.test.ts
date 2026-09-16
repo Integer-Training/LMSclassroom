@@ -10,7 +10,9 @@ import type { Actor } from '@cio/db/actor';
 vi.mock('@cio/db/queries/allocation', () => ({
   listLearnersForTutor: vi.fn(),
   listAllocatedLearnersForOrg: vi.fn(),
-  isTutorAllocatedToLearner: vi.fn()
+  isTutorAllocatedToLearner: vi.fn(),
+  isCourseTutorForLearner: vi.fn(async () => false),
+  isCourseTutor: vi.fn(async () => false)
 }));
 vi.mock('@cio/db/queries/coursework', () => ({
   getSubmissionsWithContextForLearners: vi.fn(),

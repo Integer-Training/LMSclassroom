@@ -2,13 +2,24 @@ import { AppError, ErrorCodes } from '@api/utils/errors';
 import type { Actor } from '@cio/db/actor';
 import { isRole } from '@cio/utils/auth';
 import { ROLE } from '@cio/utils/constants';
-import { listOrgLearnerMembers, listOrgTutorMembersFull, type OrgMemberRow } from '@cio/db/queries/organization';
+import {
+  getSuperAdminMemberId,
+  listOrgAdminMembers,
+  listOrgLearnerMembers,
+  listOrgTutorMembersFull,
+  type OrgMemberRow
+} from '@cio/db/queries/organization';
 import { listAllocationsByOrg } from '@cio/db/queries/allocation';
 import { getCoursesForLearners, getEnrolmentsForLearners } from '@cio/db/queries/caseload';
 import { getUnitTimeForLearners } from '@cio/db/queries/caseload';
 import { getLastSeenForUserIds } from '@cio/db/queries/analytics';
-import { getCourseEnrolmentTarget } from '@cio/db/queries/onboarding';
-import { addCourseMember } from '@cio/db/queries/course';
+import { getCourseEnrolmentTarget, listAllCoursesForOrg } from '@cio/db/queries/onboarding';
+import {
+  addCourseMember,
+  listOrgTutorCourseAssignments,
+  listTutorCourses,
+  setTutorCourseAssignments
+} from '@cio/db/queries/course';
 import { ensureComplianceEnrollmentRecordsForProfiles } from '@api/services/course/compliance';
 import { createOrgUser } from '@api/services/organization/users';
 import { createTutorAllocation } from '@api/services/organization/allocation';
@@ -134,7 +145,11 @@ export async function getTutorManagement(actor: Actor): Promise<TutorManagement>
   assertAdmin(actor);
   const orgId = actor.orgId;
 
-  const [members, allocations] = await Promise.all([listOrgTutorMembersFull(orgId), listAllocationsByOrg(orgId)]);
+  const [members, allocations, assignments] = await Promise.all([
+    listOrgTutorMembersFull(orgId),
+    listAllocationsByOrg(orgId),
+    listOrgTutorCourseAssignments(orgId)
+  ]);
 
   // tutor → allocated learner ids.
   const learnersByTutor = new Map<string, Set<string>>();
@@ -142,6 +157,15 @@ export async function getTutorManagement(actor: Actor): Promise<TutorManagement>
     const set = learnersByTutor.get(a.tutorId) ?? new Set<string>();
     set.add(a.learnerId);
     learnersByTutor.set(a.tutorId, set);
+  }
+
+  // tutor → directly-assigned (taught) courses.
+  const assignedByTutor = new Map<string, Map<string, string>>();
+  for (const a of assignments) {
+    if (!a.tutorId) continue;
+    const map = assignedByTutor.get(a.tutorId) ?? new Map<string, string>();
+    map.set(a.courseId, a.title ?? 'Untitled course');
+    assignedByTutor.set(a.tutorId, map);
   }
 
   // All allocated learners' enrolments once → per-learner courses, then aggregate distinct per tutor.
@@ -156,7 +180,8 @@ export async function getTutorManagement(actor: Actor): Promise<TutorManagement>
 
   const rows: TutorMgmtRow[] = members.map((m) => {
     const learners = learnersByTutor.get(m.userId) ?? new Set<string>();
-    const courseMap = new Map<string, string>();
+    // Courses = directly-assigned (taught) courses ∪ courses derived from allocated learners' enrolments.
+    const courseMap = new Map<string, string>(assignedByTutor.get(m.userId) ?? new Map());
     for (const learnerId of learners) {
       for (const c of coursesByLearner.get(learnerId) ?? []) courseMap.set(c.courseId, c.title);
     }
@@ -170,6 +195,46 @@ export async function getTutorManagement(actor: Actor): Promise<TutorManagement>
       courses: [...courseMap.entries()].map(([courseId, title]) => ({ courseId, title }))
     };
   });
+
+  return { count: members.length, rows };
+}
+
+export interface AdminMgmtRow {
+  memberId: number;
+  userId: string;
+  name: string | null;
+  email: string | null;
+  status: string;
+  lastLogin: string | null;
+  isSuperAdmin: boolean;
+  isSelf: boolean;
+}
+export interface AdminManagement {
+  count: number;
+  rows: AdminMgmtRow[];
+}
+
+/**
+ * The Admin Management table: every org admin, flagged with isSuperAdmin (the protected earliest admin whose
+ * password can't be reset) and isSelf (the caller — who resets via Change Password, not here). Admin only.
+ */
+export async function getAdminManagement(actor: Actor): Promise<AdminManagement> {
+  assertAdmin(actor);
+  const orgId = actor.orgId;
+
+  const [members, superAdminMemberId] = await Promise.all([listOrgAdminMembers(orgId), getSuperAdminMemberId(orgId)]);
+  const lastSeen = await getLastSeenForUserIds(members.map((m) => m.userId));
+
+  const rows: AdminMgmtRow[] = members.map((m) => ({
+    memberId: m.memberId,
+    userId: m.userId,
+    name: m.name,
+    email: m.email,
+    status: m.status,
+    lastLogin: lastSeen.get(m.userId) ?? null,
+    isSuperAdmin: m.memberId === superAdminMemberId,
+    isSelf: actor.userId === m.userId
+  }));
 
   return { count: members.length, rows };
 }
@@ -222,9 +287,10 @@ export interface CreateTutorInput {
   firstName: string;
   lastName: string;
   email: string;
+  courseIds?: string[] | null;
 }
 
-/** Create a tutor (auto-gen password revealed). Admin. */
+/** Create a tutor (auto-gen password revealed), optionally assigning them to teach courses. Admin. */
 export async function createTutor(actor: Actor, input: CreateTutorInput): Promise<CreateResult> {
   assertAdmin(actor);
   const name = `${input.firstName.trim()} ${input.lastName.trim()}`.trim();
@@ -235,7 +301,71 @@ export async function createTutor(actor: Actor, input: CreateTutorInput): Promis
     email,
     roleId: ROLE.TUTOR
   });
+  if (input.courseIds && input.courseIds.length > 0) {
+    await setTutorCourseAssignments(actor.orgId, userId, email, input.courseIds);
+  }
   return { userId, name, temporaryPassword };
+}
+
+/** Resolve a member id → a TUTOR profile in this org (or 404/400). Guards the course-assignment endpoints. */
+async function resolveTutorMember(
+  actor: Extract<Actor, { authenticated: true }>,
+  memberId: number
+): Promise<{ profileId: string; email: string | null }> {
+  const orgId = actor.orgId;
+  const member = await getOrganizationMemberByIdAndOrg(memberId, orgId);
+  if (!member?.profileId) throw new AppError('Tutor not found in this organization', ErrorCodes.NOT_FOUND, 404);
+  const roleId = await getOrgMemberRoleId(orgId, member.profileId);
+  if (roleId !== ROLE.TUTOR) throw new AppError('This member is not a tutor', ErrorCodes.VALIDATION_ERROR, 400);
+  const profile = await getProfileById(member.profileId);
+  return { profileId: member.profileId, email: profile?.email ?? null };
+}
+
+export interface TutorCoursesResult {
+  assignedCourseIds: string[];
+  courses: { courseId: string; title: string | null }[];
+}
+
+/** Every assignable course in the org (published or draft) — for the create-tutor course picker. Admin. */
+export async function listAssignableCourses(actor: Actor): Promise<{ courseId: string; title: string | null }[]> {
+  assertAdmin(actor);
+  return listAllCoursesForOrg(actor.orgId);
+}
+
+/** The tutor's currently-assigned (taught) course ids + every assignable org course. Admin. */
+export async function getTutorCourses(actor: Actor, memberId: number): Promise<TutorCoursesResult> {
+  assertAdmin(actor);
+  const { profileId } = await resolveTutorMember(actor, memberId);
+  const [assigned, courses] = await Promise.all([
+    listTutorCourses(actor.orgId, profileId),
+    listAllCoursesForOrg(actor.orgId)
+  ]);
+  return { assignedCourseIds: assigned.map((c) => c.courseId), courses };
+}
+
+/** Set a tutor's taught courses to exactly `courseIds` (org-scoped reconcile). Returns the new set. Admin. */
+export async function setTutorCourses(
+  actor: Actor,
+  memberId: number,
+  courseIds: string[]
+): Promise<TutorCoursesResult> {
+  assertAdmin(actor);
+  const { profileId, email } = await resolveTutorMember(actor, memberId);
+  await setTutorCourseAssignments(actor.orgId, profileId, email, courseIds);
+
+  await recordAudit({
+    actor,
+    action: AUDIT_ACTIONS.USER_STATUS_CHANGED,
+    entityType: 'user',
+    entityId: profileId,
+    metadata: { tutor_courses_set: courseIds.length }
+  });
+
+  const [assigned, courses] = await Promise.all([
+    listTutorCourses(actor.orgId, profileId),
+    listAllCoursesForOrg(actor.orgId)
+  ]);
+  return { assignedCourseIds: assigned.map((c) => c.courseId), courses };
 }
 
 export interface ImpersonationStart {

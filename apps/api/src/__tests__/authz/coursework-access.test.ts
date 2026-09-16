@@ -5,7 +5,11 @@ import type { Actor } from '@cio/db/actor';
 // shared predicate + service wiring: SELF / allocated TUTOR / ADMIN may read; learner-B, a non-allocated
 // tutor, and a Manager may NOT. DB reads are mocked so only the decision logic runs.
 
-vi.mock('@cio/db/queries/allocation', () => ({ isTutorAllocatedToLearner: vi.fn() }));
+vi.mock('@cio/db/queries/allocation', () => ({
+  isTutorAllocatedToLearner: vi.fn(),
+  isCourseTutorForLearner: vi.fn(async () => false),
+  isCourseTutor: vi.fn(async () => false)
+}));
 vi.mock('@cio/db/queries/coursework', () => ({
   getSubmissionByFileKey: vi.fn(),
   getSubmissionById: vi.fn(),
@@ -20,7 +24,7 @@ vi.mock('@api/services/coursework/notifications', () => ({
   courseworkEmailsEnabled: vi.fn(() => true)
 }));
 
-import { isTutorAllocatedToLearner } from '@cio/db/queries/allocation';
+import { isTutorAllocatedToLearner, isCourseTutorForLearner } from '@cio/db/queries/allocation';
 import {
   getSubmissionByFileKey,
   getSubmissionById,
@@ -85,6 +89,12 @@ describe('canReadCoursework — self / allocated tutor / admin only', () => {
     expect(await canReadCoursework(tutor, { learnerId: 'u-A' })).toBe(true);
     mockedAllocated.mockResolvedValueOnce(false);
     expect(await canReadCoursework(tutor, { learnerId: 'u-A' })).toBe(false);
+  });
+  // Course→tutor assignment: a course-team TUTOR of the learner's course can read even without allocation.
+  it('TUTOR not allocated but course-team tutor of the learner → true', async () => {
+    mockedAllocated.mockResolvedValue(false);
+    vi.mocked(isCourseTutorForLearner).mockResolvedValueOnce(true);
+    expect(await canReadCoursework(tutor, { learnerId: 'u-A' })).toBe(true);
   });
 });
 

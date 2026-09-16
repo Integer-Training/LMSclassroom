@@ -212,6 +212,15 @@ export const baseNavConfig: NavItemConfig[] = [
     requiresAdmin: true,
     matchPattern: '^/org/[^/]+/tutors(/.*)?$'
   },
+  // Admin Admin-Management — reset other admins' passwords (super admin is protected).
+  {
+    group: 'people',
+    titleKey: 'org_navigation.admins',
+    path: '/admins',
+    icon: PeopleIcon,
+    requiresAdmin: true,
+    matchPattern: '^/org/[^/]+/admins(/.*)?$'
+  },
   // Admin org-wide Learner Progressions (all learners, activity + completion + workbooks/case-studies).
   {
     group: 'people',

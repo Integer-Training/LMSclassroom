@@ -1,10 +1,10 @@
 import * as schema from '@db/schema';
 
 import { TGroupmember, TNewGroupmember } from '@db/types';
-import { and, eq, isNull, or } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or } from 'drizzle-orm';
 
 import { ROLE } from '@cio/utils/constants';
-import { db } from '@db/drizzle';
+import { db, runInTransaction } from '@db/drizzle';
 
 /**
  * Gets all course members (people) for a course
@@ -175,6 +175,120 @@ export async function getCourseTeachers(options: {
   const result = await (limit ? query.limit(limit) : query);
 
   return result;
+}
+
+// ── Course → tutor assignment (PearlLMS) ─────────────────────────────────────────────────────────
+// A tutor "teaches" a course = a course-team TUTOR groupmember row (roleId 2) in that course's group.
+// Admin assigns/unassigns via the tutor-management surface (and the course People tab). This grants the
+// tutor responsibility for that course's learners (grading, progress, caseload) — see isCourseTutorForLearner
+// and the extended isAllocatedTutor guard.
+
+export interface TutorCourseRef {
+  courseId: string;
+  title: string | null;
+}
+
+/** Courses in this org that the tutor is a course-team TUTOR of (their taught courses). Ordered by title. */
+export async function listTutorCourses(orgId: string, tutorId: string): Promise<TutorCourseRef[]> {
+  return db
+    .select({ courseId: schema.course.id, title: schema.course.title })
+    .from(schema.groupmember)
+    .innerJoin(schema.group, eq(schema.group.id, schema.groupmember.groupId))
+    .innerJoin(schema.course, eq(schema.course.groupId, schema.group.id))
+    .where(
+      and(
+        eq(schema.groupmember.profileId, tutorId),
+        eq(schema.groupmember.roleId, ROLE.TUTOR),
+        eq(schema.group.organizationId, orgId)
+      )
+    )
+    .orderBy(schema.course.title);
+}
+
+/** Every (tutor → taught course) assignment in an org — one bulk query for the tutor-management table. */
+export async function listOrgTutorCourseAssignments(
+  orgId: string
+): Promise<Array<{ tutorId: string | null; courseId: string; title: string | null }>> {
+  return db
+    .select({ tutorId: schema.groupmember.profileId, courseId: schema.course.id, title: schema.course.title })
+    .from(schema.groupmember)
+    .innerJoin(schema.group, eq(schema.group.id, schema.groupmember.groupId))
+    .innerJoin(schema.course, eq(schema.course.groupId, schema.group.id))
+    .where(and(eq(schema.group.organizationId, orgId), eq(schema.groupmember.roleId, ROLE.TUTOR)));
+}
+
+/**
+ * Reconcile a tutor's taught-courses to EXACTLY `courseIds` (org-scoped; unknown/other-org ids are ignored).
+ * Adds a TUTOR groupmember for newly-selected courses (promoting an existing membership in that course's group
+ * to TUTOR to respect the (group, profile) uniqueness), and removes the TUTOR membership for de-selected
+ * courses (only TUTOR rows — never a student enrolment). Idempotent; runs in one transaction.
+ */
+export async function setTutorCourseAssignments(
+  orgId: string,
+  tutorId: string,
+  email: string | null,
+  courseIds: string[]
+): Promise<{ added: string[]; removed: string[] }> {
+  const requested = courseIds.length
+    ? await db
+        .select({ courseId: schema.course.id, groupId: schema.course.groupId })
+        .from(schema.course)
+        .innerJoin(schema.group, eq(schema.group.id, schema.course.groupId))
+        .where(and(inArray(schema.course.id, courseIds), eq(schema.group.organizationId, orgId)))
+    : [];
+  const requestedGroupByCourse = new Map(requested.map((r) => [r.courseId, r.groupId]));
+  const requestedGroupIds = new Set(requested.map((r) => r.groupId));
+
+  const current = await db
+    .select({ courseId: schema.course.id, groupId: schema.group.id, memberId: schema.groupmember.id })
+    .from(schema.groupmember)
+    .innerJoin(schema.group, eq(schema.group.id, schema.groupmember.groupId))
+    .innerJoin(schema.course, eq(schema.course.groupId, schema.group.id))
+    .where(
+      and(
+        eq(schema.groupmember.profileId, tutorId),
+        eq(schema.groupmember.roleId, ROLE.TUTOR),
+        eq(schema.group.organizationId, orgId)
+      )
+    );
+  const currentGroupIds = new Set(current.map((c) => c.groupId));
+
+  const toAddCourseIds = [...requestedGroupByCourse.keys()].filter(
+    (cid) => !currentGroupIds.has(requestedGroupByCourse.get(cid)!)
+  );
+  const toRemove = current.filter((c) => !requestedGroupIds.has(c.groupId));
+
+  if (toAddCourseIds.length === 0 && toRemove.length === 0) {
+    return { added: [], removed: [] };
+  }
+
+  await runInTransaction(async (tx) => {
+    for (const cid of toAddCourseIds) {
+      const groupId = requestedGroupByCourse.get(cid)!;
+      const [existing] = await tx
+        .select({ id: schema.groupmember.id })
+        .from(schema.groupmember)
+        .where(and(eq(schema.groupmember.groupId, groupId), eq(schema.groupmember.profileId, tutorId)))
+        .limit(1);
+      if (existing) {
+        await tx.update(schema.groupmember).set({ roleId: ROLE.TUTOR }).where(eq(schema.groupmember.id, existing.id));
+      } else {
+        await tx
+          .insert(schema.groupmember)
+          .values({ groupId, profileId: tutorId, roleId: ROLE.TUTOR, email: email ?? undefined });
+      }
+    }
+    if (toRemove.length) {
+      await tx.delete(schema.groupmember).where(
+        inArray(
+          schema.groupmember.id,
+          toRemove.map((c) => c.memberId)
+        )
+      );
+    }
+  });
+
+  return { added: toAddCourseIds, removed: toRemove.map((c) => c.courseId) };
 }
 
 /**

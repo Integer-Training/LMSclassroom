@@ -34,6 +34,17 @@ export async function listPublishedCoursesForOrg(
   return rows.map((r) => ({ courseId: r.courseId, title: r.title ?? null }));
 }
 
+/** Every course in an org (published or draft), title-ordered — for the course→tutor assignment picker. */
+export async function listAllCoursesForOrg(orgId: string, client: DbOrTxClient = db): Promise<OnboardingCourse[]> {
+  const rows = await client
+    .select({ courseId: schema.course.id, title: schema.course.title })
+    .from(schema.course)
+    .innerJoin(schema.group, eq(schema.group.id, schema.course.groupId))
+    .where(eq(schema.group.organizationId, orgId))
+    .orderBy(schema.course.title);
+  return rows.map((r) => ({ courseId: r.courseId, title: r.title ?? null }));
+}
+
 /** Resolve a course's org + published + group, to validate the enrolment target before provisioning. */
 export async function getCourseEnrolmentTarget(
   courseId: string,

@@ -8,8 +8,12 @@ import { setCookie, setSignedCookie } from 'hono/cookie';
 import {
   createLearner,
   createTutor,
+  getAdminManagement,
   getLearnerManagement,
+  getTutorCourses,
   getTutorManagement,
+  listAssignableCourses,
+  setTutorCourses,
   startImpersonation
 } from '@api/services/organization/management';
 import { resetUserPassword } from '@api/services/organization/users';
@@ -33,8 +37,15 @@ const ZCreateLearner = z.object({
   courseId: z.string().uuid().nullable().optional(),
   tutorId: z.string().uuid().nullable().optional()
 });
-const ZCreateTutor = z.object({ firstName: ZName, lastName: ZName, email: z.string().email() });
+const ZCourseIds = z.array(z.string().uuid()).max(200);
+const ZCreateTutor = z.object({
+  firstName: ZName,
+  lastName: ZName,
+  email: z.string().email(),
+  courseIds: ZCourseIds.optional()
+});
 const ZMemberParam = z.object({ memberId: z.coerce.number().int().positive() });
+const ZSetTutorCourses = z.object({ courseIds: ZCourseIds });
 
 export const managementRouter = new Hono()
   .get('/learners', requireAdmin, async (c) => {
@@ -51,6 +62,23 @@ export const managementRouter = new Hono()
       return c.json({ success: true, data }, 200);
     } catch (error) {
       return handleError(c, error, 'Failed to load tutors');
+    }
+  })
+  .get('/admins', requireAdmin, async (c) => {
+    try {
+      const data = await getAdminManagement(c.get('actor') as Actor);
+      return c.json({ success: true, data }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to load admins');
+    }
+  })
+  // Every assignable org course (for the create-tutor course picker).
+  .get('/course-options', requireAdmin, async (c) => {
+    try {
+      const courses = await listAssignableCourses(c.get('actor') as Actor);
+      return c.json({ success: true, data: { courses } }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to load courses');
     }
   })
   // Org-wide learner progression (admin). Same shape as the tutor /caseload/progression.
@@ -109,6 +137,33 @@ export const managementRouter = new Hono()
       return handleError(c, error, 'Failed to create tutor');
     }
   })
+  // A tutor's taught courses (assigned ids + every assignable org course) for the manage-courses dialog.
+  .get('/tutors/:memberId/courses', requireAdmin, zValidator('param', ZMemberParam), async (c) => {
+    try {
+      const { memberId } = c.req.valid('param');
+      const data = await getTutorCourses(c.get('actor') as Actor, memberId);
+      return c.json({ success: true, data }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to load tutor courses');
+    }
+  })
+  // Set a tutor's taught courses to exactly the provided list (org-scoped reconcile).
+  .put(
+    '/tutors/:memberId/courses',
+    requireAdmin,
+    zValidator('param', ZMemberParam),
+    zValidator('json', ZSetTutorCourses),
+    async (c) => {
+      try {
+        const { memberId } = c.req.valid('param');
+        const { courseIds } = c.req.valid('json');
+        const data = await setTutorCourses(c.get('actor') as Actor, memberId, courseIds);
+        return c.json({ success: true, data }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to update tutor courses');
+      }
+    }
+  )
   // "Send login" — regenerate a temp password + reveal it (email delivery is dormant).
   .post('/members/:memberId/reset-password', requireAdmin, zValidator('param', ZMemberParam), async (c) => {
     try {

@@ -24,6 +24,17 @@ export interface CreateTutorInput {
   firstName: string;
   lastName: string;
   email: string;
+  courseIds?: string[];
+}
+
+export interface CourseOption {
+  courseId: string;
+  title: string | null;
+}
+
+export interface TutorCourses {
+  assignedCourseIds: string[];
+  courses: CourseOption[];
 }
 
 export interface RevealedCredentials {
@@ -36,6 +47,10 @@ class TutorManagementApi extends BaseApi {
   busyMemberId = $state<number | null>(null);
   revealed = $state<RevealedCredentials | null>(null);
   creating = $state(false);
+  // Course→tutor assignment.
+  courseOptions = $state<CourseOption[]>([]);
+  tutorCourses = $state<TutorCourses | null>(null);
+  coursesBusy = $state(false);
 
   async load() {
     return this.execute<typeof classroomio.organization.management.tutors.$get>({
@@ -115,6 +130,56 @@ class TutorManagementApi extends BaseApi {
       });
     } finally {
       this.busyMemberId = null;
+    }
+  }
+
+  /** Load every assignable org course (for the create-tutor picker). */
+  async loadCourseOptions() {
+    return this.execute<(typeof classroomio.organization.management)['course-options']['$get']>({
+      requestFn: () => classroomio.organization.management['course-options'].$get(),
+      logContext: 'loading course options',
+      onSuccess: (result) => {
+        this.courseOptions = (result.data as { courses: CourseOption[] }).courses;
+      }
+    });
+  }
+
+  /** Load a tutor's assigned courses + the full assignable list (for the manage-courses dialog). */
+  async loadTutorCourses(memberId: number) {
+    this.tutorCourses = null;
+    return this.execute<(typeof classroomio.organization.management.tutors)[':memberId']['courses']['$get']>({
+      requestFn: () =>
+        classroomio.organization.management.tutors[':memberId'].courses.$get({ param: { memberId: String(memberId) } }),
+      logContext: 'loading tutor courses',
+      onSuccess: (result) => {
+        this.tutorCourses = result.data as TutorCourses;
+      }
+    });
+  }
+
+  /** Set a tutor's taught courses to exactly `courseIds`. Refreshes the roster on success. */
+  async saveTutorCourses(memberId: number, courseIds: string[]) {
+    this.coursesBusy = true;
+    try {
+      return await this.execute<(typeof classroomio.organization.management.tutors)[':memberId']['courses']['$put']>({
+        requestFn: () =>
+          classroomio.organization.management.tutors[':memberId'].courses.$put({
+            param: { memberId: String(memberId) },
+            json: { courseIds }
+          }),
+        logContext: 'saving tutor courses',
+        onSuccess: (result) => {
+          this.tutorCourses = result.data as TutorCourses;
+          snackbar.success('Courses updated');
+          this.load();
+        },
+        onError: (result) => {
+          if (typeof result === 'string') snackbar.error(result);
+          else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
+        }
+      });
+    } finally {
+      this.coursesBusy = false;
     }
   }
 

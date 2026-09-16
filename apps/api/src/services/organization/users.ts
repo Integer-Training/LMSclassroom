@@ -18,6 +18,7 @@ import {
   deleteSessionsByUserId,
   getOrganizationMemberByIdAndOrg,
   getOrganizationUsers,
+  getSuperAdminMemberId,
   getUserOrgRolesMap,
   type GetOrganizationUsersOptions
 } from '@cio/db/queries/organization';
@@ -131,6 +132,18 @@ export async function createOrgUser(
   return { userId: newUserId, roleId: input.roleId, temporaryPassword };
 }
 
+/**
+ * The org's "super admin" (earliest-created admin, derived — there is no explicit column) is protected from
+ * destructive account actions (password reset, suspend, demote) so it can never be locked out. Throws 403 for
+ * that one member.
+ */
+async function assertNotSuperAdmin(orgId: string, memberId: number, action: string): Promise<void> {
+  const superAdminMemberId = await getSuperAdminMemberId(orgId);
+  if (superAdminMemberId !== null && memberId === superAdminMemberId) {
+    throw new AppError(`The super admin's account cannot be ${action}`, ErrorCodes.FORBIDDEN, 403);
+  }
+}
+
 /** Resolve an org member row (scoped to the org) or throw 404. */
 async function resolveMember(orgId: string, memberId: number) {
   const member = await getOrganizationMemberByIdAndOrg(memberId, orgId);
@@ -151,6 +164,7 @@ export async function changeOrgUserRole(orgId: string, actor: Actor, memberId: n
 
   // Don't strand the org without an admin, and don't let an admin demote themselves out of access.
   if (currentRoleId === ROLE.ADMIN && roleId !== ROLE.ADMIN) {
+    await assertNotSuperAdmin(orgId, memberId, 'demoted');
     if (actor.authenticated && actor.userId === member.profileId) {
       throw new AppError('You cannot change your own admin role', ErrorCodes.FORBIDDEN, 403);
     }
@@ -190,6 +204,7 @@ export async function changeOrgUserStatus(orgId: string, actor: Actor, memberId:
   }
 
   if (status === 'DEACTIVATED') {
+    await assertNotSuperAdmin(orgId, memberId, 'suspended');
     if (actor.authenticated && actor.userId === member.profileId) {
       throw new AppError('You cannot deactivate your own account', ErrorCodes.FORBIDDEN, 403);
     }
@@ -228,6 +243,14 @@ export async function resetUserPassword(
   memberId: number
 ): Promise<{ userId: string; temporaryPassword: string }> {
   const userId = await resolveMemberUserId(orgId, memberId);
+
+  // The super admin is protected (no lockout backdoor), and an admin can't reset their OWN password here —
+  // they use the normal Change Password flow (a self-reset would sign them out mid-session for no reason).
+  await assertNotSuperAdmin(orgId, memberId, 'password-reset');
+  if (actor.authenticated && userId === actor.userId) {
+    throw new AppError('Use Change Password to reset your own password', ErrorCodes.FORBIDDEN, 403);
+  }
+
   const temporaryPassword = generateTemporaryPassword();
 
   try {

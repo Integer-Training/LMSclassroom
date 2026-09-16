@@ -15,7 +15,11 @@ vi.mock('@cio/db/queries/coursework', () => ({
   recordCourseworkResult: vi.fn(),
   getSubmissionByFileKey: vi.fn() // pulled in by the guard module import chain
 }));
-vi.mock('@cio/db/queries/allocation', () => ({ isTutorAllocatedToLearner: vi.fn() }));
+vi.mock('@cio/db/queries/allocation', () => ({
+  isTutorAllocatedToLearner: vi.fn(),
+  isCourseTutorForLearner: vi.fn(async () => false),
+  isCourseTutor: vi.fn(async () => false)
+}));
 vi.mock('@cio/db/audit', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@cio/db/audit')>()),
   recordAudit: vi.fn()

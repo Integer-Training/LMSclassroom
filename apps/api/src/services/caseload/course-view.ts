@@ -1,7 +1,7 @@
 import type { Actor } from '@cio/db/actor';
 import { AppError, ErrorCodes } from '@api/utils/errors';
 import { isPassingResult } from '@cio/utils/constants';
-import { isTutorAllocatedToCourse, listAllocatedLearnerIdsForCourse } from '@cio/db/queries/allocation';
+import { isCourseTutor, listAllocatedLearnerIdsForCourse } from '@cio/db/queries/allocation';
 import { listEnrolledLearnersWithName } from '@cio/db/queries/reports';
 import { generateDocumentDownloadPresignedUrls } from '@cio/core/utils/s3';
 import {
@@ -36,6 +36,12 @@ async function resolveRoster(actor: Actor, courseId: string): Promise<{ ids: str
     return { ids: enrolled.map((l) => l.learnerId), isAdmin: true };
   }
   if (actor.role === 'TUTOR') {
+    // A course-team TUTOR (course→tutor assignment) sees EVERY enrolled learner of that course (Moodle
+    // course-teacher). Otherwise a tutor sees only their allocated∩enrolled learners for the course.
+    if (await isCourseTutor(actor.userId, courseId)) {
+      const enrolled = await listEnrolledLearnersWithName(courseId);
+      return { ids: enrolled.map((l) => l.learnerId), isAdmin: false };
+    }
     const ids = await listAllocatedLearnerIdsForCourse(actor.userId, courseId);
     if (ids.length === 0) throw new AppError('You are not assigned to this course', ErrorCodes.FORBIDDEN, 403);
     return { ids, isAdmin: false };
@@ -118,8 +124,7 @@ export async function getTutorCourseContent(actor: Actor, courseId: string): Pro
     else learners.set(s.learnerId, [s]);
   }
 
-  const stateOfContext = (subs: SubmissionWithContext[]): RowState =>
-    computeState(subs.map(toGridLike)).state;
+  const stateOfContext = (subs: SubmissionWithContext[]): RowState => computeState(subs.map(toGridLike)).state;
 
   const units: TutorOutlineUnit[] = outline.units.map((u) => {
     const materials: OutlineMaterial[] = [];
@@ -192,11 +197,7 @@ function toGridLike(s: SubmissionWithContext): GridSubmission {
 
 /** The full content of ONE unit for the tutor read-only view. Allocation-gated (resolveRoster); the
  *  unit must belong to the course in the path (else 404). Read-only — no submit, no edit. */
-export async function getTutorUnitContent(
-  actor: Actor,
-  courseId: string,
-  lessonId: string
-): Promise<UnitContent> {
+export async function getTutorUnitContent(actor: Actor, courseId: string, lessonId: string): Promise<UnitContent> {
   await resolveRoster(actor, courseId); // access gate (403 if not allocated / not admin)
   const content = await getUnitContent(lessonId);
   if (!content || content.courseId !== courseId) {

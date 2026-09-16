@@ -339,7 +339,7 @@
                             disabled={learnerManagementApi.busyMemberId === row.memberId}
                             onclick={() => sendLogin(row.memberId)}
                           >
-                            <KeyIcon class="size-4" /> Send Login
+                            <KeyIcon class="size-4" /> Reset Password
                           </Button>
                           <Button
                             variant={row.status === 'DEACTIVATED' ? 'default' : 'ghost'}

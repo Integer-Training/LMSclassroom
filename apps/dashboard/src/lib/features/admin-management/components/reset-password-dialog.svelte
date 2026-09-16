@@ -1,10 +1,10 @@
 <script lang="ts">
   import * as Dialog from '@cio/ui/base/dialog';
   import { Button } from '@cio/ui/base/button';
-  import { tutorManagementApi } from '$features/tutor-management/api/tutor-management.svelte';
+  import { adminManagementApi } from '$features/admin-management/api/admin-management.svelte';
   import RevealPanel from '$features/learner-management/components/reveal-panel.svelte';
 
-  // Reveal shown after "Send login" — a regenerated temporary password for an existing tutor.
+  // Reveal shown after "Reset Password" — a regenerated temporary password for an existing admin.
 
   interface Props {
     open: boolean;
@@ -13,7 +13,7 @@
   let { open = $bindable() }: Props = $props();
 
   function onOpenChange(next: boolean) {
-    if (!next) tutorManagementApi.clearRevealed();
+    if (!next) adminManagementApi.clearRevealed();
   }
 </script>
 
@@ -24,11 +24,11 @@
       <Dialog.Description>A new temporary password has been generated.</Dialog.Description>
     </Dialog.Header>
 
-    {#if tutorManagementApi.revealed}
+    {#if adminManagementApi.revealed}
       <RevealPanel
-        subject="Tutor"
-        name={tutorManagementApi.revealed.name}
-        password={tutorManagementApi.revealed.password}
+        subject="Admin"
+        name={adminManagementApi.revealed.name}
+        password={adminManagementApi.revealed.password}
         verb="reset"
       />
     {/if}

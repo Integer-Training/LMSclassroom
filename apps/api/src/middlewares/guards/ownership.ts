@@ -5,7 +5,7 @@ import type { Actor } from '@cio/db/actor';
 import { isRole, isSelf, sameOrg } from '@cio/utils/auth';
 import { getSubmissionById } from '@cio/db/queries/submission';
 import { isCourseGroupMember } from '@cio/db/queries/group';
-import { isTutorAllocatedToLearner } from '@cio/db/queries/allocation';
+import { isCourseTutorForLearner, isTutorAllocatedToLearner } from '@cio/db/queries/allocation';
 import {
   getSubmissionByFeedbackFileKey,
   getSubmissionByFileKey,
@@ -86,14 +86,17 @@ export function requireMarkingAccess(getLearnerId?: (c: Context) => string | nul
 }
 
 /**
- * The caller is a TUTOR allocated to this learner — the real, DB-backed replacement for the Phase-1
- * pure deny-stub (`@cio/utils/auth`). Allocation is PROVIDER-WIDE: a tutor's staff-ness is per-learner,
- * not per-course. Only a TUTOR actor can be allocated; anonymous/Admin/Manager/Learner → false here
- * (Admin's marking access is granted separately in requireMarkingAccess). Backed by `tutor_allocation`.
+ * The caller is a TUTOR responsible for this learner. TWO paths, unioned:
+ *  - ALLOCATION (`tutor_allocation`): a provider-wide tutor↔learner pair (PearlLMS Phase 3), OR
+ *  - COURSE-TEAM: the tutor is a course-team TUTOR of a course the learner is enrolled in (Moodle
+ *    "course teacher" — the course→tutor assignment). Derived live from groupmember rows.
+ * Only a TUTOR actor qualifies; anonymous/Admin/Manager/Learner → false here (Admin's marking access is
+ * granted separately in requireMarkingAccess). Allocation is checked first (cheapest, most common).
  */
 export async function isAllocatedTutor(actor: Actor, learnerId: string | null | undefined): Promise<boolean> {
   if (!actor.authenticated || actor.role !== 'TUTOR' || !learnerId) return false;
-  return isTutorAllocatedToLearner(actor.userId, learnerId);
+  if (await isTutorAllocatedToLearner(actor.userId, learnerId)) return true;
+  return isCourseTutorForLearner(actor.userId, learnerId);
 }
 
 /**
