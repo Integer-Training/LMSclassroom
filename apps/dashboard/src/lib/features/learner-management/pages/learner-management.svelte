@@ -242,7 +242,7 @@
                   <SearchIcon
                     class="ui:text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2"
                   />
-                  <Input bind:value={search} placeholder="Name or email…" class="pl-8" autocomplete="off" />
+                  <Input bind:value={search} placeholder="Name or email…" class="ui:pl-9" autocomplete="off" />
                 </div>
               </div>
 
