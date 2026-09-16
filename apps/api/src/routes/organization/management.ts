@@ -34,8 +34,9 @@ const ZCreateLearner = z.object({
   firstName: ZName,
   lastName: ZName,
   email: z.string().email(),
-  courseId: z.string().uuid().nullable().optional(),
-  tutorId: z.string().uuid().nullable().optional()
+  // A learner is always enrolled in a course and assigned a tutor — both required.
+  courseId: z.string().uuid(),
+  tutorId: z.string().uuid()
 });
 const ZCourseIds = z.array(z.string().uuid()).max(200);
 const ZCreateTutor = z.object({

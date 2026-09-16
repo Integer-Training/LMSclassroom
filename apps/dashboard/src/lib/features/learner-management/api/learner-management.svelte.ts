@@ -34,8 +34,8 @@ export interface CreateLearnerInput {
   firstName: string;
   lastName: string;
   email: string;
-  courseId?: string | null;
-  tutorId?: string | null;
+  courseId: string;
+  tutorId: string;
 }
 
 export interface RevealedCredentials {

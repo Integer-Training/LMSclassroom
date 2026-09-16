@@ -6,8 +6,9 @@
   import { learnerManagementApi } from '$features/learner-management/api/learner-management.svelte';
   import RevealPanel from './reveal-panel.svelte';
 
-  // Create-learner dialog. First/last name + email required; course + tutor optional. On success the
-  // dialog switches to a reveal panel showing the temporary password.
+  // Create-learner dialog. First/last name + email + course + tutor are all REQUIRED — a learner is always
+  // enrolled in a course and assigned a tutor. On success the dialog switches to a reveal panel showing the
+  // temporary password.
 
   interface Props {
     open: boolean;
@@ -15,33 +16,39 @@
 
   let { open = $bindable() }: Props = $props();
 
-  const NONE = 'none';
-
   let firstName = $state('');
   let lastName = $state('');
   let email = $state('');
-  let courseId = $state(NONE);
-  let tutorId = $state(NONE);
+  let courseId = $state('');
+  let tutorId = $state('');
+
+  const hasCourses = $derived(learnerManagementApi.options.courses.length > 0);
+  const hasTutors = $derived(learnerManagementApi.options.tutors.length > 0);
 
   const canSubmit = $derived(
-    !!firstName.trim() && !!lastName.trim() && !!email.trim() && !learnerManagementApi.creating
+    !!firstName.trim() &&
+      !!lastName.trim() &&
+      !!email.trim() &&
+      !!courseId &&
+      !!tutorId &&
+      !learnerManagementApi.creating
   );
 
   const courseLabel = $derived(
-    courseId === NONE
-      ? '— none —'
-      : (learnerManagementApi.options.courses.find((c) => c.courseId === courseId)?.title ?? 'Course')
+    courseId
+      ? (learnerManagementApi.options.courses.find((c) => c.courseId === courseId)?.title ?? 'Course')
+      : 'Select a course'
   );
   const tutorLabel = $derived(
-    tutorId === NONE ? '— none —' : (learnerManagementApi.options.tutors.find((t) => t.id === tutorId)?.name ?? 'Tutor')
+    tutorId ? (learnerManagementApi.options.tutors.find((t) => t.id === tutorId)?.name ?? 'Tutor') : 'Select a tutor'
   );
 
   function resetForm() {
     firstName = '';
     lastName = '';
     email = '';
-    courseId = NONE;
-    tutorId = NONE;
+    courseId = '';
+    tutorId = '';
   }
 
   async function submit() {
@@ -50,8 +57,8 @@
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       email: email.trim(),
-      courseId: courseId === NONE ? null : courseId,
-      tutorId: tutorId === NONE ? null : tutorId
+      courseId,
+      tutorId
     });
   }
 
@@ -104,33 +111,33 @@
         </div>
 
         <div class="space-y-1">
-          <label for="nl-course" class="text-sm font-medium"
-            >Course <span class="ui:text-muted-foreground">(optional)</span></label
-          >
+          <label for="nl-course" class="text-sm font-medium">Course <span class="text-red-500">*</span></label>
           <Select.Root type="single" bind:value={courseId}>
             <Select.Trigger id="nl-course" class="ui:w-full">{courseLabel}</Select.Trigger>
             <Select.Content>
-              <Select.Item value={NONE}>— none —</Select.Item>
               {#each learnerManagementApi.options.courses as course (course.courseId)}
                 <Select.Item value={course.courseId}>{course.title ?? 'Untitled course'}</Select.Item>
               {/each}
             </Select.Content>
           </Select.Root>
+          {#if !hasCourses}
+            <p class="text-xs text-red-500">Create a published course first — a learner must be enrolled in one.</p>
+          {/if}
         </div>
 
         <div class="space-y-1">
-          <label for="nl-tutor" class="text-sm font-medium"
-            >Tutor <span class="ui:text-muted-foreground">(optional)</span></label
-          >
+          <label for="nl-tutor" class="text-sm font-medium">Tutor <span class="text-red-500">*</span></label>
           <Select.Root type="single" bind:value={tutorId}>
             <Select.Trigger id="nl-tutor" class="ui:w-full">{tutorLabel}</Select.Trigger>
             <Select.Content>
-              <Select.Item value={NONE}>— none —</Select.Item>
               {#each learnerManagementApi.options.tutors as tutor (tutor.id)}
                 <Select.Item value={tutor.id}>{tutor.name ?? tutor.email ?? 'Tutor'}</Select.Item>
               {/each}
             </Select.Content>
           </Select.Root>
+          {#if !hasTutors}
+            <p class="text-xs text-red-500">Create a tutor first — a learner must be assigned to one.</p>
+          {/if}
         </div>
       </div>
 

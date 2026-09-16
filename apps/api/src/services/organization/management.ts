@@ -243,8 +243,8 @@ export interface CreateLearnerInput {
   firstName: string;
   lastName: string;
   email: string;
-  courseId?: string | null;
-  tutorId?: string | null;
+  courseId: string;
+  tutorId: string;
 }
 export interface CreateResult {
   userId: string;
@@ -252,7 +252,7 @@ export interface CreateResult {
   temporaryPassword: string;
 }
 
-/** Create a learner (auto-gen password revealed), optionally enrol into a course + allocate a tutor. Admin. */
+/** Create a learner (auto-gen password revealed), enrol into a course + allocate a tutor (both required). Admin. */
 export async function createLearner(actor: Actor, input: CreateLearnerInput): Promise<CreateResult> {
   assertAdmin(actor);
   const orgId = actor.orgId;
@@ -260,25 +260,20 @@ export async function createLearner(actor: Actor, input: CreateLearnerInput): Pr
   if (!name) throw new AppError('A name is required', ErrorCodes.VALIDATION_ERROR, 400, 'firstName');
   const email = input.email.trim().toLowerCase();
 
-  // Validate the optional course BEFORE creating the account, so a bad course id doesn't leave an orphan.
-  if (input.courseId) {
-    const target = await getCourseEnrolmentTarget(input.courseId);
-    if (!target || target.orgId !== orgId)
-      throw new AppError('Course not found', ErrorCodes.NOT_FOUND, 404, 'courseId');
-    if (!target.isPublished) {
-      throw new AppError('You can only enrol into a published course', ErrorCodes.VALIDATION_ERROR, 400, 'courseId');
-    }
+  // A learner is always enrolled in a course and assigned a tutor — validate BOTH before creating the
+  // account so a bad id doesn't leave an orphan. Course must belong to this org and be published; the
+  // tutor↔learner allocation validates the tutor's role in createTutorAllocation.
+  const target = await getCourseEnrolmentTarget(input.courseId);
+  if (!target || target.orgId !== orgId) throw new AppError('Course not found', ErrorCodes.NOT_FOUND, 404, 'courseId');
+  if (!target.isPublished) {
+    throw new AppError('You can only enrol into a published course', ErrorCodes.VALIDATION_ERROR, 400, 'courseId');
   }
 
   const { userId, temporaryPassword } = await createOrgUser(orgId, actor, { name, email, roleId: ROLE.STUDENT });
 
-  if (input.courseId) {
-    await addCourseMember(input.courseId, { profileId: userId, roleId: ROLE.STUDENT, email });
-    await ensureComplianceEnrollmentRecordsForProfiles([input.courseId], [userId]);
-  }
-  if (input.tutorId) {
-    await createTutorAllocation(orgId, actor, { tutorId: input.tutorId, learnerId: userId });
-  }
+  await addCourseMember(input.courseId, { profileId: userId, roleId: ROLE.STUDENT, email });
+  await ensureComplianceEnrollmentRecordsForProfiles([input.courseId], [userId]);
+  await createTutorAllocation(orgId, actor, { tutorId: input.tutorId, learnerId: userId });
 
   return { userId, name, temporaryPassword };
 }
