@@ -78,7 +78,7 @@
       <a
         href={resolve(href, {})}
         class={cn(
-          'flex-1 truncate text-sm text-black hover:underline dark:text-white',
+          'flex-1 text-sm break-words text-black hover:underline dark:text-white',
           isLocked ? 'cursor-not-allowed opacity-50' : linkClass
         )}
         data-sveltekit-preload-data={preloadOff ? 'off' : undefined}
