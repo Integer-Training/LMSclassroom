@@ -104,7 +104,12 @@ export function getS3Client(): S3Client {
         accessKeyId: config.accessKeyId,
         secretAccessKey: config.secretAccessKey
       },
-      forcePathStyle: config.forcePathStyle
+      forcePathStyle: config.forcePathStyle,
+      // S3-compatible endpoints (Supabase/MinIO/R2) reject the aws-chunked flexible-checksum
+      // trailer the AWS SDK v3 (>=3.729) adds by default, which fails larger multi-chunk uploads
+      // (small bodies slip through, ~>500KB PutObject fails). Only checksum when the op requires it.
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED'
     });
   }
   return s3ClientInstance;
@@ -127,7 +132,11 @@ export function getPresignS3Client(): S3Client {
         accessKeyId: config.accessKeyId,
         secretAccessKey: config.secretAccessKey
       },
-      forcePathStyle: config.forcePathStyle
+      forcePathStyle: config.forcePathStyle,
+      // Match the operations client: keep presigned URLs free of the aws-chunked checksum trailer
+      // so S3-compatible endpoints accept them (see note on getS3Client).
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED'
     });
   }
   return presignClientInstance;
