@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { page } from '$app/state';
 
   import { UpgradeModal, PageLoadProgress, PageRestricted } from '$features/ui';
@@ -8,6 +9,7 @@
   import { isPublicRoute } from '$lib/utils/functions/routes/isPublicRoute';
   import { currentOrg } from '$lib/utils/store/org';
   import { authClient } from '$lib/utils/services/auth/client';
+  import { classroomio } from '$lib/utils/services/api';
 
   interface Props {
     children?: import('svelte').Snippet;
@@ -25,6 +27,19 @@
   let path = $derived(page.url.pathname);
 
   const session = authClient.useSession();
+  let authed = $derived(!!$session.data);
+
+  // Live-presence heartbeat: while signed in, ping every 60s so "Online now" reflects real activity (the
+  // panel counts sessions refreshed within 5 minutes). Best-effort — failures are ignored.
+  onMount(() => {
+    const HEARTBEAT_MS = 60_000;
+    const ping = () => {
+      if (authed) void classroomio.account.heartbeat.$post().catch(() => {});
+    };
+    ping();
+    const timer = setInterval(ping, HEARTBEAT_MS);
+    return () => clearInterval(timer);
+  });
 
   $effect(() => {
     if ($session.isPending || $session.isRefetching || !!$session.data) {

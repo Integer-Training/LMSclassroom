@@ -71,6 +71,26 @@ export async function getPublishedCourseCount(orgId: string, client: DbOrTxClien
   return Number(row?.count ?? 0);
 }
 
+/** Published vs draft course counts for the org (one grouped query). */
+export async function getCourseCounts(
+  orgId: string,
+  client: DbOrTxClient = db
+): Promise<{ published: number; draft: number }> {
+  const rows = await client
+    .select({ isPublished: schema.course.isPublished, count: asInt })
+    .from(schema.course)
+    .innerJoin(schema.group, eq(schema.group.id, schema.course.groupId))
+    .where(eq(schema.group.organizationId, orgId))
+    .groupBy(schema.course.isPublished);
+  let published = 0;
+  let draft = 0;
+  for (const r of rows) {
+    if (r.isPublished) published += Number(r.count);
+    else draft += Number(r.count);
+  }
+  return { published, draft };
+}
+
 export interface MonthCount {
   month: number; // 1-12
   count: number;

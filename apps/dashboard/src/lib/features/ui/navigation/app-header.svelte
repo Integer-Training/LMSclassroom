@@ -1,21 +1,9 @@
 <script lang="ts">
   import { Separator } from '@cio/ui/base/separator';
   import * as Sidebar from '@cio/ui/base/sidebar';
-  import Search from '$features/ui/search.svelte';
   import AppBreadcrumbs from './app-breadcrumbs.svelte';
+  import HeaderContext from './header-context.svelte';
   import NotificationBell from '$features/notifications/components/notification-bell.svelte';
-  import { currentOrg } from '$lib/utils/store/org';
-  import { setupProgressApi } from '$features/setup/api/setup-progress.svelte';
-  import AppSetup from './app-setup.svelte';
-  import VisitOrgSiteBtn from '$features/ui/visit-org-site-btn.svelte';
-
-  const siteName = $derived($currentOrg.siteName);
-
-  $effect(() => {
-    if (!siteName) return;
-
-    setupProgressApi.fetchSetupProgress(siteName);
-  });
 </script>
 
 <header
@@ -32,10 +20,7 @@
 
     <span class="grow"></span>
 
-    <AppSetup />
-    <VisitOrgSiteBtn variant="outline" labelKey="dashboard.open_academy" />
-
-    <Search />
+    <HeaderContext />
 
     <NotificationBell />
   </div>

@@ -11,6 +11,7 @@ import {
   createTutor,
   getAdminManagement,
   getLearnerManagement,
+  getOrgSummary,
   getTutorCourses,
   getTutorManagement,
   listAssignableCourses,
@@ -51,6 +52,15 @@ const ZMemberParam = z.object({ memberId: z.coerce.number().int().positive() });
 const ZSetTutorCourses = z.object({ courseIds: ZCourseIds });
 
 export const managementRouter = new Hono()
+  // Lightweight org summary (counts + online) for the per-view header context bar.
+  .get('/summary', requireAdmin, async (c) => {
+    try {
+      const data = await getOrgSummary(c.get('actor') as Actor);
+      return c.json({ success: true, data }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to load summary');
+    }
+  })
   .get('/learners', requireAdmin, async (c) => {
     try {
       const data = await getLearnerManagement(c.get('actor') as Actor);

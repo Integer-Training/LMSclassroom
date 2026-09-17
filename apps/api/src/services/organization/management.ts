@@ -14,6 +14,7 @@ import { listAllocationsByOrg } from '@cio/db/queries/allocation';
 import { getCoursesForLearners, getEnrolmentsForLearners } from '@cio/db/queries/caseload';
 import { getUnitTimeForLearners } from '@cio/db/queries/caseload';
 import { getLastSeenForUserIds } from '@cio/db/queries/analytics';
+import { getCourseCounts, getMemberRoleStatusCounts, getOnlineOrgMembers } from '@cio/db/queries/dash';
 import { getCourseEnrolmentTarget, listAllCoursesForOrg } from '@cio/db/queries/onboarding';
 import {
   addCourseMember,
@@ -242,6 +243,45 @@ export async function getAdminManagement(actor: Actor): Promise<AdminManagement>
 
   const canCreateAdmins = rows.some((r) => r.isSelf && r.isSuperAdmin);
   return { count: members.length, rows, canCreateAdmins };
+}
+
+export interface OrgSummary {
+  learners: { total: number; suspended: number };
+  tutors: { total: number; suspended: number };
+  admins: { total: number; suspended: number };
+  managers: { total: number };
+  courses: { published: number; draft: number };
+  online: number;
+}
+
+/** A lightweight org summary (role counts, course published/draft, live-online count) for the header context
+ *  bar. One call, cheap grouped queries. Admin only. */
+export async function getOrgSummary(actor: Actor): Promise<OrgSummary> {
+  assertAdmin(actor);
+  const orgId = actor.orgId;
+  const [roleCounts, courses, online] = await Promise.all([
+    getMemberRoleStatusCounts(orgId),
+    getCourseCounts(orgId),
+    getOnlineOrgMembers(orgId, 5) // matches the "Online now" 5-minute window
+  ]);
+  const tally = (roleId: number) => {
+    let total = 0;
+    let suspended = 0;
+    for (const r of roleCounts) {
+      if (r.roleId !== roleId) continue;
+      total += r.count;
+      if (r.status === 'DEACTIVATED') suspended += r.count;
+    }
+    return { total, suspended };
+  };
+  return {
+    learners: tally(ROLE.STUDENT),
+    tutors: tally(ROLE.TUTOR),
+    admins: tally(ROLE.ADMIN),
+    managers: { total: tally(ROLE.MANAGER).total },
+    courses,
+    online: online.length
+  };
 }
 
 export interface CreateAdminInput {

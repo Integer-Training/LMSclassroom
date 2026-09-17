@@ -5,6 +5,7 @@ import { ZUpdateProfile } from '@cio/utils/validation/account';
 import { accountWorkspacesRouter } from '@api/routes/account/workspaces';
 import { authMiddleware } from '@api/middlewares/auth';
 import { getProfileById, updateProfile } from '@cio/db/queries/auth';
+import { touchSession } from '@cio/db/queries/organization';
 import { auth } from '@cio/db/auth';
 import { AppError, ErrorCodes, handleError } from '@api/utils/errors';
 import { zValidator } from '@hono/zod-validator';
@@ -110,6 +111,18 @@ export const accountRouter = new Hono()
       return c.json({ success: true }, 200);
     }
   )
+  // Live-presence heartbeat: the client pings this every ~60s while the app is open. Bumps the current
+  // session's updated_at so the admin "Online now" panel (which reads sessions refreshed within 5 min) is
+  // accurate. Cheap single-row update; failures are swallowed (presence is best-effort).
+  .post('/heartbeat', authMiddleware, async (c) => {
+    const session = c.get('session')!;
+    try {
+      await touchSession(session.id);
+    } catch (error) {
+      console.error('[heartbeat] touchSession failed (non-fatal):', error);
+    }
+    return c.json({ success: true }, 200);
+  })
   // "Return to admin" — end an impersonation session. Proof is the signed imp_admin cookie (the current
   // session is the impersonated learner/tutor, so this can't be admin-gated). Mints a login-link back to the
   // admin and clears the impersonation cookies.

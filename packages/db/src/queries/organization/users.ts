@@ -98,6 +98,14 @@ export async function deleteSessionsByUserId(userId: string): Promise<void> {
   await db.delete(schema.session).where(eq(schema.session.userId, userId));
 }
 
+/**
+ * Bump a session's `updated_at` to now — the live-presence signal the "Online now" panel reads
+ * (it counts sessions refreshed within N minutes). Called by the client heartbeat.
+ */
+export async function touchSession(sessionId: string): Promise<void> {
+  await db.update(schema.session).set({ updatedAt: new Date() }).where(eq(schema.session.id, sessionId));
+}
+
 /** Count ACTIVE admins in an org — for the "don't remove the last admin" guard. */
 export async function countActiveOrgAdmins(orgId: string): Promise<number> {
   const [row] = await db
