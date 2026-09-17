@@ -99,7 +99,7 @@
                 <span class="mt-1.5 h-2 w-2 shrink-0"></span>
               {/if}
               <span class="min-w-0 flex-1">
-                <span class="block truncate text-sm {item.read ? 'ui:text-muted-foreground' : 'font-medium'}">
+                <span class="block text-sm break-words {item.read ? 'ui:text-muted-foreground' : 'font-medium'}">
                   {item.subject}
                 </span>
                 <span class="ui:text-muted-foreground text-xs">{timeAgo(item.createdAt)}</span>

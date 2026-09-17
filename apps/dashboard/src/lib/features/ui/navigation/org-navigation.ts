@@ -10,7 +10,6 @@ import {
   LandingPageIcon,
   PeopleIcon,
   SettingsIcon,
-  SetupIcon,
   TagIcon,
   ZapIcon
 } from '@cio/ui/custom/moving-icons';
@@ -124,14 +123,7 @@ export const baseNavConfig: NavItemConfig[] = [
       }
     ]
   },
-  {
-    group: 'home',
-    titleKey: 'org_navigation.setup',
-    path: '/setup',
-    icon: SetupIcon,
-    requiresAdmin: true,
-    matchPattern: '^/org/[^/]+/setup(/.*)?$'
-  },
+  // Setup / "Get Started" onboarding checklist hidden — not needed for a live provider (the org is set up).
   {
     group: 'content',
     titleKey: 'org_navigation.courses',
