@@ -27,8 +27,8 @@ async function main() {
     console.error('Usage: SET_PW_EMAIL=… SET_PW_PASSWORD=… tsx src/scripts/set-password.ts');
     process.exit(1);
   }
-  if (password.length < 10) {
-    console.error('Refusing: password must be at least 10 characters (matches the app policy).');
+  if (password.length < 8) {
+    console.error('Refusing: password must be at least 8 characters (matches the app policy).');
     process.exit(1);
   }
 

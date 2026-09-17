@@ -47,7 +47,7 @@ function pick(set: string): string {
 }
 
 /**
- * A readable 12-char temporary password that satisfies the policy (≥10, upper+lower+digit+special).
+ * A readable 12-char temporary password that satisfies the policy (≥8, upper+lower+digit+special).
  * Admin-created accounts get this REVEALED once to the admin (email delivery is dormant), and are flagged
  * `mustChangePassword` so the learner/tutor is forced to set their own on first login.
  */

@@ -20,13 +20,13 @@
   const mustChange = $derived(!!($profile?.settings as Record<string, unknown> | undefined)?.mustChangePassword);
 
   const canSubmit = $derived(
-    !!currentPassword && newPassword.length >= 10 && newPassword === confirmPassword && !submitting
+    !!currentPassword && newPassword.length >= 8 && newPassword === confirmPassword && !submitting
   );
 
   async function submit() {
     error = '';
-    if (newPassword.length < 10) {
-      error = 'Your new password must be at least 10 characters.';
+    if (newPassword.length < 8) {
+      error = 'Your new password must be at least 8 characters.';
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -82,7 +82,7 @@
         <div class="space-y-1">
           <label for="cp-new" class="text-sm font-medium">New password</label>
           <Input id="cp-new" type="password" bind:value={newPassword} autocomplete="new-password" />
-          <p class="text-muted-foreground text-xs">At least 10 characters.</p>
+          <p class="text-muted-foreground text-xs">At least 8 characters.</p>
         </div>
         <div class="space-y-1">
           <label for="cp-confirm" class="text-sm font-medium">Confirm new password</label>

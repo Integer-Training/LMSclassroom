@@ -16,10 +16,10 @@ export const config: BetterAuthOptions['emailAndPassword'] = {
   // POST /api/auth/sign-up/email endpoint while leaving sign-in, forgot/reset-password, email
   // verification and change-email fully working for already-provisioned users.
   disableSignUp: true,
-  // PearlLMS Phase-10 HP/SW-13 — explicit password policy. Better-auth's default minimum is 8; learner/staff
-  // accounts hold PII, so require >= 10 characters. Cap at 128 to bound bcrypt hashing cost (a very long input
-  // is an easy CPU-DoS vector). Enforced on every password set (invite set-password + self-service reset).
-  minPasswordLength: 10,
+  // PearlLMS password policy — minimum 8 characters (matches better-auth's default). Cap at 128 to bound
+  // bcrypt hashing cost (a very long input is an easy CPU-DoS vector). Enforced on every password set
+  // (invite set-password + self-service reset).
+  minPasswordLength: 8,
   maxPasswordLength: 128,
   // Phase-10 O2 — password-reset link valid for 1 hour (explicit; matches the better-auth default we rely on).
   resetPasswordTokenExpiresIn: 60 * 60,

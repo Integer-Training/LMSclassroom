@@ -89,7 +89,7 @@ export const accountRouter = new Hono()
   .post(
     '/change-password',
     authMiddleware,
-    zValidator('json', z.object({ currentPassword: z.string().min(1), newPassword: z.string().min(10).max(128) })),
+    zValidator('json', z.object({ currentPassword: z.string().min(1), newPassword: z.string().min(8).max(128) })),
     async (c) => {
       const user = c.get('user')!;
       const { currentPassword, newPassword } = c.req.valid('json');
@@ -101,7 +101,7 @@ export const accountRouter = new Hono()
       } catch {
         // better-auth throws when the current password is wrong or the new one fails policy.
         throw new AppError(
-          'Could not change password. Check your current password and that the new one is at least 10 characters.',
+          'Could not change password. Check your current password and that the new one is at least 8 characters.',
           ErrorCodes.VALIDATION_ERROR,
           400
         );
