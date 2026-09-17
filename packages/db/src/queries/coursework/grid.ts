@@ -2,6 +2,7 @@ import * as schema from '@db/schema';
 
 import { alias } from 'drizzle-orm/pg-core';
 import { and, db, desc, eq, inArray, type DbOrTxClient } from '@db/drizzle';
+import { compareUnitDisplayOrder } from '@cio/utils/functions/reorder';
 import type { CourseworkFile } from './coursework';
 
 // PearlLMS — the tutor SUBMISSIONS GRID (Moodle-style, per workbook). Two batched reads that the grid
@@ -123,19 +124,15 @@ export async function getCourseOutline(courseId: string, client: DbOrTxClient = 
       sectionId: schema.courseSection.id,
       sectionTitle: schema.courseSection.title,
       sectionOrder: schema.courseSection.order,
+      createdAt: schema.lesson.createdAt,
       documents: schema.lesson.documents
     })
     .from(schema.lesson)
     .leftJoin(schema.courseSection, eq(schema.courseSection.id, schema.lesson.sectionId))
     .where(eq(schema.lesson.courseId, courseId));
 
-  const num = (v: number | null | undefined) => (v == null ? Number.MAX_SAFE_INTEGER : Number(v));
-  rows.sort(
-    (a, b) =>
-      num(a.sectionOrder) - num(b.sectionOrder) ||
-      num(a.lessonOrder) - num(b.lessonOrder) ||
-      a.lessonId.localeCompare(b.lessonId)
-  );
+  // The ONE canonical display order (section → lesson → authoring order), shared with every other surface.
+  rows.sort(compareUnitDisplayOrder);
 
   const units: OutlineUnit[] = rows.map((r) => ({
     lessonId: r.lessonId,

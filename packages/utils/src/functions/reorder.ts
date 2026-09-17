@@ -28,3 +28,26 @@ export function reindexOrder(orderedIds: Array<string | null | undefined>): Orde
 
   return result;
 }
+
+export interface UnitDisplayOrder {
+  sectionOrder: number | null;
+  lessonOrder: number | null;
+  createdAt: string | Date | null;
+}
+
+/**
+ * The ONE canonical order units are displayed in — section order, then lesson order (a null order sorts
+ * first, as index 0), then authoring order (`createdAt`). Mirrors `buildCourseContent`'s comparator so every
+ * surface (admin content, learner course view, tutor course view, progression, sequential-unlock gating)
+ * lists units the way the admin arranged them. NEVER tie-break on the lesson UUID — that scrambles units
+ * that share or lack an `order` (e.g. "Unit 2" jumping above "Unit 1").
+ */
+export function compareUnitDisplayOrder(a: UnitDisplayOrder, b: UnitDisplayOrder): number {
+  const bySection = (a.sectionOrder ?? 0) - (b.sectionOrder ?? 0);
+  if (bySection !== 0) return bySection;
+  const byLesson = (a.lessonOrder ?? 0) - (b.lessonOrder ?? 0);
+  if (byLesson !== 0) return byLesson;
+  const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+  const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+  return at - bt;
+}

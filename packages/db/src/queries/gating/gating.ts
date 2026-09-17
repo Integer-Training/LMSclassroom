@@ -1,6 +1,7 @@
 import * as schema from '@db/schema';
 
 import { db, eq, type DbOrTxClient } from '@db/drizzle';
+import { compareUnitDisplayOrder } from '@cio/utils/functions/reorder';
 
 // Sequential-unlock gating data (PearlLMS Phase 4). Read-only inputs to the canonical isUnitUnlocked
 // helper (apps/api guards): the per-course toggle and the course's units in sequence order with their
@@ -42,19 +43,16 @@ export async function getOrderedUnitsForCourse(courseId: string, client: DbOrTxC
       title: schema.lesson.title,
       isOptional: schema.lesson.isOptional,
       sectionOrder: schema.courseSection.order,
-      lessonOrder: schema.lesson.order
+      lessonOrder: schema.lesson.order,
+      createdAt: schema.lesson.createdAt
     })
     .from(schema.lesson)
     .leftJoin(schema.courseSection, eq(schema.courseSection.id, schema.lesson.sectionId))
     .where(eq(schema.lesson.courseId, courseId));
 
-  const num = (v: number | null | undefined, fallback: number) => (v == null ? fallback : Number(v));
-  rows.sort(
-    (a, b) =>
-      num(a.sectionOrder, Number.MAX_SAFE_INTEGER) - num(b.sectionOrder, Number.MAX_SAFE_INTEGER) ||
-      num(a.lessonOrder, Number.MAX_SAFE_INTEGER) - num(b.lessonOrder, Number.MAX_SAFE_INTEGER) ||
-      a.lessonId.localeCompare(b.lessonId)
-  );
+  // The ONE canonical display order (section → lesson → authoring order), shared with every other surface —
+  // so sequential-unlock gating walks the units in exactly the order the learner sees them.
+  rows.sort(compareUnitDisplayOrder);
 
   return rows.map((r) => ({
     lessonId: r.lessonId,
