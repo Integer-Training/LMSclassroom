@@ -20,6 +20,7 @@ export interface AdminMgmtRow {
 export interface AdminManagement {
   count: number;
   rows: AdminMgmtRow[];
+  canCreateAdmins: boolean;
 }
 
 export interface RevealedCredentials {
@@ -27,10 +28,17 @@ export interface RevealedCredentials {
   password: string;
 }
 
+export interface CreateAdminInput {
+  firstName: string;
+  lastName: string;
+  email: string;
+}
+
 class AdminManagementApi extends BaseApi {
   data = $state<AdminManagement | null>(null);
   busyMemberId = $state<number | null>(null);
   revealed = $state<RevealedCredentials | null>(null);
+  creating = $state(false);
 
   async load() {
     return this.execute<typeof classroomio.organization.management.admins.$get>({
@@ -40,6 +48,27 @@ class AdminManagementApi extends BaseApi {
         this.data = result.data as AdminManagement;
       }
     });
+  }
+
+  async createAdmin(input: CreateAdminInput) {
+    this.creating = true;
+    try {
+      return await this.execute<typeof classroomio.organization.management.admins.$post>({
+        requestFn: () => classroomio.organization.management.admins.$post({ json: input }),
+        logContext: 'creating admin',
+        onSuccess: (result) => {
+          const data = result.data as { userId: string; name: string; temporaryPassword: string };
+          this.revealed = { name: data.name, password: data.temporaryPassword };
+          this.load();
+        },
+        onError: (result) => {
+          if (typeof result === 'string') snackbar.error(result);
+          else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
+        }
+      });
+    } finally {
+      this.creating = false;
+    }
   }
 
   async resetPassword(memberId: number) {

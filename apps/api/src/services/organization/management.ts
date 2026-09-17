@@ -4,6 +4,7 @@ import { isRole } from '@cio/utils/auth';
 import { ROLE } from '@cio/utils/constants';
 import {
   getSuperAdminMemberId,
+  getSuperAdminProfileId,
   listOrgAdminMembers,
   listOrgLearnerMembers,
   listOrgTutorMembersFull,
@@ -212,11 +213,14 @@ export interface AdminMgmtRow {
 export interface AdminManagement {
   count: number;
   rows: AdminMgmtRow[];
+  /** Whether the CALLER may create another admin — only the super admin can. Drives the "New Admin" button. */
+  canCreateAdmins: boolean;
 }
 
 /**
  * The Admin Management table: every org admin, flagged with isSuperAdmin (the protected earliest admin whose
  * password can't be reset) and isSelf (the caller — who resets via Change Password, not here). Admin only.
+ * `canCreateAdmins` is true only for the super admin (only they may create another admin).
  */
 export async function getAdminManagement(actor: Actor): Promise<AdminManagement> {
   assertAdmin(actor);
@@ -236,7 +240,35 @@ export async function getAdminManagement(actor: Actor): Promise<AdminManagement>
     isSelf: actor.userId === m.userId
   }));
 
-  return { count: members.length, rows };
+  const canCreateAdmins = rows.some((r) => r.isSelf && r.isSuperAdmin);
+  return { count: members.length, rows, canCreateAdmins };
+}
+
+export interface CreateAdminInput {
+  firstName: string;
+  lastName: string;
+  email: string;
+}
+
+/**
+ * Create an admin (auto-gen password revealed). SUPER-ADMIN ONLY — a regular admin cannot mint another admin.
+ * No course/tutor association (admins don't teach or get allocated). Mirrors createTutor otherwise.
+ */
+export async function createAdmin(actor: Actor, input: CreateAdminInput): Promise<CreateResult> {
+  assertAdmin(actor);
+  const superAdminProfileId = await getSuperAdminProfileId(actor.orgId);
+  if (superAdminProfileId !== actor.userId) {
+    throw new AppError('Only the super admin can create admins', ErrorCodes.FORBIDDEN, 403);
+  }
+  const name = `${input.firstName.trim()} ${input.lastName.trim()}`.trim();
+  if (!name) throw new AppError('A name is required', ErrorCodes.VALIDATION_ERROR, 400, 'firstName');
+  const email = input.email.trim().toLowerCase();
+  const { userId, temporaryPassword } = await createOrgUser(actor.orgId, actor, {
+    name,
+    email,
+    roleId: ROLE.ADMIN
+  });
+  return { userId, name, temporaryPassword };
 }
 
 export interface CreateLearnerInput {

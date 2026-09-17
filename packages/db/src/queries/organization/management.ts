@@ -63,3 +63,15 @@ export async function getSuperAdminMemberId(orgId: string, client: DbOrTxClient 
     .limit(1);
   return row ? Number(row.memberId) : null;
 }
+
+/** The super admin's profile (user) id — the earliest-created ADMIN. Used to gate super-admin-only actions
+ *  (e.g. creating another admin) and the isSuperAdmin flag. Null if the org has no admin. */
+export async function getSuperAdminProfileId(orgId: string, client: DbOrTxClient = db): Promise<string | null> {
+  const [row] = await client
+    .select({ profileId: schema.organizationmember.profileId })
+    .from(schema.organizationmember)
+    .where(and(eq(schema.organizationmember.organizationId, orgId), eq(schema.organizationmember.roleId, ROLE_ADMIN)))
+    .orderBy(asc(schema.organizationmember.id))
+    .limit(1);
+  return row?.profileId ?? null;
+}

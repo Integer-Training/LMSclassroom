@@ -6,6 +6,7 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { setCookie, setSignedCookie } from 'hono/cookie';
 import {
+  createAdmin,
   createLearner,
   createTutor,
   getAdminManagement,
@@ -45,6 +46,7 @@ const ZCreateTutor = z.object({
   email: z.string().email(),
   courseIds: ZCourseIds.optional()
 });
+const ZCreateAdmin = z.object({ firstName: ZName, lastName: ZName, email: z.string().email() });
 const ZMemberParam = z.object({ memberId: z.coerce.number().int().positive() });
 const ZSetTutorCourses = z.object({ courseIds: ZCourseIds });
 
@@ -71,6 +73,15 @@ export const managementRouter = new Hono()
       return c.json({ success: true, data }, 200);
     } catch (error) {
       return handleError(c, error, 'Failed to load admins');
+    }
+  })
+  // Create an admin — SUPER-ADMIN ONLY (the service asserts it). No course association.
+  .post('/admins', requireAdmin, zValidator('json', ZCreateAdmin), async (c) => {
+    try {
+      const data = await createAdmin(c.get('actor') as Actor, c.req.valid('json'));
+      return c.json({ success: true, data }, 201);
+    } catch (error) {
+      return handleError(c, error, 'Failed to create admin');
     }
   })
   // Every assignable org course (for the create-tutor course picker).

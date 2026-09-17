@@ -5,6 +5,7 @@
   import { Button } from '@cio/ui/base/button';
   import { Input } from '@cio/ui/base/input';
   import { Badge } from '@cio/ui/base/badge';
+  import PlusIcon from '@lucide/svelte/icons/plus';
   import SearchIcon from '@lucide/svelte/icons/search';
   import KeyIcon from '@lucide/svelte/icons/key-round';
   import ShieldIcon from '@lucide/svelte/icons/shield';
@@ -12,11 +13,14 @@
   import { currentOrg } from '$lib/utils/store/org';
   import { adminManagementApi, type AdminMgmtRow } from '$features/admin-management/api/admin-management.svelte';
   import ResetPasswordDialog from '$features/admin-management/components/reset-password-dialog.svelte';
+  import CreateAdminDialog from '$features/admin-management/components/create-admin-dialog.svelte';
 
   // Admin Admin-management. Roster of org admins with a "Reset Password" action. The super admin (earliest
   // admin) and the caller themselves cannot be reset here (server-enforced too). Admin-only (API-enforced).
+  // Only the super admin sees "New Admin" (creating an admin is super-admin-only, also server-enforced).
 
   let showReveal = $state(false);
+  let showCreate = $state(false);
   let search = $state('');
 
   onMount(() => {
@@ -25,7 +29,13 @@
 
   const rows = $derived<AdminMgmtRow[]>(adminManagementApi.data?.rows ?? []);
   const count = $derived(adminManagementApi.data?.count ?? 0);
+  const canCreate = $derived(adminManagementApi.data?.canCreateAdmins ?? false);
   const loading = $derived(adminManagementApi.isLoading && !adminManagementApi.data);
+
+  function openCreate() {
+    adminManagementApi.clearRevealed();
+    showCreate = true;
+  }
 
   const filtered = $derived.by(() => {
     const q = search.trim().toLowerCase();
@@ -56,6 +66,13 @@
       <Page.Title>Admin Management</Page.Title>
       <Page.Subtitle>Reset admin passwords · {$currentOrg.name}</Page.Subtitle>
     </Page.HeaderContent>
+    {#if canCreate}
+      <Page.Action>
+        <Button onclick={openCreate}>
+          <PlusIcon class="size-4" /> New Admin
+        </Button>
+      </Page.Action>
+    {/if}
   </Page.Header>
 
   <Page.Body>
@@ -157,3 +174,4 @@
 </Page.Root>
 
 <ResetPasswordDialog bind:open={showReveal} />
+<CreateAdminDialog bind:open={showCreate} />
