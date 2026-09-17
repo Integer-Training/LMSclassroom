@@ -20,6 +20,7 @@ import {
   getOrganizationUsers,
   getSuperAdminMemberId,
   getUserOrgRolesMap,
+  setCredentialPassword,
   type GetOrganizationUsersOptions
 } from '@cio/db/queries/organization';
 import {
@@ -254,9 +255,11 @@ export async function resetUserPassword(
   const temporaryPassword = generateTemporaryPassword();
 
   try {
-    await authApi.setUserPassword({ body: { userId, newPassword: temporaryPassword } });
+    // Direct credential write (bcrypt) — better-auth's admin setUserPassword requires a better-auth admin
+    // session, which org admins don't have (returns UNAUTHORIZED). See setCredentialPassword.
+    await setCredentialPassword(userId, temporaryPassword);
   } catch (error) {
-    console.error('resetUserPassword: setUserPassword failed:', error);
+    console.error('resetUserPassword: setCredentialPassword failed:', error);
     throw new AppError('Failed to reset password', ErrorCodes.INTERNAL_ERROR, 500);
   }
 

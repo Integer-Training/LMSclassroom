@@ -1,5 +1,6 @@
 import * as schema from '@db/schema';
 
+import bcrypt from 'bcrypt';
 import { and, count, desc, eq, ilike, or } from 'drizzle-orm';
 
 import { db } from '@db/drizzle';
@@ -104,6 +105,29 @@ export async function deleteSessionsByUserId(userId: string): Promise<void> {
  */
 export async function touchSession(sessionId: string): Promise<void> {
   await db.update(schema.session).set({ updatedAt: new Date() }).where(eq(schema.session.id, sessionId));
+}
+
+/**
+ * Set a user's password directly on their credential account (bcrypt cost 10 — matches the better-auth
+ * password.hash config, so the new password verifies on login). Update the existing credential row, or create
+ * one if absent. This is the admin password-RESET path: better-auth's admin `setUserPassword` endpoint
+ * requires the caller to be a *better-auth* admin (user.role='admin'), which org admins are NOT, so it returns
+ * UNAUTHORIZED — this direct write is the reliable equivalent (same approach as scripts/set-password.ts).
+ */
+export async function setCredentialPassword(userId: string, plainPassword: string): Promise<void> {
+  const passwordHash = await bcrypt.hash(plainPassword, 10);
+  const [existing] = await db
+    .select({ id: schema.account.id })
+    .from(schema.account)
+    .where(and(eq(schema.account.userId, userId), eq(schema.account.providerId, 'credential')))
+    .limit(1);
+  if (existing) {
+    await db.update(schema.account).set({ password: passwordHash }).where(eq(schema.account.id, existing.id));
+  } else {
+    await db
+      .insert(schema.account)
+      .values({ userId, providerId: 'credential', accountId: userId, password: passwordHash });
+  }
 }
 
 /** Count ACTIVE admins in an org — for the "don't remove the last admin" guard. */
