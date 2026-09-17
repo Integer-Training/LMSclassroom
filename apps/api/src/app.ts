@@ -13,7 +13,7 @@ import {
   shouldRewriteOAuthProxyCallbackLocation
 } from '@api/utils/oauth-proxy-redirect';
 import { Hono } from '@api/utils/hono';
-import { ErrorCodes } from '@api/utils/errors';
+import { AppError, ErrorCodes, handleError } from '@api/utils/errors';
 import { accountRouter } from '@api/routes/account';
 import { agentRouter } from '@api/routes/agent';
 import { auth } from '@cio/db/auth';
@@ -288,6 +288,10 @@ export const app = new Hono()
   // Error handling — HP/SA-5: the client gets a GENERIC message + the correlation id only; the full error
   // (stack/path/query) stays server-side in the log, keyed by the same id so support can trace it.
   .onError((err, c) => {
+    // A deliberate 4xx AppError carries its own status + a safe, user-facing message (e.g. "wrong current
+    // password") — honour it via handleError instead of masking every one as a generic 500. Genuinely
+    // unexpected errors and 5xx AppErrors still get Sentry + the generic 500 + correlation id (HP/SA-5).
+    if (err instanceof AppError && err.statusCode < 500) return handleError(c, err);
     Sentry.captureException(err);
     const correlationId = (c.get('correlationId') as string | undefined) ?? 'unknown';
     console.error('[error]', { correlationId, error: err });
