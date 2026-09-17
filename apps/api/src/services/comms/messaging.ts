@@ -8,6 +8,7 @@ import {
   ensureActiveThread,
   getThreadById,
   insertMessage,
+  listConversationsForParticipant,
   listMessages,
   markThreadRead as markThreadReadQuery,
   type MessageThreadRow
@@ -83,6 +84,32 @@ async function buildView(
       mine: m.senderId === actor.userId
     }))
   };
+}
+
+export interface ConversationSummary {
+  threadId: string;
+  counterpart: { id: string; name: string };
+  lastBody: string;
+  lastAt: string;
+  unread: boolean;
+  archived: boolean;
+}
+
+/**
+ * The actor's conversations (inbox), newest-active first: a TUTOR sees a row per learner who has messaged (or
+ * been messaged); a LEARNER sees a row per tutor. Self-scoped — only threads the actor participates in.
+ */
+export async function listConversations(actor: Actor): Promise<ConversationSummary[]> {
+  assertAuthed(actor);
+  const rows = await listConversationsForParticipant(actor.userId);
+  return rows.map((r) => ({
+    threadId: r.threadId,
+    counterpart: { id: r.counterpartId, name: r.counterpartName },
+    lastBody: r.body,
+    lastAt: r.createdAt,
+    unread: r.unread,
+    archived: r.archived
+  }));
 }
 
 /** The learner's allocated tutor (for the "Message your tutor" entry point), or null → empty state. */

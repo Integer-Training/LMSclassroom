@@ -20,6 +20,15 @@ export interface ThreadView {
   messages: MessageView[];
 }
 
+export interface ConversationSummary {
+  threadId: string;
+  counterpart: { id: string; name: string };
+  lastBody: string;
+  lastAt: string;
+  unread: boolean;
+  archived: boolean;
+}
+
 /**
  * Allocation-bound tutor↔learner messaging (PearlLMS Phase 6 Step 4). Text only. All access is server-
  * enforced (participant + allocation + not-archived); this client just drives the thread UI.
@@ -29,6 +38,19 @@ class MessagingApi extends BaseApi {
   myTutor = $state<{ tutorId: string; name: string } | null>(null);
   tutorLoaded = $state(false);
   sending = $state(false);
+  conversations = $state<ConversationSummary[]>([]);
+  conversationsLoaded = $state(false);
+
+  async loadConversations() {
+    return this.execute<(typeof classroomio.messages.threads)['$get']>({
+      requestFn: () => classroomio.messages.threads.$get(),
+      logContext: 'loading conversations',
+      onSuccess: (result) => {
+        this.conversations = result.data as ConversationSummary[];
+        this.conversationsLoaded = true;
+      }
+    });
+  }
 
   async loadMyTutor() {
     return this.execute<(typeof classroomio.messages)['my-tutor']['$get']>({
@@ -84,6 +106,11 @@ class MessagingApi extends BaseApi {
     this.myTutor = null;
     this.tutorLoaded = false;
     this.sending = false;
+  }
+
+  resetList() {
+    this.conversations = [];
+    this.conversationsLoaded = false;
   }
 }
 

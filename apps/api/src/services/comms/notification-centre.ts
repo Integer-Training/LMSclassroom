@@ -52,7 +52,9 @@ function enrich(
     case 'announcement.published':
       return { ...base, subject: 'New announcement', link: '/lms' }; // Step 5 refines the target
     case 'message.received':
-      return { ...base, subject: 'New message', link: '/lms' }; // Step 4 refines the target
+      // Deep-link straight to the thread (entityId is the message_thread id) — the /messages/:threadId route
+      // is role-agnostic (participant/Admin enforced server-side), so it works for the tutor and the learner.
+      return { ...base, subject: 'New message', link: row.entityId ? `/messages/${row.entityId}` : '/lms' };
     default:
       return { ...base, subject: 'Notification', link: '/lms' };
   }

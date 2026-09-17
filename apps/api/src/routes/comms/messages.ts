@@ -5,7 +5,14 @@ import { requireActor } from '@api/middlewares/guards';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { MESSAGE_MAX_LENGTH } from '@cio/utils/constants';
-import { getMyTutor, getThreadView, markThreadRead, openThread, sendMessage } from '@api/services/comms/messaging';
+import {
+  getMyTutor,
+  getThreadView,
+  listConversations,
+  markThreadRead,
+  openThread,
+  sendMessage
+} from '@api/services/comms/messaging';
 
 // PearlLMS Phase 6 Step 4 — allocation-bound messaging. Every route is requireActor; participant/allocation/
 // archived rules are enforced in the service (isAllocatedTutor / participant / not-archived). TEXT ONLY: the
@@ -22,6 +29,15 @@ export const messagesRouter = new Hono()
       return c.json({ success: true, data: { tutor } }, 200);
     } catch (error) {
       return handleError(c, error, 'Failed to load tutor');
+    }
+  })
+  // The actor's conversation list (inbox) — tutor sees their learners, learner sees their tutors.
+  .get('/threads', requireActor(), async (c) => {
+    try {
+      const data = await listConversations(c.get('actor') as Actor);
+      return c.json({ success: true, data }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to load conversations');
     }
   })
   // Open/ensure the thread for an allocated pair (both sides). Returns the full view.

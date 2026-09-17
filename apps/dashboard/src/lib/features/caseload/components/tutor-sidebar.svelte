@@ -6,10 +6,10 @@
   import LayoutDashboardIcon from '@lucide/svelte/icons/layout-dashboard';
   import BookOpenIcon from '@lucide/svelte/icons/book-open';
   import TrendingUpIcon from '@lucide/svelte/icons/trending-up';
+  import MessagesSquareIcon from '@lucide/svelte/icons/messages-square';
   import { SidebarLogoutButton } from '$features/ui/sidebar/footer';
 
-  // Tutor shell nav (PearlLMS Phase 8). Three flat items; Learner Progression is a disabled "Soon"
-  // placeholder. Active state is derived from the current pathname.
+  // Tutor shell nav (PearlLMS Phase 8). Flat items; active state is derived from the current pathname.
   const items = $derived([
     {
       title: 'Dashboard',
@@ -22,6 +22,12 @@
       url: '/caseload/courses',
       icon: BookOpenIcon,
       isActive: page.url.pathname.startsWith('/caseload/courses')
+    },
+    {
+      title: 'Messages',
+      url: '/caseload/messages',
+      icon: MessagesSquareIcon,
+      isActive: page.url.pathname.startsWith('/caseload/messages') || page.url.pathname.startsWith('/messages')
     },
     {
       title: 'Learner Progression',

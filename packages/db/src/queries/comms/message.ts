@@ -1,6 +1,7 @@
 import * as schema from '@db/schema';
 
 import { and, asc, count, db, desc, eq, gt, isNull, ne, or, sql, type DbOrTxClient } from '@db/drizzle';
+import { alias } from 'drizzle-orm/pg-core';
 
 // PearlLMS Phase 6 Step 4 — messaging queries (docs/COMMS-MODEL.md §4). A thread is one per (tutor, learner)
 // pair; messages are text-only + append-only; read state is a per-participant cursor. These queries do NO
@@ -145,19 +146,13 @@ export async function getLearnerMessageSummary(
     .innerJoin(schema.messageThread, eq(schema.messageThread.id, schema.message.threadId))
     .leftJoin(
       schema.messageRead,
-      and(
-        eq(schema.messageRead.threadId, schema.messageThread.id),
-        eq(schema.messageRead.profileId, learnerId)
-      )
+      and(eq(schema.messageRead.threadId, schema.messageThread.id), eq(schema.messageRead.profileId, learnerId))
     )
     .where(
       and(
         eq(schema.messageThread.learnerId, learnerId),
         ne(schema.message.senderId, learnerId),
-        or(
-          isNull(schema.messageRead.lastReadAt),
-          gt(schema.message.createdAt, schema.messageRead.lastReadAt)
-        )
+        or(isNull(schema.messageRead.lastReadAt), gt(schema.message.createdAt, schema.messageRead.lastReadAt))
       )
     );
 
@@ -177,10 +172,7 @@ export async function getLearnerMessageSummary(
     .leftJoin(schema.profile, eq(schema.profile.id, schema.messageThread.tutorId))
     .leftJoin(
       schema.messageRead,
-      and(
-        eq(schema.messageRead.threadId, schema.messageThread.id),
-        eq(schema.messageRead.profileId, learnerId)
-      )
+      and(eq(schema.messageRead.threadId, schema.messageThread.id), eq(schema.messageRead.profileId, learnerId))
     )
     .where(eq(schema.messageThread.learnerId, learnerId))
     .orderBy(schema.message.threadId, desc(schema.message.createdAt));
@@ -200,6 +192,74 @@ export async function getLearnerMessageSummary(
     .slice(0, limit);
 
   return { unreadCount: Number(n), recent };
+}
+
+// ── Conversation list (inbox) — every thread the participant is in, newest-active first ──────────────────
+
+export interface ConversationRow {
+  threadId: string;
+  counterpartId: string;
+  counterpartName: string;
+  body: string;
+  createdAt: string;
+  /** The last message wasn't sent by this participant AND arrived after their read cursor. */
+  unread: boolean;
+  archived: boolean;
+}
+
+/**
+ * Every conversation a participant (tutor OR learner) is in — the latest message per thread with the OTHER
+ * party's name + an unread flag. Role-general (filters tutor_id OR learner_id = profileId), so it backs both
+ * the tutor inbox and a learner inbox. Threads with no messages yet are omitted. No access control here.
+ */
+export async function listConversationsForParticipant(
+  profileId: string,
+  client: DbOrTxClient = db
+): Promise<ConversationRow[]> {
+  const tutorProfile = alias(schema.profile, 'tutor_profile');
+  const learnerProfile = alias(schema.profile, 'learner_profile');
+  const rows = await client
+    .selectDistinctOn([schema.message.threadId], {
+      threadId: schema.message.threadId,
+      tutorId: schema.messageThread.tutorId,
+      learnerId: schema.messageThread.learnerId,
+      tutorName: tutorProfile.fullname,
+      learnerName: learnerProfile.fullname,
+      archivedAt: schema.messageThread.archivedAt,
+      body: schema.message.body,
+      createdAt: schema.message.createdAt,
+      senderId: schema.message.senderId,
+      lastReadAt: schema.messageRead.lastReadAt
+    })
+    .from(schema.message)
+    .innerJoin(schema.messageThread, eq(schema.messageThread.id, schema.message.threadId))
+    .leftJoin(tutorProfile, eq(tutorProfile.id, schema.messageThread.tutorId))
+    .leftJoin(learnerProfile, eq(learnerProfile.id, schema.messageThread.learnerId))
+    .leftJoin(
+      schema.messageRead,
+      and(eq(schema.messageRead.threadId, schema.messageThread.id), eq(schema.messageRead.profileId, profileId))
+    )
+    .where(or(eq(schema.messageThread.tutorId, profileId), eq(schema.messageThread.learnerId, profileId)))
+    .orderBy(schema.message.threadId, desc(schema.message.createdAt));
+
+  return rows
+    .map((r) => {
+      const amTutor = r.tutorId === profileId;
+      const counterpartId = amTutor ? r.learnerId : r.tutorId;
+      const createdAt = r.createdAt as string;
+      return {
+        threadId: r.threadId,
+        counterpartId,
+        counterpartName: (amTutor ? r.learnerName : r.tutorName) ?? 'Conversation',
+        body: r.body,
+        createdAt,
+        unread:
+          r.senderId !== profileId &&
+          (!r.lastReadAt || new Date(createdAt).getTime() > new Date(r.lastReadAt as string).getTime()),
+        archived: r.archivedAt != null
+      };
+    })
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 /** Set the participant's read cursor to now (idempotent per (thread, profile)). */
