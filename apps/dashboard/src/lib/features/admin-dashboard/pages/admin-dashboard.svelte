@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount } from 'svelte';
   import * as Page from '@cio/ui/base/page';
   import { Skeleton } from '@cio/ui/base/skeleton';
   import { currentOrg } from '$lib/utils/store/org';
@@ -17,21 +17,27 @@
   const overview = $derived(adminDashboardApi.overview);
   const online = $derived(adminDashboardApi.online);
 
-  let onlineTimer: ReturnType<typeof setInterval> | null = null;
-
-  onMount(() => {
+  // Load once the org store is ready. On a fresh page load $currentOrg.id can still be empty when the page
+  // mounts (the org is resolved by the layout load), so a one-shot onMount read left the dashboard stuck on
+  // skeletons until a navigation repopulated it. A reactive $effect + a non-reactive guard fixes that (and
+  // retries the overview on the next org change if a load fails).
+  let loadedForOrg: string | null = null;
+  $effect(() => {
     const orgId = $currentOrg.id;
-    if (orgId) {
-      adminDashboardApi.loadOverview(orgId);
-      adminDashboardApi.loadOnline(orgId);
-      onlineTimer = setInterval(() => {
-        if ($currentOrg.id) adminDashboardApi.loadOnline($currentOrg.id);
-      }, 45000);
-    }
+    if (!orgId || loadedForOrg === orgId) return;
+    loadedForOrg = orgId;
+    adminDashboardApi.loadOverview(orgId).then((res) => {
+      if (!res) loadedForOrg = null;
+    });
+    adminDashboardApi.loadOnline(orgId);
   });
 
-  onDestroy(() => {
-    if (onlineTimer) clearInterval(onlineTimer);
+  // Poll "online now" every 45s while mounted.
+  onMount(() => {
+    const timer = setInterval(() => {
+      if ($currentOrg.id) adminDashboardApi.loadOnline($currentOrg.id);
+    }, 45000);
+    return () => clearInterval(timer);
   });
 </script>
 
