@@ -34,12 +34,13 @@ function assertAuthed(actor: Actor): asserts actor is Extract<Actor, { authentic
 
 function enrich(
   row: NotificationRow,
-  lessons: Map<string, { courseId: string; title: string | null }>
+  lessons: Map<string, { courseId: string; title: string | null }>,
+  homePath: string
 ): NotificationItem {
   const base = { id: row.id, type: row.type, createdAt: row.createdAt, read: row.readAt != null };
   const lesson = row.entityType === 'lesson' && row.entityId ? lessons.get(row.entityId) : undefined;
   const lessonTitle = lesson?.title ?? 'a session';
-  const lessonLink = lesson ? `/courses/${lesson.courseId}/lessons/${row.entityId}` : '/lms';
+  const lessonLink = lesson ? `/courses/${lesson.courseId}/lessons/${row.entityId}` : homePath;
 
   switch (row.type) {
     case 'submission.created':
@@ -50,13 +51,14 @@ function enrich(
     case 'session.unlocked':
       return { ...base, subject: `New session unlocked — ${lessonTitle}`, link: lessonLink };
     case 'announcement.published':
-      return { ...base, subject: 'New announcement', link: '/lms' }; // Step 5 refines the target
+      // The broadcast banner lives on the recipient's dashboard — a tutor's is /caseload, a learner's /lms.
+      return { ...base, subject: 'New announcement', link: homePath };
     case 'message.received':
       // Deep-link straight to the thread (entityId is the message_thread id) — the /messages/:threadId route
       // is role-agnostic (participant/Admin enforced server-side), so it works for the tutor and the learner.
-      return { ...base, subject: 'New message', link: row.entityId ? `/messages/${row.entityId}` : '/lms' };
+      return { ...base, subject: 'New message', link: row.entityId ? `/messages/${row.entityId}` : homePath };
     default:
-      return { ...base, subject: 'Notification', link: '/lms' };
+      return { ...base, subject: 'Notification', link: homePath };
   }
 }
 
@@ -77,7 +79,10 @@ export async function getNotificationCentre(
   ];
   const lessons = await getLessonLinkTargets(lessonIds);
 
-  return { items: rows.map((r) => enrich(r, lessons)), unreadCount };
+  // The recipient's home dashboard — where their broadcast banner + feed live (tutor → /caseload, else /lms).
+  const homePath = actor.role === 'TUTOR' ? '/caseload' : '/lms';
+
+  return { items: rows.map((r) => enrich(r, lessons, homePath)), unreadCount };
 }
 
 /** Mark ONE of the actor's own notifications read — scoped to actor.userId (a foreign id affects nothing). */

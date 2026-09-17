@@ -10,6 +10,7 @@
   import { lmsDashboardApi } from '$features/lms/api/dashboard.svelte';
   import { announcementsApi } from '$features/announcements/api/announcements.svelte';
   import AnnouncementsList from '$features/announcements/components/announcements-list.svelte';
+  import BroadcastBanner from '$features/announcements/components/broadcast-banner.svelte';
   import UpcomingSessionsCard from '$features/lms/components/upcoming-sessions-card.svelte';
   import StudyHoursChart from '$features/lms/components/study-hours-chart.svelte';
   import { getStudentCourseContinuePath } from '$features/course/utils/student-course-navigation';
@@ -39,7 +40,14 @@
 
   const firstName = $derived($profile.fullname?.trim().split(/\s+/)[0] || $t('dashboard.learner'));
   const initials = $derived(
-    ($profile.fullname?.trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join('') || 'U').toUpperCase()
+    (
+      $profile.fullname
+        ?.trim()
+        .split(/\s+/)
+        .slice(0, 2)
+        .map((p) => p[0])
+        .join('') || 'U'
+    ).toUpperCase()
   );
 
   // Load guard is non-reactive so a failed load can retry on the next org/profile change without a loop.
@@ -127,7 +135,9 @@
   function fmtDate(iso: string | null): string {
     if (!iso) return '';
     const d = new Date(iso);
-    return isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    return isNaN(d.getTime())
+      ? ''
+      : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
   }
   function relDays(iso: string | null): string {
     if (!iso) return '—';
@@ -157,6 +167,8 @@
 </script>
 
 <div class="space-y-5 pb-10">
+  <BroadcastBanner />
+
   <!-- WELCOME BANNER -->
   <section class="overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 to-slate-800 p-5 text-white md:p-6">
     <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -259,13 +271,13 @@
           <p class="text-muted-foreground text-xs">Courses</p>
         </div>
         <div>
-          <p class="text-2xl font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+          <p class="text-2xl font-semibold text-emerald-600 tabular-nums dark:text-emerald-400">
             {dash?.progressSummary.passedUnits ?? 0}
           </p>
           <p class="text-muted-foreground text-xs">Units passed</p>
         </div>
         <div>
-          <p class="text-2xl font-semibold tabular-nums text-amber-600 dark:text-amber-400">
+          <p class="text-2xl font-semibold text-amber-600 tabular-nums dark:text-amber-400">
             {Math.max((dash?.progressSummary.totalUnits ?? 0) - (dash?.progressSummary.passedUnits ?? 0), 0)}
           </p>
           <p class="text-muted-foreground text-xs">Units remaining</p>
@@ -302,14 +314,23 @@
     <!-- My Tutor -->
     <section class="bg-card overflow-hidden rounded-xl border">
       <div class="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-purple-500 px-4 py-3 text-white">
-        <GraduationCapIcon size={16} /><h2 class="text-sm font-semibold">My Tutor</h2>
+        <GraduationCapIcon size={16} />
+        <h2 class="text-sm font-semibold">My Tutor</h2>
       </div>
       <div class="p-4">
         {#if dash?.tutor}
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-3">
-              <div class="bg-primary/10 text-primary flex size-11 items-center justify-center rounded-full font-semibold">
-                {dash.tutor.name.trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join('').toUpperCase()}
+              <div
+                class="bg-primary/10 text-primary flex size-11 items-center justify-center rounded-full font-semibold"
+              >
+                {dash.tutor.name
+                  .trim()
+                  .split(/\s+/)
+                  .slice(0, 2)
+                  .map((p) => p[0])
+                  .join('')
+                  .toUpperCase()}
               </div>
               <div class="min-w-0">
                 <p class="font-semibold">{dash.tutor.name}</p>
@@ -330,9 +351,16 @@
 
     <!-- Draft Feedbacks -->
     <section class="bg-card overflow-hidden rounded-xl border">
-      <div class="flex items-center justify-between bg-gradient-to-r from-emerald-600 to-emerald-500 px-4 py-3 text-white">
-        <div class="flex items-center gap-2"><MessageSquareIcon size={16} /><h2 class="text-sm font-semibold">Draft Feedbacks</h2></div>
-        <span class="rounded-full bg-white/20 px-2 py-0.5 text-xs font-medium">{dash?.draftFeedbacks.length ?? 0} total</span>
+      <div
+        class="flex items-center justify-between bg-gradient-to-r from-emerald-600 to-emerald-500 px-4 py-3 text-white"
+      >
+        <div class="flex items-center gap-2">
+          <MessageSquareIcon size={16} />
+          <h2 class="text-sm font-semibold">Draft Feedbacks</h2>
+        </div>
+        <span class="rounded-full bg-white/20 px-2 py-0.5 text-xs font-medium"
+          >{dash?.draftFeedbacks.length ?? 0} total</span
+        >
       </div>
       <div class="max-h-56 overflow-y-auto p-4">
         {#if dash && dash.draftFeedbacks.length > 0}
@@ -365,7 +393,8 @@
   {#if announcementsApi.items.length}
     <section class="bg-card overflow-hidden rounded-xl border">
       <div class="flex items-center gap-2 bg-gradient-to-r from-slate-800 to-slate-700 px-4 py-3 text-white">
-        <MegaphoneIcon size={16} /><h2 class="text-sm font-semibold">News & Updates</h2>
+        <MegaphoneIcon size={16} />
+        <h2 class="text-sm font-semibold">News & Updates</h2>
       </div>
       <div class="p-4">
         <AnnouncementsList items={announcementsApi.items} showScope={false} />
@@ -378,15 +407,23 @@
     <!-- Upcoming Due Dates -->
     <section class="bg-card overflow-hidden rounded-xl border">
       <div class="flex items-center justify-between bg-gradient-to-r from-slate-800 to-slate-700 px-4 py-3 text-white">
-        <div class="flex items-center gap-2"><CalendarClockIcon size={16} /><h2 class="text-sm font-semibold">Upcoming Due Dates</h2></div>
-        <span class="rounded-full bg-white/20 px-2 py-0.5 text-xs font-medium">{dash?.upcomingDueDates.length ?? 0}</span>
+        <div class="flex items-center gap-2">
+          <CalendarClockIcon size={16} />
+          <h2 class="text-sm font-semibold">Upcoming Due Dates</h2>
+        </div>
+        <span class="rounded-full bg-white/20 px-2 py-0.5 text-xs font-medium"
+          >{dash?.upcomingDueDates.length ?? 0}</span
+        >
       </div>
       <div class="max-h-64 overflow-y-auto p-4">
         {#if dash && dash.upcomingDueDates.length > 0}
           <ul class="space-y-2">
             {#each dash.upcomingDueDates as d (d.courseId + d.lessonId + (d.assessmentKey ?? d.name))}
               <li>
-                <a href={lessonHref(d.courseId, d.lessonId)} class="hover:border-primary/40 flex items-center justify-between gap-3 rounded-lg border p-3 transition">
+                <a
+                  href={lessonHref(d.courseId, d.lessonId)}
+                  class="hover:border-primary/40 flex items-center justify-between gap-3 rounded-lg border p-3 transition"
+                >
                   <div class="min-w-0">
                     <p class="truncate text-sm font-medium">{d.name}</p>
                     <p class="text-muted-foreground truncate text-xs">{d.unitTitle} · {d.courseTitle}</p>
@@ -413,8 +450,14 @@
     <!-- Recent Messages -->
     <section class="bg-card overflow-hidden rounded-xl border">
       <div class="flex items-center justify-between bg-gradient-to-r from-slate-800 to-slate-700 px-4 py-3 text-white">
-        <div class="flex items-center gap-2"><MessageSquareIcon size={16} /><h2 class="text-sm font-semibold">Recent Messages</h2></div>
-        <button onclick={() => goto('/messages')} class="flex items-center gap-1 text-xs font-medium text-white/80 hover:text-white">
+        <div class="flex items-center gap-2">
+          <MessageSquareIcon size={16} />
+          <h2 class="text-sm font-semibold">Recent Messages</h2>
+        </div>
+        <button
+          onclick={() => goto('/messages')}
+          class="flex items-center gap-1 text-xs font-medium text-white/80 hover:text-white"
+        >
           View All <ArrowRightIcon size={12} />
         </button>
       </div>
@@ -423,7 +466,10 @@
           <ul class="space-y-2">
             {#each dash.recentMessages as m (m.threadId)}
               <li>
-                <a href={`/messages/${m.threadId}`} class="hover:border-primary/40 block rounded-lg border p-3 transition">
+                <a
+                  href={`/messages/${m.threadId}`}
+                  class="hover:border-primary/40 block rounded-lg border p-3 transition"
+                >
                   <div class="flex items-center justify-between gap-2">
                     <p class="flex items-center gap-2 text-sm font-medium">
                       {#if m.unread}<span class="bg-primary size-2 shrink-0 rounded-full"></span>{/if}
@@ -448,8 +494,14 @@
   <!-- COURSE PROGRESSION -->
   <section class="bg-card overflow-hidden rounded-xl border">
     <div class="flex items-center justify-between bg-gradient-to-r from-slate-800 to-slate-700 px-4 py-3 text-white">
-      <div class="flex items-center gap-2"><FileTextIcon size={16} /><h2 class="text-sm font-semibold">Course Progression</h2></div>
-      <button onclick={() => goto('/lms/mylearning')} class="flex items-center gap-1 text-xs font-medium text-white/80 hover:text-white">
+      <div class="flex items-center gap-2">
+        <FileTextIcon size={16} />
+        <h2 class="text-sm font-semibold">Course Progression</h2>
+      </div>
+      <button
+        onclick={() => goto('/lms/mylearning')}
+        class="flex items-center gap-1 text-xs font-medium text-white/80 hover:text-white"
+      >
         View All <ArrowRightIcon size={12} />
       </button>
     </div>
@@ -458,10 +510,15 @@
         <div class="text-muted-foreground flex items-center justify-center py-10"><Spinner class="size-6" /></div>
       {:else if dash && dash.courseProgression.length > 0}
         {#each dash.courseProgression as c (c.courseId)}
-          <a href={getStudentCourseContinuePath(c.courseId)} class="hover:bg-muted/40 flex items-center gap-4 px-4 py-3 transition">
+          <a
+            href={getStudentCourseContinuePath(c.courseId)}
+            class="hover:bg-muted/40 flex items-center gap-4 px-4 py-3 transition"
+          >
             <div class="min-w-0 flex-1">
               <p class="truncate text-sm font-medium">{c.title}</p>
-              <p class="text-muted-foreground text-xs">{c.passed} of {c.total} passed{c.completed ? ' · Completed' : ''}</p>
+              <p class="text-muted-foreground text-xs">
+                {c.passed} of {c.total} passed{c.completed ? ' · Completed' : ''}
+              </p>
             </div>
             <div class="flex w-40 shrink-0 items-center gap-3">
               <Progress value={c.percent} max={100} class="h-1.5 flex-1" />
@@ -479,6 +536,10 @@
 
   <!-- STUDY HOURS -->
   {#if dash}
-    <StudyHoursChart monthly={dash.studyHours.monthly} totalSeconds={dash.studyHours.totalSeconds} year={dash.studyHours.year} />
+    <StudyHoursChart
+      monthly={dash.studyHours.monthly}
+      totalSeconds={dash.studyHours.totalSeconds}
+      year={dash.studyHours.year}
+    />
   {/if}
 </div>

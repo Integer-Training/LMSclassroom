@@ -1,6 +1,7 @@
 <script lang="ts">
   import * as Sidebar from '@cio/ui/base/sidebar';
   import TutorSidebar from '$features/caseload/components/tutor-sidebar.svelte';
+  import NotificationBell from '$features/notifications/components/notification-bell.svelte';
 
   let { children } = $props();
 </script>
@@ -9,8 +10,10 @@
   <TutorSidebar />
 
   <Sidebar.Inset>
-    <header class="flex h-12 items-center border-b px-4">
+    <header class="flex h-12 items-center gap-2 border-b px-4">
       <Sidebar.Trigger />
+      <span class="grow"></span>
+      <NotificationBell />
     </header>
 
     <div class="mx-auto w-full max-w-6xl p-4 md:p-6">

@@ -8,6 +8,7 @@
   import OutcomesDonut from '$features/caseload/components/outcomes-donut.svelte';
   import { announcementsApi } from '$features/announcements/api/announcements.svelte';
   import AnnouncementsList from '$features/announcements/components/announcements-list.svelte';
+  import BroadcastBanner from '$features/announcements/components/broadcast-banner.svelte';
 
   // Tutor dashboard (PearlLMS Phase 8) — a rich caseload overview: KPI tiles, activity/outcome charts,
   // the grading pipeline + programmes tables, and per-queue drill-downs. Allocation-scoped server-side
@@ -118,6 +119,8 @@
     }
   ]);
 </script>
+
+<BroadcastBanner />
 
 <div class="mb-6">
   <h1 class="text-2xl font-semibold tracking-tight">Tutor Dashboard</h1>
