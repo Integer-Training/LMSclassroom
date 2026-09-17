@@ -5,6 +5,8 @@ import {
   getActiveBroadcastCount,
   getCourseEnrolledLearnerIds,
   getEnrollmentTrend,
+  getCertificateStats,
+  getCompletionStats,
   getIdVerificationBreakdown,
   getLessonCoursePairs,
   getMemberRoleStatusCounts,
@@ -67,6 +69,10 @@ export interface AdminHeadline {
   activeBroadcasts: number;
   openThreads: number;
   messagesLast7d: number;
+  completionsThisMonth: number;
+  certificatesEarned: number;
+  activeLearners7d: number;
+  activeLearners30d: number;
 }
 
 export interface TutorPerfRow {
@@ -138,7 +144,9 @@ export async function getAdminOverview(actor: Actor): Promise<AdminOverview> {
     tutors,
     coursesBase,
     courseEnrolments,
-    lastSeen
+    lastSeen,
+    completionStats,
+    certStats
   ] = await Promise.all([
     computePipelineForRoster(learnerRoster),
     getMemberRoleStatusCounts(orgId),
@@ -153,8 +161,23 @@ export async function getAdminOverview(actor: Actor): Promise<AdminOverview> {
     listOrgTutors(orgId),
     getOrgCoursesWithEnrolment(orgId),
     getCourseEnrolledLearnerIds(orgId),
-    getLastSeenForUserIds(learnerIds)
+    getLastSeenForUserIds(learnerIds),
+    getCompletionStats(orgId),
+    getCertificateStats(orgId)
   ]);
+
+  // Org-wide active learners in the last 7 / 30 days (from the shared last-seen map).
+  const nowMs = Date.now();
+  const SEVEN_DAYS_MS = 7 * 86_400_000;
+  let activeLearners7d = 0;
+  let activeLearners30d = 0;
+  for (const id of learnerIds) {
+    const seen = lastSeen.get(id);
+    if (!seen) continue;
+    const age = nowMs - new Date(seen).getTime();
+    if (age <= SEVEN_DAYS_MS) activeLearners7d++;
+    if (age <= THIRTY_DAYS_MS) activeLearners30d++;
+  }
 
   const s = orgPipeline.stats;
 
@@ -274,7 +297,11 @@ export async function getAdminOverview(actor: Actor): Promise<AdminOverview> {
     unverifiedLearners: Math.max(0, learners.length - verified),
     activeBroadcasts,
     openThreads: messaging.activeThreads,
-    messagesLast7d: messaging.messagesLast7d
+    messagesLast7d: messaging.messagesLast7d,
+    completionsThisMonth: completionStats.thisMonth,
+    certificatesEarned: certStats.total,
+    activeLearners7d,
+    activeLearners30d
   };
 
   return {

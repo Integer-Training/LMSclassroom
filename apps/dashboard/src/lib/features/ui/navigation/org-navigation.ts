@@ -102,24 +102,35 @@ export const baseNavConfig: NavItemConfig[] = [
     icon: DashboardIcon,
     matchPattern: '^/org/[^/]+/dash(/.*)?$'
   },
+  // Reports — real operational reports (learners, courses, marking, completions). The stock marketing
+  // Analytics + Compliance pages are hidden (no data source in a closed provider).
   {
     group: 'home',
-    titleKey: 'org_navigation.stats',
-    path: '/stats',
+    titleKey: 'org_navigation.reports',
+    path: '/reports/learners',
     icon: ChartColumnIcon,
     useHashUrl: true,
-    matchPattern: '^/org/[^/]+/(analytics|compliance)(/.*)?$',
+    matchPattern: '^/org/[^/]+/reports(/.*)?$',
     items: [
       {
-        titleKey: 'org_navigation.analytics',
-        path: '/analytics',
-        matchPattern: '^/org/[^/]+/analytics(/.*)?$'
+        titleKey: 'Learners',
+        path: '/reports/learners',
+        matchPattern: '^/org/[^/]+/reports/learners(/.*)?$'
       },
       {
-        titleKey: 'org_navigation.compliance',
-        path: '/compliance',
-        requiresAdmin: true,
-        matchPattern: '^/org/[^/]+/compliance(/.*)?$'
+        titleKey: 'Courses',
+        path: '/reports/courses',
+        matchPattern: '^/org/[^/]+/reports/courses(/.*)?$'
+      },
+      {
+        titleKey: 'Marking',
+        path: '/reports/marking',
+        matchPattern: '^/org/[^/]+/reports/marking(/.*)?$'
+      },
+      {
+        titleKey: 'Completions',
+        path: '/reports/completions',
+        matchPattern: '^/org/[^/]+/reports/completions(/.*)?$'
       }
     ]
   },

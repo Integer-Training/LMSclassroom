@@ -11,6 +11,9 @@
   import MegaphoneIcon from '@lucide/svelte/icons/megaphone';
   import ShieldAlertIcon from '@lucide/svelte/icons/shield-alert';
   import MessageSquareIcon from '@lucide/svelte/icons/message-square';
+  import ActivityIcon from '@lucide/svelte/icons/activity';
+  import CircleCheckBigIcon from '@lucide/svelte/icons/circle-check-big';
+  import TrophyIcon from '@lucide/svelte/icons/trophy';
 
   interface Props {
     headline: AdminHeadline;
@@ -18,6 +21,10 @@
   }
 
   let { headline, loading = false }: Props = $props();
+
+  const slaBreach = $derived(
+    headline.awaitingMarking > 0 ? Math.round((headline.overdue / headline.awaitingMarking) * 100) : 0
+  );
 </script>
 
 <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -90,6 +97,39 @@
     description={`${headline.messagesLast7d} messages · last 7d`}
     icon={MessageSquareIcon}
     accent="primary"
+    {loading}
+  />
+</div>
+
+<div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+  <KpiCard
+    title="Active Learners (30d)"
+    value={headline.activeLearners30d}
+    description={`${headline.activeLearners7d} in last 7 days`}
+    icon={ActivityIcon}
+    accent="success"
+    {loading}
+  />
+  <KpiCard
+    title="Completed This Month"
+    value={headline.completionsThisMonth}
+    icon={CircleCheckBigIcon}
+    accent="success"
+    {loading}
+  />
+  <KpiCard
+    title="Certificates Earned"
+    value={headline.certificatesEarned}
+    icon={TrophyIcon}
+    accent="primary"
+    {loading}
+  />
+  <KpiCard
+    title="SLA Breaches"
+    value={`${slaBreach}%`}
+    description={`${headline.overdue} overdue`}
+    icon={ClockIcon}
+    accent="warning"
     {loading}
   />
 </div>

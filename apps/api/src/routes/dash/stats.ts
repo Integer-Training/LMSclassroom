@@ -11,6 +11,7 @@ import {
 import { authMiddleware } from '@api/middlewares/auth';
 import { getCurrentUserLoginStreak, getOrganisationAnalytics, getStudentLoginActivity } from '@api/services/dash';
 import { getAdminOverview, getOnlineNow, type AdminOverview } from '@api/services/dash/admin-overview';
+import { getCompletionsReport, getLearnersReport } from '@api/services/dash/reports';
 import { getOrgComplianceOverview } from '@api/services/course/compliance';
 import { handleError } from '@api/utils/errors';
 import { requireManagerOrAdmin, requireSameOrg } from '@api/middlewares/guards';
@@ -195,6 +196,22 @@ export const dashAnalyticsRouter = new Hono()
       }
     }
   )
+  // Learner progression report (Manager/Admin) — activity mix, progress distribution, at-risk list.
+  .get('/reports/learners', authMiddleware, requireManagerOrAdmin, async (c) => {
+    try {
+      return c.json({ success: true, data: await getLearnersReport(c.get('actor') as Actor) }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to load learners report');
+    }
+  })
+  // Completions & certificates report (Manager/Admin) — totals, trend, per-course completion + time.
+  .get('/reports/completions', authMiddleware, requireManagerOrAdmin, async (c) => {
+    try {
+      return c.json({ success: true, data: await getCompletionsReport(c.get('actor') as Actor) }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to load completions report');
+    }
+  })
   // Near-live "online now" panel (Manager/Admin). Uncached — the dashboard polls it every ~45s.
   .get(
     '/online-now',

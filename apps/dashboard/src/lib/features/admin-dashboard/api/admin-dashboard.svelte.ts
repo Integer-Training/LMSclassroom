@@ -31,6 +31,10 @@ export interface AdminHeadline {
   activeBroadcasts: number;
   openThreads: number;
   messagesLast7d: number;
+  completionsThisMonth: number;
+  certificatesEarned: number;
+  activeLearners7d: number;
+  activeLearners30d: number;
 }
 
 export interface AdminCharts {

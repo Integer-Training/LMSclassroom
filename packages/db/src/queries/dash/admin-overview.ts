@@ -96,6 +96,128 @@ export interface MonthCount {
   count: number;
 }
 
+// ── Completions / certificates / time-to-complete (PearlLMS reports) ─────────────────────────────
+
+/** Course completions per calendar month for a year (the completions-over-time chart). */
+export async function getCompletionsTrend(
+  orgId: string,
+  year: number,
+  client: DbOrTxClient = db
+): Promise<MonthCount[]> {
+  const rows = await client
+    .select({
+      month: sql<number>`cast(extract(month from ${schema.courseCompletion.completedAt}) as int)`,
+      count: asInt
+    })
+    .from(schema.courseCompletion)
+    .innerJoin(schema.course, eq(schema.course.id, schema.courseCompletion.courseId))
+    .innerJoin(schema.group, eq(schema.group.id, schema.course.groupId))
+    .where(
+      and(
+        eq(schema.group.organizationId, orgId),
+        sql`extract(year from ${schema.courseCompletion.completedAt}) = ${year}`
+      )
+    )
+    .groupBy(sql`extract(month from ${schema.courseCompletion.completedAt})`);
+  return fillMonths(rows.map((r) => ({ month: Number(r.month), count: Number(r.count) })));
+}
+
+/** Completion totals: overall, this calendar month, and per course (org-scoped). */
+export async function getCompletionStats(
+  orgId: string,
+  client: DbOrTxClient = db
+): Promise<{ total: number; thisMonth: number; byCourse: { courseId: string; count: number }[] }> {
+  const byCourseRows = await client
+    .select({ courseId: schema.courseCompletion.courseId, count: asInt })
+    .from(schema.courseCompletion)
+    .innerJoin(schema.course, eq(schema.course.id, schema.courseCompletion.courseId))
+    .innerJoin(schema.group, eq(schema.group.id, schema.course.groupId))
+    .where(eq(schema.group.organizationId, orgId))
+    .groupBy(schema.courseCompletion.courseId);
+  const byCourse = byCourseRows.map((r) => ({ courseId: r.courseId, count: Number(r.count) }));
+  const total = byCourse.reduce((n, c) => n + c.count, 0);
+  const [tm] = await client
+    .select({ count: asInt })
+    .from(schema.courseCompletion)
+    .innerJoin(schema.course, eq(schema.course.id, schema.courseCompletion.courseId))
+    .innerJoin(schema.group, eq(schema.group.id, schema.course.groupId))
+    .where(
+      and(
+        eq(schema.group.organizationId, orgId),
+        gte(schema.courseCompletion.completedAt, sql`date_trunc('month', now())`)
+      )
+    );
+  return { total, thisMonth: Number(tm?.count ?? 0), byCourse };
+}
+
+/** Certificates earned in the org (groupmember.certificateEarnedAt): total + this calendar month. */
+export async function getCertificateStats(
+  orgId: string,
+  client: DbOrTxClient = db
+): Promise<{ total: number; thisMonth: number }> {
+  const [totalRow] = await client
+    .select({ count: asInt })
+    .from(schema.groupmember)
+    .innerJoin(schema.group, eq(schema.group.id, schema.groupmember.groupId))
+    .where(and(eq(schema.group.organizationId, orgId), sql`${schema.groupmember.certificateEarnedAt} is not null`));
+  const [tmRow] = await client
+    .select({ count: asInt })
+    .from(schema.groupmember)
+    .innerJoin(schema.group, eq(schema.group.id, schema.groupmember.groupId))
+    .where(
+      and(
+        eq(schema.group.organizationId, orgId),
+        gte(schema.groupmember.certificateEarnedAt, sql`date_trunc('month', now())`)
+      )
+    );
+  return { total: Number(totalRow?.count ?? 0), thisMonth: Number(tmRow?.count ?? 0) };
+}
+
+/** Average days from enrolment (groupmember.createdAt) to course completion — org-wide + per course. */
+export async function getTimeToCompleteStats(
+  orgId: string,
+  client: DbOrTxClient = db
+): Promise<{ avgDays: number | null; byCourse: { courseId: string; avgDays: number }[] }> {
+  const daysExpr = sql<number>`avg(extract(epoch from (${schema.courseCompletion.completedAt} - ${schema.groupmember.createdAt})) / 86400.0)`;
+  const base = () =>
+    client
+      .select({ courseId: schema.courseCompletion.courseId, avgDays: daysExpr })
+      .from(schema.courseCompletion)
+      .innerJoin(schema.course, eq(schema.course.id, schema.courseCompletion.courseId))
+      .innerJoin(schema.group, eq(schema.group.id, schema.course.groupId))
+      .innerJoin(
+        schema.groupmember,
+        and(
+          eq(schema.groupmember.groupId, schema.course.groupId),
+          eq(schema.groupmember.profileId, schema.courseCompletion.learnerId),
+          eq(schema.groupmember.roleId, ROLE_STUDENT)
+        )
+      )
+      .where(eq(schema.group.organizationId, orgId));
+  const byCourseRows = await base().groupBy(schema.courseCompletion.courseId);
+  const [overallRow] = await client
+    .select({ avgDays: daysExpr })
+    .from(schema.courseCompletion)
+    .innerJoin(schema.course, eq(schema.course.id, schema.courseCompletion.courseId))
+    .innerJoin(schema.group, eq(schema.group.id, schema.course.groupId))
+    .innerJoin(
+      schema.groupmember,
+      and(
+        eq(schema.groupmember.groupId, schema.course.groupId),
+        eq(schema.groupmember.profileId, schema.courseCompletion.learnerId),
+        eq(schema.groupmember.roleId, ROLE_STUDENT)
+      )
+    )
+    .where(eq(schema.group.organizationId, orgId));
+  const round1 = (n: number) => Math.round(n * 10) / 10;
+  return {
+    avgDays: overallRow?.avgDays != null ? round1(Number(overallRow.avgDays)) : null,
+    byCourse: byCourseRows
+      .filter((r) => r.avgDays != null)
+      .map((r) => ({ courseId: r.courseId, avgDays: round1(Number(r.avgDays)) }))
+  };
+}
+
 /** New enrolments (groupmember STUDENT) per calendar month for a year — the enrolment-trend bar chart. */
 export async function getEnrollmentTrend(
   orgId: string,
