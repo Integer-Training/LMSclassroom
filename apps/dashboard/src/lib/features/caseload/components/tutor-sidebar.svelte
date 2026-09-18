@@ -2,7 +2,9 @@
   import { page } from '$app/state';
   import * as Avatar from '@cio/ui/base/avatar';
   import * as Sidebar from '@cio/ui/base/sidebar';
+  import { UserAvatar } from '@cio/ui/custom/user-avatar';
   import { currentOrg } from '$lib/utils/store/org';
+  import { profile } from '$lib/utils/store/user';
   import LayoutDashboardIcon from '@lucide/svelte/icons/layout-dashboard';
   import BookOpenIcon from '@lucide/svelte/icons/book-open';
   import TrendingUpIcon from '@lucide/svelte/icons/trending-up';
@@ -80,6 +82,17 @@
   </Sidebar.Content>
 
   <Sidebar.Footer>
+    <Sidebar.Menu>
+      <Sidebar.MenuItem>
+        <Sidebar.MenuButton size="lg" class="ui:cursor-default hover:ui:bg-transparent">
+          <UserAvatar src={$profile.avatarUrl} alt={$profile.fullname} />
+          <div class="grid flex-1 text-left text-sm leading-tight font-normal">
+            <span class="truncate font-medium">{$profile.fullname || 'Tutor'}</span>
+            <span class="text-muted-foreground truncate text-xs">{$profile.email || 'Tutor'}</span>
+          </div>
+        </Sidebar.MenuButton>
+      </Sidebar.MenuItem>
+    </Sidebar.Menu>
     <SidebarLogoutButton />
   </Sidebar.Footer>
 
