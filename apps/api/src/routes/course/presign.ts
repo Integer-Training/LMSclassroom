@@ -22,6 +22,11 @@ import { UPLOAD_RATE_LIMIT } from '@cio/utils/constants';
 import { generateFileKey, generateMaterialFileKey } from '@cio/core/utils/upload';
 import { AppError, handleError } from '@api/utils/errors';
 import { MAX_DOCUMENT_SIZE, MAX_FILE_SIZE } from '@api/constants/upload';
+import { withTimeout, TimeoutError } from '@api/utils/with-timeout';
+
+// The material-upload guard does one indexed course→org lookup; bound it so a stalled DB connection returns a
+// fast, retryable 503 instead of hanging the presign request (the client auto-retries 5xx).
+const COURSE_ORG_LOOKUP_TIMEOUT_MS = 5_000;
 
 // PearlLMS Phase-10 HP/SW-19 (O3) — per-user cap on presigned UPLOAD grants (30/hour). Bounds storage-abuse /
 // cost from a compromised or scripted session minting unbounded upload URLs (prod-only, like the base limiter).
@@ -161,7 +166,19 @@ export const presignRouter = new Hono()
           const actor = c.get('actor') as Actor;
           // requireActor above guarantees an authenticated actor; narrow so `actor.orgId` is typed (defensive).
           if (!actor.authenticated) throw new AppError('Unauthorized', 'UNAUTHORIZED', 401);
-          const sourceOrgId = await getCourseOrgId(courseId);
+          let sourceOrgId: string | null;
+          try {
+            sourceOrgId = await withTimeout(
+              getCourseOrgId(courseId),
+              COURSE_ORG_LOOKUP_TIMEOUT_MS,
+              'course org lookup'
+            );
+          } catch (lookupError) {
+            if (lookupError instanceof TimeoutError) {
+              throw new AppError('Course lookup timed out, please retry', 'SERVICE_UNAVAILABLE', 503);
+            }
+            throw lookupError;
+          }
           if (!sourceOrgId || sourceOrgId !== actor.orgId || !isRole(actor, 'ADMIN')) {
             throw new AppError('Course not found', 'NOT_FOUND', 404);
           }

@@ -6,6 +6,17 @@ import { get } from 'svelte/store';
 
 export type UploadType = 'document' | 'video' | 'generic';
 
+// PearlLMS — the direct-to-storage PUT is the ONLY upload step without a built-in timeout (every other call
+// goes through the `classroomio` client, which already aborts after 30s). An intermittently stalled Supabase
+// Storage PUT therefore used to hang the uploader forever (spinner never clears). These bounds convert a stall
+// into a recoverable error so the caller can retry — and transient stalls succeed on retry.
+/** Abort the PUT if no upload progress is observed for this long (mid-transfer stall). */
+const UPLOAD_STALL_TIMEOUT_MS = 45_000;
+/** Absolute ceiling for a single PUT, floored at 2 min and scaled for large files (~16KB/s worst case). */
+function uploadAbsoluteTimeoutMs(fileSizeBytes: number): number {
+  return Math.max(120_000, Math.ceil(fileSizeBytes / 16_000) * 1_000);
+}
+
 export class GenericUploader {
   public abortController: AbortController | null = null;
   private uploadType: UploadType;
@@ -73,26 +84,53 @@ export class GenericUploader {
   }
 
   async uploadFile(params: { url: string; file: File }) {
-    await axios.put(params.url, params.file, {
-      headers: {
-        'Content-Type': params.file.type
-      },
-      maxContentLength: Infinity,
-      maxBodyLength: Infinity,
-      signal: this.abortController?.signal,
-      onUploadProgress: (progressEvent) => {
-        if (get(this.uploadStore).isCancelled) {
-          this.abortController?.abort();
-          return;
-        }
+    // Make sure this attempt starts with a live (non-aborted) controller — a prior cancel/stall/retry leaves
+    // the old one aborted, which would otherwise reject this PUT instantly.
+    if (!this.abortController || this.abortController.signal.aborted) {
+      this.abortController = new AbortController();
+    }
 
-        const progress = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
-        this.uploadStore.update((state) => ({
-          ...state,
-          uploadProgress: progress
-        }));
+    let lastProgressAt = Date.now();
+    // Watchdog: if the browser reports no upload progress for UPLOAD_STALL_TIMEOUT_MS, the connection has
+    // stalled — abort so the caller surfaces an error / retries instead of spinning forever.
+    const stallWatch = setInterval(() => {
+      if (Date.now() - lastProgressAt > UPLOAD_STALL_TIMEOUT_MS) {
+        this.abortController?.abort();
       }
-    });
+    }, 5_000);
+
+    try {
+      await axios.put(params.url, params.file, {
+        headers: {
+          'Content-Type': params.file.type
+        },
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
+        // Absolute cap (also catches a stalled *response* after the body is sent, which fires no progress events).
+        timeout: uploadAbsoluteTimeoutMs(params.file.size),
+        signal: this.abortController?.signal,
+        onUploadProgress: (progressEvent) => {
+          lastProgressAt = Date.now();
+          if (get(this.uploadStore).isCancelled) {
+            this.abortController?.abort();
+            return;
+          }
+
+          const progress = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
+          this.uploadStore.update((state) => ({
+            ...state,
+            uploadProgress: progress
+          }));
+        }
+      });
+    } finally {
+      clearInterval(stallWatch);
+    }
+  }
+
+  /** Discards any aborted controller and arms a fresh one so the next attempt (e.g. a retry) can proceed. */
+  resetAbort() {
+    this.abortController = new AbortController();
   }
 
   initUpload() {

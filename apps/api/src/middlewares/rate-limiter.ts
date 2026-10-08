@@ -10,6 +10,10 @@ import { RedisRateLimiter } from '@api/utils/redis/limiter';
 import { userKeyGenerator } from '../utils/redis/key-generators';
 import { env } from '@cio/core/config/env';
 import { logRedisUnavailableOnce, redis } from '@cio/core/utils/redis/redis';
+import { withTimeout } from '@api/utils/with-timeout';
+
+/** A rate-limit check must never hold up a request — if Redis stalls this long, fail open (allow). */
+const RATE_LIMIT_CHECK_TIMEOUT_MS = 2_000;
 
 /** Dashboard SSR and other internal callers authenticate with PRIVATE_SERVER_KEY. */
 export function isTrustedServerApiKeyRequest(c: Context): boolean {
@@ -56,8 +60,8 @@ export const createRateLimiter = (options: RateLimiterOptions = {}): MiddlewareH
       // Generate rate limit key
       const key = opts.keyGenerator(c);
 
-      // Check rate limit
-      const result = await limiter.isAllowed(key);
+      // Check rate limit (bounded — a stalled Redis command must not hang the request; the catch fails open).
+      const result = await withTimeout(limiter.isAllowed(key), RATE_LIMIT_CHECK_TIMEOUT_MS, 'rate-limit check');
 
       // Set rate limit headers
       if (opts.standardHeaders) {

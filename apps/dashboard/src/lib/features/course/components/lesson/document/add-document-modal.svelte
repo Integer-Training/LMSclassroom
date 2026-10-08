@@ -172,12 +172,23 @@
 
     try {
       const materialsCourseId = courseApi.course?.id;
-      const { url: presignedUrl, fileKey } = await documentUploader.getPresignedUrl(selectedFile, materialsCourseId);
 
-      await documentUploader.uploadFile({
-        url: presignedUrl,
-        file: selectedFile
-      });
+      // The presign + direct-to-storage PUT is the one leg that can transiently stall (Supabase Storage blip).
+      // The uploader now self-aborts a stalled PUT instead of hanging; retry once here so a transient stall
+      // recovers on its own (the file stays selected on a hard failure so the user can also retry manually).
+      let fileKey: string | undefined;
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const presigned = await documentUploader.getPresignedUrl(selectedFile, materialsCourseId);
+          await documentUploader.uploadFile({ url: presigned.url, file: selectedFile });
+          fileKey = presigned.fileKey;
+          break;
+        } catch (err) {
+          if ($lessonDocUpload.isCancelled || attempt === 2) throw err;
+          documentUploader.resetAbort();
+        }
+      }
+      if (!fileKey) throw new Error('Upload did not return a file key');
 
       const { urls: presignedUrls } = await documentUploader.getDownloadPresignedUrl(
         [fileKey],
