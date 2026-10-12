@@ -18,7 +18,7 @@ import { isRole } from '@cio/utils/auth';
 import { getCourseOrgId } from '@cio/db/queries/reports';
 import { createRateLimiter } from '@api/middlewares/rate-limiter';
 import { extractClientIp } from '@api/utils/redis/key-generators';
-import { UPLOAD_RATE_LIMIT } from '@cio/utils/constants';
+import { UPLOAD_RATE_LIMIT, UPLOAD_RATE_LIMIT_STAFF } from '@cio/utils/constants';
 import { generateFileKey, generateMaterialFileKey } from '@cio/core/utils/upload';
 import { AppError, handleError } from '@api/utils/errors';
 import { MAX_DOCUMENT_SIZE, MAX_FILE_SIZE } from '@api/constants/upload';
@@ -32,7 +32,15 @@ const COURSE_ORG_LOOKUP_TIMEOUT_MS = 5_000;
 // cost from a compromised or scripted session minting unbounded upload URLs (prod-only, like the base limiter).
 const uploadRateLimit = createRateLimiter({
   windowMs: UPLOAD_RATE_LIMIT.windowMs,
-  maxRequests: UPLOAD_RATE_LIMIT.maxPerWindow,
+  // Per-user cap (keyed below by user id — never a shared pool). Staff (Admin/Tutor/Manager) author/grade in
+  // bulk, so they get the high ceiling; learners (coursework submissions — the real abuse surface) keep the
+  // lower one. The limiter resolves this per request, after requireActor() has populated the actor.
+  maxRequests: (c) => {
+    const actor = c.get('actor') as Actor | undefined;
+    return actor && isRole(actor, 'ADMIN', 'TUTOR', 'MANAGER')
+      ? UPLOAD_RATE_LIMIT_STAFF.maxPerWindow
+      : UPLOAD_RATE_LIMIT.maxPerWindow;
+  },
   message: 'Upload limit reached. Please try again later.',
   keyGenerator: (c) => {
     const actor = c.get('actor') as Actor | undefined;

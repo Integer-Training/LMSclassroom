@@ -269,12 +269,20 @@
     } catch (error) {
       console.error('Upload error:', error);
 
+      const errMsg = error instanceof Error ? error.message : '';
+      // The upload rate limiter replies "Upload limit reached…" (429). Show that verbatim with a clear hint
+      // instead of the generic error, and never leave the modal in a silent "Uploading…" state (finally clears it).
+      const isRateLimited = /limit reached|rate limit|too many|\b429\b/i.test(errMsg);
+
       if ($lessonDocUpload.isCancelled) {
         $lessonDocUpload.error = $t('course.navItem.lessons.materials.tabs.document.upload_cancelled');
         snackbar.info($t('course.navItem.lessons.materials.tabs.document.upload_cancelled'));
+      } else if (isRateLimited) {
+        const msg = 'Upload limit reached — please wait a minute and try again. The file is still selected.';
+        $lessonDocUpload.error = msg;
+        snackbar.error(msg);
       } else {
-        $lessonDocUpload.error =
-          error instanceof Error ? error.message : $t('course.navItem.lessons.materials.tabs.document.upload_error');
+        $lessonDocUpload.error = errMsg || $t('course.navItem.lessons.materials.tabs.document.upload_error');
         snackbar.error($t('course.navItem.lessons.materials.tabs.document.upload_error'));
       }
     } finally {

@@ -72,7 +72,9 @@ export class GenericUploader {
         : await presignApi.getVideoUploadUrl(file?.name ?? '', file?.type ?? '', file.size > 0 ? file.size : undefined);
 
     if (!result) {
-      throw new Error('Failed to get presigned upload URL');
+      // Surface the server's actual reason (e.g. "Upload limit reached…") instead of a generic message so the
+      // caller can show something actionable. presignApi.error holds the last failed call's message.
+      throw new Error(presignApi.error || 'Failed to get presigned upload URL');
     }
 
     return {

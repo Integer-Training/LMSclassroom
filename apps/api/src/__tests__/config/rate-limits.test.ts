@@ -4,6 +4,7 @@ import {
   LOGIN_RATE_LIMIT,
   PASSWORD_RESET_RATE_LIMIT,
   UPLOAD_RATE_LIMIT,
+  UPLOAD_RATE_LIMIT_STAFF,
   UNAUTH_EMAIL_RATE_LIMIT,
   UNAUTH_PROXY_RATE_LIMIT
 } from '@cio/utils/constants';
@@ -19,8 +20,12 @@ describe('security rate-limit config (HP/SA-4, O3)', () => {
     expect(PASSWORD_RESET_RATE_LIMIT).toEqual({ window: 60 * 60, max: 5 });
   });
 
-  it('upload: 30 / hour per user (ms window for the api limiter)', () => {
-    expect(UPLOAD_RATE_LIMIT).toEqual({ windowMs: 60 * 60 * 1000, maxPerWindow: 30 });
+  it('upload (learner): 100 / hour per user (ms window for the api limiter)', () => {
+    expect(UPLOAD_RATE_LIMIT).toEqual({ windowMs: 60 * 60 * 1000, maxPerWindow: 100 });
+  });
+
+  it('upload (staff): 500 / hour per user — bulk authoring/grading, still bounded', () => {
+    expect(UPLOAD_RATE_LIMIT_STAFF).toEqual({ windowMs: 60 * 60 * 1000, maxPerWindow: 500 });
   });
 
   it('unauth email surface (payment-request): 5 / hour per IP', () => {

@@ -22,10 +22,25 @@ export const PASSWORD_RESET_RATE_LIMIT = {
   max: 5
 } as const;
 
-/** Coursework/material uploads per user — O3: 30 per hour. `windowMs` for the api Redis limiter. */
+/** Per-user coursework-upload ceiling (the limit is PER USER, keyed by user id — never a shared/global pool, so
+ * N students uploading concurrently each get their own bucket). This is the LEARNER ceiling: 100/hour covers a
+ * marathon submission session (many units × a couple of files + resubmissions) while still bounding a scripted
+ * session. Originally 30 (register O3) — raised to 100 so legitimate heavy submission never trips it. Staff
+ * authoring/grading uploads use UPLOAD_RATE_LIMIT_STAFF instead (see the presign router). `windowMs` for the api
+ * Redis limiter. */
 export const UPLOAD_RATE_LIMIT = {
   windowMs: 60 * 60 * 1000,
-  maxPerWindow: 30
+  maxPerWindow: 100
+} as const;
+
+/**
+ * Staff (Admin/Tutor/Manager) upload ceiling — admins bulk-author whole courses (dozens of units × 3 files),
+ * so 30/hour throttled legitimate authoring. 500/hour is ample for any real authoring session while still
+ * bounding a compromised staff session. Same 1-hour window; only the per-window cap differs.
+ */
+export const UPLOAD_RATE_LIMIT_STAFF = {
+  windowMs: 60 * 60 * 1000,
+  maxPerWindow: 500
 } as const;
 
 /**
