@@ -457,6 +457,191 @@ export async function getLessonCoursePairs(
   return rows.filter((r): r is { lessonId: string; courseId: string } => !!r.courseId);
 }
 
+// ── Referrals / failing report (PearlLMS — admin-only) ───────────────────────────────────────────
+// A "refer" = a coursework_result with kind='verdict' and a NON-passing result. Passing is config-driven
+// (PASSING_RESULTS = ['PASS'] in @cio/utils); the SQL uses `result <> 'PASS'` to mirror isPassingResult()
+// without importing config into the query layer — if a passing grade is ever added, update both. Each
+// resubmission is its own submission version with its own result row, so counting result rows counts
+// referral EVENTS across the whole resubmission history. All org-scoped via course→group.organizationId.
+// `recorded_by` is the GRADER (the tutor/admin who entered the verdict); it is null when that profile was
+// later deleted (FK on delete set null) — surfaced as a "Removed grader" bucket upstream.
+
+export interface ReferralTutorRow {
+  tutorId: string | null;
+  name: string | null;
+  learnersReferred: number;
+  totalRefers: number;
+  totalGraded: number;
+}
+
+/**
+ * Per-GRADER referral breakdown (grouped by who ENTERED the Refer). `totalGraded` counts ALL their verdicts
+ * (Pass + Refer) in the org so a refer-rate can be derived; `totalRefers` / `learnersReferred` are the
+ * non-passing slice. Every grader with ≥1 verdict appears (incl. the null "removed grader" bucket) — the
+ * service filters to those who actually referred.
+ */
+export async function getReferralTutorBreakdown(orgId: string, client: DbOrTxClient = db): Promise<ReferralTutorRow[]> {
+  const rows = await client
+    .select({
+      tutorId: schema.courseworkResult.recordedBy,
+      name: schema.profile.fullname,
+      learnersReferred: sql<number>`cast(count(distinct ${schema.courseworkSubmission.learnerId}) filter (where ${schema.courseworkResult.result} <> 'PASS') as int)`,
+      totalRefers: sql<number>`cast(count(*) filter (where ${schema.courseworkResult.result} <> 'PASS') as int)`,
+      totalGraded: asInt
+    })
+    .from(schema.courseworkResult)
+    .innerJoin(schema.courseworkSubmission, eq(schema.courseworkSubmission.id, schema.courseworkResult.submissionId))
+    .innerJoin(schema.course, eq(schema.course.id, schema.courseworkSubmission.courseId))
+    .innerJoin(schema.group, eq(schema.group.id, schema.course.groupId))
+    .leftJoin(schema.profile, eq(schema.profile.id, schema.courseworkResult.recordedBy))
+    .where(
+      and(
+        eq(schema.group.organizationId, orgId),
+        eq(schema.courseworkResult.kind, 'verdict'),
+        sql`${schema.courseworkResult.result} is not null`
+      )
+    )
+    .groupBy(schema.courseworkResult.recordedBy, schema.profile.fullname);
+  return rows.map((r) => ({
+    tutorId: r.tutorId,
+    name: r.name,
+    learnersReferred: Number(r.learnersReferred),
+    totalRefers: Number(r.totalRefers),
+    totalGraded: Number(r.totalGraded)
+  }));
+}
+
+export interface ReferralLearnerRow {
+  learnerId: string;
+  name: string | null;
+  timesReferred: number;
+  unitsReferred: number;
+}
+
+/**
+ * Per-LEARNER historical referral count (every Refer across all versions) + the number of DISTINCT units
+ * they were referred on. Only learners with ≥1 Refer appear.
+ */
+export async function getReferralLearnerBreakdown(
+  orgId: string,
+  client: DbOrTxClient = db
+): Promise<ReferralLearnerRow[]> {
+  const rows = await client
+    .select({
+      learnerId: schema.courseworkSubmission.learnerId,
+      name: schema.profile.fullname,
+      timesReferred: asInt,
+      unitsReferred: sql<number>`cast(count(distinct ${schema.courseworkSubmission.lessonId}) as int)`
+    })
+    .from(schema.courseworkResult)
+    .innerJoin(schema.courseworkSubmission, eq(schema.courseworkSubmission.id, schema.courseworkResult.submissionId))
+    .innerJoin(schema.course, eq(schema.course.id, schema.courseworkSubmission.courseId))
+    .innerJoin(schema.group, eq(schema.group.id, schema.course.groupId))
+    .leftJoin(schema.profile, eq(schema.profile.id, schema.courseworkSubmission.learnerId))
+    .where(
+      and(
+        eq(schema.group.organizationId, orgId),
+        eq(schema.courseworkResult.kind, 'verdict'),
+        sql`${schema.courseworkResult.result} is not null and ${schema.courseworkResult.result} <> 'PASS'`
+      )
+    )
+    .groupBy(schema.courseworkSubmission.learnerId, schema.profile.fullname);
+  return rows.map((r) => ({
+    learnerId: r.learnerId,
+    name: r.name,
+    timesReferred: Number(r.timesReferred),
+    unitsReferred: Number(r.unitsReferred)
+  }));
+}
+
+/**
+ * Learners' CURRENTLY-open refers. For each (learner, unit, assessment item) the LATEST final verdict is
+ * taken (highest version wins, via DISTINCT ON) and counted only when it is still a Refer — a later Pass
+ * resolves it and drops it from the count. Returns learnerId → openRefers, only for learners with ≥1 open.
+ */
+export async function getLearnerOpenReferCounts(
+  orgId: string,
+  client: DbOrTxClient = db
+): Promise<{ learnerId: string; openRefers: number }[]> {
+  const latest = await client
+    .selectDistinctOn(
+      [
+        schema.courseworkSubmission.learnerId,
+        schema.courseworkSubmission.lessonId,
+        schema.courseworkSubmission.assessmentKey
+      ],
+      {
+        learnerId: schema.courseworkSubmission.learnerId,
+        result: schema.courseworkResult.result
+      }
+    )
+    .from(schema.courseworkSubmission)
+    .innerJoin(
+      schema.courseworkResult,
+      and(
+        eq(schema.courseworkResult.submissionId, schema.courseworkSubmission.id),
+        eq(schema.courseworkResult.kind, 'verdict')
+      )
+    )
+    .innerJoin(schema.course, eq(schema.course.id, schema.courseworkSubmission.courseId))
+    .innerJoin(schema.group, eq(schema.group.id, schema.course.groupId))
+    .where(
+      and(
+        eq(schema.group.organizationId, orgId),
+        eq(schema.courseworkSubmission.submissionType, 'final'),
+        sql`${schema.courseworkResult.result} is not null`
+      )
+    )
+    .orderBy(
+      schema.courseworkSubmission.learnerId,
+      schema.courseworkSubmission.lessonId,
+      schema.courseworkSubmission.assessmentKey,
+      desc(schema.courseworkSubmission.version)
+    );
+  const counts = new Map<string, number>();
+  for (const r of latest) {
+    if (r.result != null && r.result !== 'PASS') counts.set(r.learnerId, (counts.get(r.learnerId) ?? 0) + 1);
+  }
+  return Array.from(counts, ([learnerId, openRefers]) => ({ learnerId, openRefers }));
+}
+
+export interface ReferralLastRow {
+  learnerId: string;
+  lastReferredAt: string;
+  lastReferredById: string | null;
+  lastReferredByName: string | null;
+}
+
+/** Per-learner MOST-RECENT refer (who entered it + when) — backs the "last referred by" column. */
+export async function getLearnerLastReferral(orgId: string, client: DbOrTxClient = db): Promise<ReferralLastRow[]> {
+  const rows = await client
+    .selectDistinctOn([schema.courseworkSubmission.learnerId], {
+      learnerId: schema.courseworkSubmission.learnerId,
+      lastReferredAt: schema.courseworkResult.recordedAt,
+      lastReferredById: schema.courseworkResult.recordedBy,
+      lastReferredByName: schema.profile.fullname
+    })
+    .from(schema.courseworkResult)
+    .innerJoin(schema.courseworkSubmission, eq(schema.courseworkSubmission.id, schema.courseworkResult.submissionId))
+    .innerJoin(schema.course, eq(schema.course.id, schema.courseworkSubmission.courseId))
+    .innerJoin(schema.group, eq(schema.group.id, schema.course.groupId))
+    .leftJoin(schema.profile, eq(schema.profile.id, schema.courseworkResult.recordedBy))
+    .where(
+      and(
+        eq(schema.group.organizationId, orgId),
+        eq(schema.courseworkResult.kind, 'verdict'),
+        sql`${schema.courseworkResult.result} is not null and ${schema.courseworkResult.result} <> 'PASS'`
+      )
+    )
+    .orderBy(schema.courseworkSubmission.learnerId, desc(schema.courseworkResult.recordedAt));
+  return rows.map((r) => ({
+    learnerId: r.learnerId,
+    lastReferredAt: r.lastReferredAt,
+    lastReferredById: r.lastReferredById,
+    lastReferredByName: r.lastReferredByName
+  }));
+}
+
 /** Fill a sparse month list (1-12) with zeros so charts always have 12 points. */
 function fillMonths(rows: MonthCount[]): MonthCount[] {
   const map = new Map(rows.map((r) => [r.month, r.count]));

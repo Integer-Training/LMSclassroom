@@ -11,10 +11,10 @@ import {
 import { authMiddleware } from '@api/middlewares/auth';
 import { getCurrentUserLoginStreak, getOrganisationAnalytics, getStudentLoginActivity } from '@api/services/dash';
 import { getAdminOverview, getOnlineNow, type AdminOverview } from '@api/services/dash/admin-overview';
-import { getCompletionsReport, getLearnersReport } from '@api/services/dash/reports';
+import { getCompletionsReport, getLearnersReport, getReferralsReport } from '@api/services/dash/reports';
 import { getOrgComplianceOverview } from '@api/services/course/compliance';
 import { handleError } from '@api/utils/errors';
-import { requireManagerOrAdmin, requireSameOrg } from '@api/middlewares/guards';
+import { requireAdmin, requireManagerOrAdmin, requireSameOrg } from '@api/middlewares/guards';
 import { zValidator } from '@hono/zod-validator';
 import {
   getCountryBreakdown,
@@ -210,6 +210,14 @@ export const dashAnalyticsRouter = new Hono()
       return c.json({ success: true, data: await getCompletionsReport(c.get('actor') as Actor) }, 200);
     } catch (error) {
       return handleError(c, error, 'Failed to load completions report');
+    }
+  })
+  // Referrals / failing report (ADMIN ONLY) — per-tutor strictness + per-learner seriousness.
+  .get('/reports/referrals', authMiddleware, requireAdmin, async (c) => {
+    try {
+      return c.json({ success: true, data: await getReferralsReport(c.get('actor') as Actor) }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to load referrals report');
     }
   })
   // Near-live "online now" panel (Manager/Admin). Uncached — the dashboard polls it every ~45s.

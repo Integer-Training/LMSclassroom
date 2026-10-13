@@ -31,9 +31,37 @@ export interface CompletionsReport {
   }[];
 }
 
+// Admin-only. Mirrors ReferralsReport in apps/api/src/services/dash/reports.ts.
+export interface ReferralsReport {
+  totals: {
+    totalRefers: number;
+    learnersReferred: number;
+    learnersCurrentlyReferred: number;
+    tutorsReferring: number;
+  };
+  perTutor: {
+    tutorId: string | null;
+    name: string;
+    learnersReferred: number;
+    totalRefers: number;
+    totalGraded: number;
+    referRate: number;
+  }[];
+  perLearner: {
+    learnerId: string;
+    name: string;
+    timesReferred: number;
+    unitsReferred: number;
+    openRefers: number;
+    lastReferredBy: string;
+    lastReferredAt: string;
+  }[];
+}
+
 class ReportsApi extends BaseApi {
   learners = $state<LearnersReport | null>(null);
   completions = $state<CompletionsReport | null>(null);
+  referrals = $state<ReferralsReport | null>(null);
 
   async loadLearners() {
     return this.execute<(typeof classroomio.dash.reports.learners)['$get']>({
@@ -51,6 +79,16 @@ class ReportsApi extends BaseApi {
       logContext: 'loading completions report',
       onSuccess: (result) => {
         this.completions = result.data as CompletionsReport;
+      }
+    });
+  }
+
+  async loadReferrals() {
+    return this.execute<(typeof classroomio.dash.reports.referrals)['$get']>({
+      requestFn: () => classroomio.dash.reports.referrals.$get(),
+      logContext: 'loading referrals report',
+      onSuccess: (result) => {
+        this.referrals = result.data as ReferralsReport;
       }
     });
   }

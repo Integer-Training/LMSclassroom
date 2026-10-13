@@ -6,7 +6,11 @@ import {
   getCertificateStats,
   getCompletionsTrend,
   getCompletionStats,
+  getLearnerLastReferral,
+  getLearnerOpenReferCounts,
   getOrgCoursesWithEnrolment,
+  getReferralLearnerBreakdown,
+  getReferralTutorBreakdown,
   getTimeToCompleteStats
 } from '@cio/db/queries/dash';
 
@@ -17,6 +21,13 @@ import {
 function assertManagerOrAdmin(actor: Actor): asserts actor is Extract<Actor, { authenticated: true }> {
   if (!actor.authenticated) throw new AppError('Unauthorized', ErrorCodes.UNAUTHORIZED, 401);
   if (!isRole(actor, 'ADMIN', 'MANAGER')) throw new AppError('Admins or managers only', ErrorCodes.FORBIDDEN, 403);
+}
+
+// The referrals report is ADMIN-ONLY (stricter than the other reports) — it exposes per-tutor strictness,
+// which is management-sensitive. Managers/Tutors/Learners are denied.
+function assertAdmin(actor: Actor): asserts actor is Extract<Actor, { authenticated: true }> {
+  if (!actor.authenticated) throw new AppError('Unauthorized', ErrorCodes.UNAUTHORIZED, 401);
+  if (!isRole(actor, 'ADMIN')) throw new AppError('Admins only', ErrorCodes.FORBIDDEN, 403);
 }
 
 // ── Learners report ──────────────────────────────────────────────────────────────────────────────
@@ -131,5 +142,91 @@ export async function getCompletionsReport(actor: Actor): Promise<CompletionsRep
     avgTimeToCompleteDays: ttc.avgDays,
     completionsTrend: trend,
     byCourse
+  };
+}
+
+// ── Referrals / failing report (ADMIN ONLY) ──────────────────────────────────────────────────────
+// Everything about refers/failing: per-tutor (who entered the Refer → "strictness") and per-learner
+// ("seriousness"). A "refer" = a non-passing coursework verdict; each resubmission is counted. See the
+// query layer (getReferral* in @cio/db/queries/dash) for the exact counting rule. Read-only; org-scoped.
+export interface ReferralsReport {
+  totals: {
+    totalRefers: number;
+    learnersReferred: number;
+    learnersCurrentlyReferred: number;
+    tutorsReferring: number;
+  };
+  perTutor: {
+    tutorId: string | null;
+    name: string;
+    learnersReferred: number;
+    totalRefers: number;
+    totalGraded: number;
+    referRate: number; // percent, refers ÷ total graded
+  }[];
+  perLearner: {
+    learnerId: string;
+    name: string;
+    timesReferred: number;
+    unitsReferred: number;
+    openRefers: number;
+    lastReferredBy: string;
+    lastReferredAt: string;
+  }[];
+}
+
+/** Admin-only referrals/failing view: per-tutor strictness (grader-attributed) + per-learner seriousness. */
+export async function getReferralsReport(actor: Actor): Promise<ReferralsReport> {
+  assertAdmin(actor);
+  const orgId = actor.orgId;
+
+  const [tutorRows, learnerRows, openRows, lastRows] = await Promise.all([
+    getReferralTutorBreakdown(orgId),
+    getReferralLearnerBreakdown(orgId),
+    getLearnerOpenReferCounts(orgId),
+    getLearnerLastReferral(orgId)
+  ]);
+
+  const perTutor = tutorRows
+    .filter((t) => t.totalRefers > 0) // the view is about refers — a grader who only ever passed is noise
+    .map((t) => ({
+      tutorId: t.tutorId,
+      name: t.name ?? 'Removed grader',
+      learnersReferred: t.learnersReferred,
+      totalRefers: t.totalRefers,
+      totalGraded: t.totalGraded,
+      referRate: t.totalGraded > 0 ? Math.round((t.totalRefers / t.totalGraded) * 100) : 0
+    }))
+    .sort((a, b) => b.totalRefers - a.totalRefers || b.referRate - a.referRate);
+
+  const openByLearner = new Map(openRows.map((o) => [o.learnerId, o.openRefers]));
+  const lastByLearner = new Map(lastRows.map((l) => [l.learnerId, l]));
+
+  const perLearner = learnerRows
+    .map((l) => {
+      const last = lastByLearner.get(l.learnerId);
+      return {
+        learnerId: l.learnerId,
+        name: l.name ?? 'Unknown learner',
+        timesReferred: l.timesReferred,
+        unitsReferred: l.unitsReferred,
+        openRefers: openByLearner.get(l.learnerId) ?? 0,
+        // A referred learner always has a last-refer row: show the grader's name, or 'Removed grader' if that
+        // tutor was since deleted (recorded_by null). '—' is only the defensive no-row case.
+        lastReferredBy: last ? (last.lastReferredByName ?? 'Removed grader') : '—',
+        lastReferredAt: last?.lastReferredAt ?? ''
+      };
+    })
+    .sort((a, b) => b.timesReferred - a.timesReferred || b.openRefers - a.openRefers);
+
+  return {
+    totals: {
+      totalRefers: perLearner.reduce((n, l) => n + l.timesReferred, 0),
+      learnersReferred: perLearner.length,
+      learnersCurrentlyReferred: openRows.length, // every openRows entry has ≥1 open refer by construction
+      tutorsReferring: perTutor.length
+    },
+    perTutor,
+    perLearner
   };
 }
