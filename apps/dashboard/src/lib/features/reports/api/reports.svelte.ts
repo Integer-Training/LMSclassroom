@@ -58,10 +58,42 @@ export interface ReferralsReport {
   }[];
 }
 
+// Admin-only. Mirrors TutorFeedbackReport in apps/api/src/services/dash/reports.ts.
+export interface TutorFeedbackReport {
+  totals: {
+    totalFeedback: number;
+    tutorsRated: number;
+    learnersResponded: number;
+    avgOverall: number;
+  };
+  perTutor: {
+    tutorId: string | null;
+    name: string;
+    count: number;
+    avgOverall: number;
+    avgCommunication: number | null;
+    avgHelpfulness: number | null;
+    avgKnowledge: number | null;
+  }[];
+  entries: {
+    id: string;
+    learnerName: string;
+    tutorName: string;
+    milestone: number;
+    overallRating: number;
+    communicationRating: number | null;
+    helpfulnessRating: number | null;
+    knowledgeRating: number | null;
+    comment: string | null;
+    createdAt: string;
+  }[];
+}
+
 class ReportsApi extends BaseApi {
   learners = $state<LearnersReport | null>(null);
   completions = $state<CompletionsReport | null>(null);
   referrals = $state<ReferralsReport | null>(null);
+  tutorFeedback = $state<TutorFeedbackReport | null>(null);
 
   async loadLearners() {
     return this.execute<(typeof classroomio.dash.reports.learners)['$get']>({
@@ -89,6 +121,16 @@ class ReportsApi extends BaseApi {
       logContext: 'loading referrals report',
       onSuccess: (result) => {
         this.referrals = result.data as ReferralsReport;
+      }
+    });
+  }
+
+  async loadTutorFeedback() {
+    return this.execute<(typeof classroomio.dash.reports)['tutor-feedback']['$get']>({
+      requestFn: () => classroomio.dash.reports['tutor-feedback'].$get(),
+      logContext: 'loading tutor feedback report',
+      onSuccess: (result) => {
+        this.tutorFeedback = result.data as TutorFeedbackReport;
       }
     });
   }

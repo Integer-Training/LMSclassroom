@@ -13,6 +13,7 @@ import {
   getReferralTutorBreakdown,
   getTimeToCompleteStats
 } from '@cio/db/queries/dash';
+import { getOrgTutorFeedback, type OrgTutorFeedbackRow } from '@cio/db/queries/tutor-feedback';
 
 // PearlLMS admin REPORTS — deep-dive operational reports for management (org-scoped, real data only). Admin
 // or Manager. The Marking and Courses reports render off the existing getAdminOverview bundle; these two
@@ -228,5 +229,96 @@ export async function getReferralsReport(actor: Actor): Promise<ReferralsReport>
     },
     perTutor,
     perLearner
+  };
+}
+
+// ── Tutor feedback report (ADMIN ONLY) ────────────────────────────────────────────────────────────
+// The admin-only view of the periodic learner→tutor feedback (Feature 2). Per-tutor averages (the headline
+// — how learners rate each tutor) + the raw entries (so an admin can read the comments). Grouped by tutor id,
+// falling back to the snapshot name when the tutor was since removed. Read-only; org-scoped. ADMIN only.
+export interface TutorFeedbackReport {
+  totals: {
+    totalFeedback: number;
+    tutorsRated: number;
+    learnersResponded: number;
+    avgOverall: number; // 0 when there is no feedback
+  };
+  perTutor: {
+    tutorId: string | null;
+    name: string;
+    count: number;
+    avgOverall: number;
+    avgCommunication: number | null;
+    avgHelpfulness: number | null;
+    avgKnowledge: number | null;
+  }[];
+  entries: {
+    id: string;
+    learnerName: string;
+    tutorName: string;
+    milestone: number;
+    overallRating: number;
+    communicationRating: number | null;
+    helpfulnessRating: number | null;
+    knowledgeRating: number | null;
+    comment: string | null;
+    createdAt: string;
+  }[];
+}
+
+/** Admin-only tutor-feedback view: per-tutor average ratings + the individual entries (with comments). */
+export async function getTutorFeedbackReport(actor: Actor): Promise<TutorFeedbackReport> {
+  assertAdmin(actor);
+  const rows = await getOrgTutorFeedback(actor.orgId);
+
+  const avg = (nums: number[]): number =>
+    nums.length ? Math.round((nums.reduce((a, n) => a + n, 0) / nums.length) * 10) / 10 : 0;
+  const avgNullable = (nums: (number | null)[]): number | null => {
+    const vals = nums.filter((n): n is number => n != null);
+    return vals.length ? avg(vals) : null;
+  };
+
+  // Group per tutor — by id, or by the snapshot name when the tutor was removed (tutorId null).
+  const groups = new Map<string, OrgTutorFeedbackRow[]>();
+  for (const r of rows) {
+    const key = r.tutorId ?? `name:${r.tutorName}`;
+    const g = groups.get(key);
+    if (g) g.push(r);
+    else groups.set(key, [r]);
+  }
+  const perTutor = Array.from(groups.values())
+    .map((g) => ({
+      tutorId: g[0].tutorId,
+      name: g[0].tutorName,
+      count: g.length,
+      avgOverall: avg(g.map((r) => r.overallRating)),
+      avgCommunication: avgNullable(g.map((r) => r.communicationRating)),
+      avgHelpfulness: avgNullable(g.map((r) => r.helpfulnessRating)),
+      avgKnowledge: avgNullable(g.map((r) => r.knowledgeRating))
+    }))
+    .sort((a, b) => b.avgOverall - a.avgOverall || b.count - a.count);
+
+  const entries = rows.map((r) => ({
+    id: r.id,
+    learnerName: r.learnerName ?? 'Unknown learner',
+    tutorName: r.tutorName,
+    milestone: r.milestone,
+    overallRating: r.overallRating,
+    communicationRating: r.communicationRating,
+    helpfulnessRating: r.helpfulnessRating,
+    knowledgeRating: r.knowledgeRating,
+    comment: r.comment,
+    createdAt: r.createdAt
+  }));
+
+  return {
+    totals: {
+      totalFeedback: rows.length,
+      tutorsRated: groups.size,
+      learnersResponded: new Set(rows.map((r) => r.learnerId)).size,
+      avgOverall: avg(rows.map((r) => r.overallRating))
+    },
+    perTutor,
+    entries
   };
 }

@@ -4346,6 +4346,50 @@ export const announcement = pgTable(
   ]
 );
 
+// PearlLMS — periodic learner→tutor feedback (the "every-N-units" popup). The learner is prompted after 2
+// passed units and every 5 thereafter (milestones 2, 7, 12, …); the UNIQUE (learner_id, milestone) index
+// makes a milestone's feedback idempotent and non-stacking — exactly one row per 5-unit window. tutor_name
+// is SNAPSHOTTED at submit so the admin-only view stays stable if the tutor is later removed (tutor_id then
+// set-null). Ratings are 1–5; only overall_rating is required. This row is the store — it is shown ONLY to
+// admins (Reports → Tutor feedback). No PII ever goes to the audit log; the row itself holds the content.
+export const tutorFeedback = pgTable(
+  'tutor_feedback',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    organizationId: uuid('organization_id').notNull(),
+    learnerId: uuid('learner_id').notNull(),
+    tutorId: uuid('tutor_id'),
+    tutorName: varchar('tutor_name').notNull(),
+    milestone: integer().notNull(),
+    overallRating: integer('overall_rating').notNull(),
+    communicationRating: integer('communication_rating'),
+    helpfulnessRating: integer('helpfulness_rating'),
+    knowledgeRating: integer('knowledge_rating'),
+    comment: text(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.organizationId],
+      foreignColumns: [organization.id],
+      name: 'tutor_feedback_organization_id_fkey'
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.learnerId],
+      foreignColumns: [profile.id],
+      name: 'tutor_feedback_learner_id_fkey'
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.tutorId],
+      foreignColumns: [profile.id],
+      name: 'tutor_feedback_tutor_id_fkey'
+    }).onDelete('set null'),
+    uniqueIndex('tutor_feedback_learner_milestone_unique').on(table.learnerId, table.milestone),
+    index('idx_tutor_feedback_org').on(table.organizationId),
+    index('idx_tutor_feedback_tutor').on(table.tutorId)
+  ]
+);
+
 // PearlLMS Phase 7 — a public registration is a PENDING APPLICATION, never an account (docs/ONBOARDING-MODEL.md
 // §3). The public form writes ONLY here; approval (Manager/Admin) later composes the Phase-5 onboardLearner
 // service to create the actual user + enrolment. One-way status: pending → approved | rejected. No credential,

@@ -11,7 +11,12 @@ import {
 import { authMiddleware } from '@api/middlewares/auth';
 import { getCurrentUserLoginStreak, getOrganisationAnalytics, getStudentLoginActivity } from '@api/services/dash';
 import { getAdminOverview, getOnlineNow, type AdminOverview } from '@api/services/dash/admin-overview';
-import { getCompletionsReport, getLearnersReport, getReferralsReport } from '@api/services/dash/reports';
+import {
+  getCompletionsReport,
+  getLearnersReport,
+  getReferralsReport,
+  getTutorFeedbackReport
+} from '@api/services/dash/reports';
 import { getOrgComplianceOverview } from '@api/services/course/compliance';
 import { handleError } from '@api/utils/errors';
 import { requireAdmin, requireManagerOrAdmin, requireSameOrg } from '@api/middlewares/guards';
@@ -218,6 +223,14 @@ export const dashAnalyticsRouter = new Hono()
       return c.json({ success: true, data: await getReferralsReport(c.get('actor') as Actor) }, 200);
     } catch (error) {
       return handleError(c, error, 'Failed to load referrals report');
+    }
+  })
+  // Tutor feedback report (ADMIN ONLY) — per-tutor average ratings + the individual learner entries.
+  .get('/reports/tutor-feedback', authMiddleware, requireAdmin, async (c) => {
+    try {
+      return c.json({ success: true, data: await getTutorFeedbackReport(c.get('actor') as Actor) }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to load tutor feedback report');
     }
   })
   // Near-live "online now" panel (Manager/Admin). Uncached — the dashboard polls it every ~45s.

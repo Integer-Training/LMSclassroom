@@ -29,7 +29,10 @@ export const AUDIT_ACTIONS = {
   REGISTRATION_REJECTED: 'registration.rejected',
   // Phase 7 — a staff ID-verification recording (learner id + status + method label only; NEVER the note text
   // and NEVER any document — no document is stored anywhere).
-  ID_VERIFICATION_RECORDED: 'id_verification.recorded'
+  ID_VERIFICATION_RECORDED: 'id_verification.recorded',
+  // PearlLMS — a learner submits periodic feedback about their tutor (learner id + tutor id + milestone +
+  // rating numbers only; NEVER the free-text comment, and never any name).
+  TUTOR_FEEDBACK_SUBMITTED: 'tutor_feedback.submitted'
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS] | (string & {});
