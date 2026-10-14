@@ -39,7 +39,7 @@
   import { IconButton } from '@cio/ui/custom/icon-button';
   import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
   import { profile } from '$lib/utils/store/user';
-  import { AI_ENABLED } from '$lib/utils/constants/features';
+  import { AI_ENABLED, CERTIFICATES_ENABLED } from '$lib/utils/constants/features';
 
   interface Props {
     path: string;
@@ -98,6 +98,12 @@
         url: getNavItemRoute(id, 'certificates'),
         isActive: (path || page.url.pathname) === getNavItemRoute(id, 'certificates'),
         show() {
+          // PearlLMS: certificates are issued off-platform / manually, so the certificate section is
+          // hidden everywhere (learner, tutor and admin course sidebars). Gated on the same single
+          // CERTIFICATES_ENABLED switch as the main LMS nav — flip to `true` to restore it.
+          if (!CERTIFICATES_ENABLED) {
+            return false;
+          }
           if (isStudent && $isFreePlan) {
             return false;
           }
