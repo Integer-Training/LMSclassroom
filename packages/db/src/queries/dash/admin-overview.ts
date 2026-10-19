@@ -1,6 +1,6 @@
 import * as schema from '@db/schema';
 
-import { and, db, desc, eq, gte, inArray, isNull, sql, type DbOrTxClient } from '@db/drizzle';
+import { and, db, desc, eq, gte, inArray, isNull, ne, sql, type DbOrTxClient } from '@db/drizzle';
 
 // PearlLMS admin dashboard — org-wide aggregate reads. CRITICAL: these are scoped by the org member set
 // (organizationmember roleId) and the course→group.organizationId join, NOT by tutor_allocation — so they
@@ -67,7 +67,13 @@ export async function getPublishedCourseCount(orgId: string, client: DbOrTxClien
     .select({ count: asInt })
     .from(schema.course)
     .innerJoin(schema.group, eq(schema.group.id, schema.course.groupId))
-    .where(and(eq(schema.group.organizationId, orgId), eq(schema.course.isPublished, true)));
+    .where(
+      and(
+        eq(schema.group.organizationId, orgId),
+        eq(schema.course.isPublished, true),
+        ne(schema.course.status, 'DELETED')
+      )
+    );
   return Number(row?.count ?? 0);
 }
 
@@ -80,7 +86,7 @@ export async function getCourseCounts(
     .select({ isPublished: schema.course.isPublished, count: asInt })
     .from(schema.course)
     .innerJoin(schema.group, eq(schema.group.id, schema.course.groupId))
-    .where(eq(schema.group.organizationId, orgId))
+    .where(and(eq(schema.group.organizationId, orgId), ne(schema.course.status, 'DELETED')))
     .groupBy(schema.course.isPublished);
   let published = 0;
   let draft = 0;
@@ -115,6 +121,7 @@ export async function getCompletionsTrend(
     .where(
       and(
         eq(schema.group.organizationId, orgId),
+        ne(schema.course.status, 'DELETED'),
         sql`extract(year from ${schema.courseCompletion.completedAt}) = ${year}`
       )
     )
@@ -132,7 +139,7 @@ export async function getCompletionStats(
     .from(schema.courseCompletion)
     .innerJoin(schema.course, eq(schema.course.id, schema.courseCompletion.courseId))
     .innerJoin(schema.group, eq(schema.group.id, schema.course.groupId))
-    .where(eq(schema.group.organizationId, orgId))
+    .where(and(eq(schema.group.organizationId, orgId), ne(schema.course.status, 'DELETED')))
     .groupBy(schema.courseCompletion.courseId);
   const byCourse = byCourseRows.map((r) => ({ courseId: r.courseId, count: Number(r.count) }));
   const total = byCourse.reduce((n, c) => n + c.count, 0);
@@ -144,6 +151,7 @@ export async function getCompletionStats(
     .where(
       and(
         eq(schema.group.organizationId, orgId),
+        ne(schema.course.status, 'DELETED'),
         gte(schema.courseCompletion.completedAt, sql`date_trunc('month', now())`)
       )
     );
@@ -193,7 +201,7 @@ export async function getTimeToCompleteStats(
           eq(schema.groupmember.roleId, ROLE_STUDENT)
         )
       )
-      .where(eq(schema.group.organizationId, orgId));
+      .where(and(eq(schema.group.organizationId, orgId), ne(schema.course.status, 'DELETED')));
   const byCourseRows = await base().groupBy(schema.courseCompletion.courseId);
   const [overallRow] = await client
     .select({ avgDays: daysExpr })
@@ -208,7 +216,7 @@ export async function getTimeToCompleteStats(
         eq(schema.groupmember.roleId, ROLE_STUDENT)
       )
     )
-    .where(eq(schema.group.organizationId, orgId));
+    .where(and(eq(schema.group.organizationId, orgId), ne(schema.course.status, 'DELETED')));
   const round1 = (n: number) => Math.round(n * 10) / 10;
   return {
     avgDays: overallRow?.avgDays != null ? round1(Number(overallRow.avgDays)) : null,
@@ -256,6 +264,7 @@ export async function getSubmissionsOverTime(
     .where(
       and(
         eq(schema.group.organizationId, orgId),
+        ne(schema.course.status, 'DELETED'),
         sql`extract(year from ${schema.courseworkSubmission.submittedAt}) = ${year}`
       )
     )
@@ -420,7 +429,7 @@ export async function getOrgCoursesWithEnrolment(orgId: string, client: DbOrTxCl
     .from(schema.course)
     .innerJoin(schema.group, eq(schema.group.id, schema.course.groupId))
     .leftJoin(schema.groupmember, eq(schema.groupmember.groupId, schema.group.id))
-    .where(eq(schema.group.organizationId, orgId))
+    .where(and(eq(schema.group.organizationId, orgId), ne(schema.course.status, 'DELETED')))
     .groupBy(schema.course.id, schema.course.title, schema.course.isPublished)
     .orderBy(desc(sql`count(distinct ${schema.groupmember.profileId})`));
   return rows.map((r) => ({ ...r, isPublished: !!r.isPublished, enrolled: Number(r.enrolled) })) as OrgCourseRow[];
@@ -439,7 +448,13 @@ export async function getCourseEnrolledLearnerIds(
       schema.groupmember,
       and(eq(schema.groupmember.groupId, schema.group.id), eq(schema.groupmember.roleId, ROLE_STUDENT))
     )
-    .where(and(eq(schema.group.organizationId, orgId), sql`${schema.groupmember.profileId} is not null`));
+    .where(
+      and(
+        eq(schema.group.organizationId, orgId),
+        sql`${schema.groupmember.profileId} is not null`,
+        ne(schema.course.status, 'DELETED')
+      )
+    );
   return rows.filter((r) => !!r.learnerId).map((r) => ({ courseId: r.courseId, learnerId: r.learnerId as string }));
 }
 
@@ -497,6 +512,7 @@ export async function getReferralTutorBreakdown(orgId: string, client: DbOrTxCli
     .where(
       and(
         eq(schema.group.organizationId, orgId),
+        ne(schema.course.status, 'DELETED'),
         eq(schema.courseworkResult.kind, 'verdict'),
         sql`${schema.courseworkResult.result} is not null`
       )
@@ -541,6 +557,7 @@ export async function getReferralLearnerBreakdown(
     .where(
       and(
         eq(schema.group.organizationId, orgId),
+        ne(schema.course.status, 'DELETED'),
         eq(schema.courseworkResult.kind, 'verdict'),
         sql`${schema.courseworkResult.result} is not null and ${schema.courseworkResult.result} <> 'PASS'`
       )
@@ -588,6 +605,7 @@ export async function getLearnerOpenReferCounts(
     .where(
       and(
         eq(schema.group.organizationId, orgId),
+        ne(schema.course.status, 'DELETED'),
         eq(schema.courseworkSubmission.submissionType, 'final'),
         sql`${schema.courseworkResult.result} is not null`
       )
@@ -629,6 +647,7 @@ export async function getLearnerLastReferral(orgId: string, client: DbOrTxClient
     .where(
       and(
         eq(schema.group.organizationId, orgId),
+        ne(schema.course.status, 'DELETED'),
         eq(schema.courseworkResult.kind, 'verdict'),
         sql`${schema.courseworkResult.result} is not null and ${schema.courseworkResult.result} <> 'PASS'`
       )
