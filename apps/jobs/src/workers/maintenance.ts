@@ -4,7 +4,7 @@ import { Queue, Worker } from 'bullmq';
 
 import { runAnalyticsRollupDaily } from '@cio/analytics';
 import { purgeAssetStorage } from '@cio/core/services/assets/assets';
-import { pruneDeadLetterJobsOlderThan, reapStuckMediaJobs } from '@cio/db/queries';
+import { deleteSystemEventsOlderThan, pruneDeadLetterJobsOlderThan, reapStuckMediaJobs } from '@cio/db/queries';
 import {
   JOB_NAMES,
   QUEUE_NAMES,
@@ -20,6 +20,9 @@ import { errorMessage } from '../utils/cancel';
 import { log } from '../utils/logger';
 
 const connection = createRedisConnection();
+
+// system_event_log retention (docs/HARDENING-PLAN.md LOG-1).
+const SYSTEM_EVENT_RETENTION_DAYS = 90;
 
 const worker = new Worker(
   QUEUE_NAMES.maintenance,
@@ -75,6 +78,12 @@ const worker = new Worker(
       return result;
     }
 
+    if (job.name === JOB_NAMES.maintenance.systemEventPurge) {
+      const deleted = await deleteSystemEventsOlderThan(SYSTEM_EVENT_RETENTION_DAYS);
+      log.info('system-event-purge-done', { deleted, retentionDays: SYSTEM_EVENT_RETENTION_DAYS });
+      return { deleted };
+    }
+
     throw new Error(`Unknown maintenance job: ${job.name}`);
   },
   { connection, concurrency: 1 }
@@ -110,6 +119,16 @@ async function registerSchedulers(): Promise<void> {
     );
     log.info('analytics-rollup-scheduler-registered', {
       name: JOB_NAMES.maintenance.analyticsDailyRollup,
+      everyMs: 86_400_000
+    });
+
+    await maintenanceQueue.upsertJobScheduler(
+      'system-event-purge-scheduler',
+      { every: 86_400_000 },
+      { name: JOB_NAMES.maintenance.systemEventPurge, data: {} }
+    );
+    log.info('system-event-purge-scheduler-registered', {
+      name: JOB_NAMES.maintenance.systemEventPurge,
       everyMs: 86_400_000
     });
   } catch (err) {

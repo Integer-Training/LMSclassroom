@@ -4,7 +4,7 @@ import * as schema from '@db/schema';
 import { LOGIN_RATE_LIMIT, PASSWORD_RESET_RATE_LIMIT } from '@cio/utils/constants';
 
 import { admin } from 'better-auth/plugins';
-import { APIError } from 'better-auth/api';
+import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api';
 import { sendChangeEmailConfirmation, sendVerificationEmail } from './auth/email-verification';
 
 import { betterAuth } from 'better-auth/minimal';
@@ -22,6 +22,13 @@ import { sso } from '@better-auth/sso';
 import { syncUserWithProfile } from './auth/hooks/sync-user';
 import { tokenExchange } from './auth/plugins/token-exchange';
 import { trackLoginHook } from './auth/hooks/track-login';
+import {
+  emailFromBody,
+  getClientIp,
+  recordLoginFailure,
+  recordLoginSuccess,
+  recordLogout
+} from './auth/hooks/system-events';
 import { syncProfileEmailVerificationFromAuthUser } from './queries/auth/profile';
 
 export { mintLoginLinkToken } from './auth/login-link';
@@ -63,7 +70,7 @@ function buildStrangerAccountPlugins() {
   ];
 }
 
-export const auth: ReturnType<typeof betterAuth> = betterAuth({
+const baseAuth: ReturnType<typeof betterAuth> = betterAuth({
   baseURL: CONSTANTS.BASE_URL,
   database: drizzleAdapter(db, {
     provider: 'pg',
@@ -143,6 +150,42 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
       maxAge: 60 * 60 // 1 hour
     }
   },
+  // PearlLMS Phase 10 — system_event_log capture (best-effort; hooks never throw and never alter the response).
+  hooks: {
+    before: createAuthMiddleware(async (ctx) => {
+      // Logout is captured BEFORE the endpoint runs: the session is already deleted by the time an after-hook
+      // fires. Returning undefined leaves the request untouched.
+      try {
+        if (ctx.path !== '/sign-out') return;
+        const found = await getSessionFromCtx(ctx);
+        recordLogout({
+          userId: found?.user?.id ?? null,
+          userEmail: found?.user?.email ?? null,
+          ip: getClientIp(ctx.request?.headers ?? ctx.headers)
+        });
+      } catch (error) {
+        console.error('[auth] system-event logout capture failed:', error);
+      }
+    }),
+    after: createAuthMiddleware(async (ctx) => {
+      try {
+        if (ctx.path !== '/sign-in/email') return;
+        const returned = ctx.context.returned;
+        // Invalid credentials only. 403 deactivated is logged in session.create.before; 429 never reaches
+        // endpoint hooks (see the handler wrapper at the bottom of this file).
+        if (returned instanceof APIError && returned.statusCode === 401) {
+          recordLoginFailure('bad_credentials', {
+            userEmail: emailFromBody(ctx.body),
+            ip: getClientIp(ctx.request?.headers ?? ctx.headers),
+            httpStatus: 401,
+            message: returned.message
+          });
+        }
+      } catch (error) {
+        console.error('[auth] system-event login-failure capture failed:', error);
+      }
+    })
+  },
   databaseHooks: {
     user: {
       create: {
@@ -172,6 +215,22 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
               .where(eq(schema.profile.id, session.userId))
               .limit(1);
             if (row?.status === 'DEACTIVATED') {
+              try {
+                const [u] = await db
+                  .select({ email: schema.user.email })
+                  .from(schema.user)
+                  .where(eq(schema.user.id, session.userId))
+                  .limit(1);
+                recordLoginFailure('deactivated', {
+                  userId: session.userId,
+                  userEmail: u?.email ?? null,
+                  ip: session.ipAddress ?? null,
+                  httpStatus: 403,
+                  message: 'Deactivated account sign-in blocked'
+                });
+              } catch {
+                /* best-effort */
+              }
               throw new APIError('FORBIDDEN', {
                 message: 'Your account has been deactivated. Contact an administrator.'
               });
@@ -185,6 +244,16 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
         after: async (session) => {
           await trackLoginHook(session);
           await syncProfileEmailVerificationFromAuthUser(session.userId);
+          try {
+            const [u] = await db
+              .select({ email: schema.user.email })
+              .from(schema.user)
+              .where(eq(schema.user.id, session.userId))
+              .limit(1);
+            recordLoginSuccess(session, u?.email ?? null);
+          } catch {
+            /* best-effort */
+          }
         }
       },
       update: {
@@ -235,3 +304,39 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
   // build needs to avoid TS2742). The runtime object IS a valid better-auth instance — only the two deep inferred
   // types disagree — so we cast. Revisit if better-auth reconciles the generic/`BetterAuthOptions` API types.
 }) as unknown as ReturnType<typeof betterAuth>;
+
+/**
+ * Rate-limit capture. better-auth's 429 is returned from the router's onRequest, BEFORE any endpoint hook runs,
+ * so hooks.after can never see it. Wrap the fetch handler (apps/api's auth route is the only caller) and, for a
+ * 429 on POST /sign-in/email, record 'auth.login.failure' reason 'rate_limited'. The response is returned
+ * untouched; the request body is read from a clone only on that path.
+ */
+const baseHandler = baseAuth.handler;
+baseAuth.handler = async (request: Request) => {
+  let email: string | null = null;
+  let isSignIn = false;
+  try {
+    isSignIn = request.method === 'POST' && new URL(request.url).pathname.endsWith('/sign-in/email');
+    if (isSignIn) {
+      email = emailFromBody(await request.clone().json());
+    }
+  } catch {
+    /* body unreadable — email stays null */
+  }
+  const response = await baseHandler(request);
+  try {
+    if (isSignIn && response.status === 429) {
+      recordLoginFailure('rate_limited', {
+        userEmail: email,
+        ip: getClientIp(request.headers),
+        httpStatus: 429,
+        message: 'Sign-in rate limit exceeded'
+      });
+    }
+  } catch {
+    /* best-effort */
+  }
+  return response;
+};
+
+export const auth = baseAuth;

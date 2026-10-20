@@ -2,6 +2,7 @@ import * as Sentry from '@sentry/sveltekit';
 import { dev } from '$app/environment';
 import { env } from '$env/dynamic/public';
 import { handleErrorWithSentry } from '@sentry/sveltekit';
+import { installGlobalClientErrorListeners, reportClientError } from '$lib/utils/functions/client-error-log';
 
 const dsn = env.PUBLIC_SENTRY_DSN?.trim();
 const isSelfHosted = env.PUBLIC_IS_SELFHOSTED === 'true';
@@ -17,4 +18,8 @@ if (dsn && !dev && !isSelfHosted) {
   });
 }
 
-export const handleError = handleErrorWithSentry();
+installGlobalClientErrorListeners();
+
+export const handleError = handleErrorWithSentry((input) => {
+  reportClientError(input.error);
+});

@@ -32,6 +32,10 @@ import { jobsRouter } from '@api/routes/jobs';
 import { licenseRouter } from '@api/routes/license';
 import { lmsRouter } from '@api/routes/lms/lms';
 import { logger } from 'hono/logger';
+import type { Context } from 'hono';
+import { recordSystemEvent } from '@cio/db';
+import { extractClientIp } from '@api/utils/redis/key-generators';
+import { logRouter } from '@api/routes/log';
 // ROUTES
 import { hlsRouter } from '@api/routes/hls';
 import { mailRouter } from '@api/routes/mail';
@@ -55,6 +59,34 @@ import { signupGuard } from '@api/middlewares/signup-guard';
 import { ssoDiscoveryRouter } from '@api/routes/sso/discovery';
 import { unsplashRouter } from '@api/routes/unsplash/unsplash';
 import { v1Router } from '@api/routes/v1';
+
+// PearlLMS Phase 10 — best-effort 'api.error' capture for the system event log. Fire-and-forget; must never
+// throw or alter the error response. recordSystemEvent masks the IP and caps message/stack.
+function recordApiError(c: Context, err: unknown, httpStatus: number, severity: 'warn' | 'error') {
+  try {
+    const user = c.get('user');
+    const actor = c.get('actor');
+    const e = err as { message?: string; stack?: string } | undefined;
+    void Promise.resolve(
+      recordSystemEvent({
+        eventType: 'api.error',
+        severity,
+        httpStatus,
+        path: c.req.path,
+        method: c.req.method,
+        message: e?.message ?? String(err),
+        stack: e?.stack,
+        correlationId: (c.get('correlationId') as string | undefined) ?? undefined,
+        userId: user?.id ?? undefined,
+        userEmail: user?.email ?? undefined,
+        organizationId: actor?.orgId ?? undefined,
+        ip: extractClientIp(c)
+      })
+    ).catch(() => {});
+  } catch {
+    // never throw from error handling
+  }
+}
 
 // Create Hono app with chaining for RPC support
 export const app = new Hono()
@@ -284,6 +316,7 @@ export const app = new Hono()
   .route('/widgets', publicWidgetsRouter)
   .route('/internal', internalRouter)
   .route('/agent', agentRouter)
+  .route('/log', logRouter)
 
   // Error handling — HP/SA-5: the client gets a GENERIC message + the correlation id only; the full error
   // (stack/path/query) stays server-side in the log, keyed by the same id so support can trace it.
@@ -291,9 +324,13 @@ export const app = new Hono()
     // A deliberate 4xx AppError carries its own status + a safe, user-facing message (e.g. "wrong current
     // password") — honour it via handleError instead of masking every one as a generic 500. Genuinely
     // unexpected errors and 5xx AppErrors still get Sentry + the generic 500 + correlation id (HP/SA-5).
-    if (err instanceof AppError && err.statusCode < 500) return handleError(c, err);
+    if (err instanceof AppError && err.statusCode < 500) {
+      recordApiError(c, err, err.statusCode, 'warn');
+      return handleError(c, err);
+    }
     Sentry.captureException(err);
     const correlationId = (c.get('correlationId') as string | undefined) ?? 'unknown';
+    recordApiError(c, err, 500, 'error');
     console.error('[error]', { correlationId, error: err });
     return c.json({ success: false, error: 'Internal Server Error', code: 'INTERNAL_ERROR', correlationId }, 500);
   });

@@ -17,6 +17,7 @@ import {
   getReferralsReport,
   getTutorFeedbackReport
 } from '@api/services/dash/reports';
+import { getSystemEventsReport } from '@api/services/dash/system-events';
 import { getOrgComplianceOverview } from '@api/services/course/compliance';
 import { handleError } from '@api/utils/errors';
 import { requireAdmin, requireManagerOrAdmin, requireSameOrg } from '@api/middlewares/guards';
@@ -231,6 +232,27 @@ export const dashAnalyticsRouter = new Hono()
       return c.json({ success: true, data: await getTutorFeedbackReport(c.get('actor') as Actor) }, 200);
     } catch (error) {
       return handleError(c, error, 'Failed to load tutor feedback report');
+    }
+  })
+  // Activity log (ADMIN ONLY) — system_event_log viewer; filters: from,to,eventType,severity,status,email,limit.
+  .get('/reports/activity-log', authMiddleware, requireAdmin, async (c) => {
+    try {
+      const q = c.req.query();
+      const isoDate = (v?: string) =>
+        v && !Number.isNaN(new Date(v).getTime()) ? new Date(v).toISOString() : undefined;
+      const num = (v?: string) => (v && v.trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : undefined);
+      const filters = {
+        from: isoDate(q.from),
+        to: isoDate(q.to),
+        eventType: q.eventType || undefined,
+        severity: q.severity || undefined,
+        status: num(q.status),
+        email: q.email?.trim() || undefined,
+        limit: num(q.limit)
+      };
+      return c.json({ success: true, data: await getSystemEventsReport(c.get('actor') as Actor, filters) }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to load activity log');
     }
   })
   // Near-live "online now" panel (Manager/Admin). Uncached — the dashboard polls it every ~45s.

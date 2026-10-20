@@ -143,6 +143,12 @@ export const baseNavConfig: NavItemConfig[] = [
         path: '/reports/tutor-feedback',
         requiresAdmin: true,
         matchPattern: '^/org/[^/]+/reports/tutor-feedback(/.*)?$'
+      },
+      {
+        titleKey: 'Activity log',
+        path: '/reports/activity-log',
+        requiresAdmin: true,
+        matchPattern: '^/org/[^/]+/reports/activity-log(/.*)?$'
       }
     ]
   },

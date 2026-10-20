@@ -3878,6 +3878,37 @@ export const auditEvent = pgTable(
   ]
 );
 
+// PearlLMS Phase 10 (hardening): system event log — auth outcomes, API errors and client errors for admin
+// diagnosis. Mirrors audit_event: NO foreign keys so rows survive user/org deletion. Written ONLY via
+// recordSystemEvent (best-effort, never throws) which masks the IP and caps message/stack (LOG-1 PII rules).
+export const systemEventLog = pgTable(
+  'system_event_log',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    eventType: text('event_type').notNull(),
+    severity: text().notNull(),
+    userId: uuid('user_id'),
+    userEmail: text('user_email'),
+    ipMasked: text('ip_masked'),
+    path: text(),
+    method: text(),
+    httpStatus: integer('http_status'),
+    message: text(),
+    stack: text(),
+    organizationId: uuid('organization_id'),
+    correlationId: text('correlation_id'),
+    metadata: jsonb().$type<Record<string, unknown>>()
+  },
+  (table) => [
+    index('idx_system_event_log_org_occurred').on(table.organizationId, table.occurredAt.desc()),
+    index('idx_system_event_log_event_type').on(table.eventType),
+    index('idx_system_event_log_severity').on(table.severity),
+    index('idx_system_event_log_occurred_at').on(table.occurredAt),
+    index('idx_system_event_log_user_email').on(table.userEmail)
+  ]
+);
+
 // PearlLMS Phase 1: enrolment PII, isolated in its OWN 1:1 table so it can never be joined into a
 // general serializer. Admin read/write only (Tutor/Manager/Learner get nothing — least privilege;
 // ethnicity + disability are special-category data). Edits audited as `profile.updated` (field

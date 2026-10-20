@@ -89,11 +89,47 @@ export interface TutorFeedbackReport {
   }[];
 }
 
+// Admin-only. Mirrors SystemEventsReport in apps/api/src/services/dash/system-events.ts.
+export interface ActivityLogRow {
+  id: string;
+  occurredAt: string;
+  eventType: string;
+  severity: string;
+  userId: string | null;
+  userEmail: string | null;
+  ipMasked: string | null;
+  path: string | null;
+  method: string | null;
+  httpStatus: number | null;
+  message: string | null;
+}
+
+export interface ActivityLogReport {
+  rows: ActivityLogRow[];
+  totals: {
+    total: number;
+    bySeverity: Record<string, number>;
+    errorsLast24h: number;
+    failedLoginsLast24h: number;
+  };
+}
+
+export interface ActivityLogFilters {
+  from?: string;
+  to?: string;
+  eventType?: string;
+  severity?: string;
+  status?: string;
+  email?: string;
+  limit?: number;
+}
+
 class ReportsApi extends BaseApi {
   learners = $state<LearnersReport | null>(null);
   completions = $state<CompletionsReport | null>(null);
   referrals = $state<ReferralsReport | null>(null);
   tutorFeedback = $state<TutorFeedbackReport | null>(null);
+  activityLog = $state<ActivityLogReport | null>(null);
 
   async loadLearners() {
     return this.execute<(typeof classroomio.dash.reports.learners)['$get']>({
@@ -131,6 +167,20 @@ class ReportsApi extends BaseApi {
       logContext: 'loading tutor feedback report',
       onSuccess: (result) => {
         this.tutorFeedback = result.data as TutorFeedbackReport;
+      }
+    });
+  }
+
+  async loadActivityLog(filters: ActivityLogFilters = {}) {
+    const query: Record<string, string> = {};
+    for (const [k, v] of Object.entries(filters)) {
+      if (v !== undefined && v !== null && String(v).trim() !== '') query[k] = String(v);
+    }
+    return this.execute<(typeof classroomio.dash.reports)['activity-log']['$get']>({
+      requestFn: () => classroomio.dash.reports['activity-log'].$get({ query }),
+      logContext: 'loading activity log',
+      onSuccess: (result) => {
+        this.activityLog = result.data as unknown as ActivityLogReport;
       }
     });
   }

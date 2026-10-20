@@ -3,9 +3,48 @@ import { getHasCioCookies } from '$lib/utils/functions/cookies';
 import { applyCspExtensions } from '$lib/utils/csp';
 import { applySecurityHeaders } from '$lib/utils/security-headers';
 import { proxyRequestToApi, shouldForwardToApi } from '$lib/utils/proxy-api-request';
-import { type Handle, type HandleServerError, redirect } from '@sveltejs/kit';
+import { type Handle, type HandleServerError, type RequestEvent, redirect } from '@sveltejs/kit';
 import { isPublicApiRoute, isPublicRoute } from '$lib/utils/functions/routes/isPublicRoute';
 import { ROUTE } from '$lib/utils/constants/routes';
+
+// PearlLMS Phase 10 — fire-and-forget POST to the API's /log/client endpoint (server-to-server, PRIVATE_SERVER_KEY).
+// Best-effort: never awaited by callers, never throws, short timeout. The API masks the IP and caps fields.
+type SsrLogEvent = {
+  eventType: 'client.error' | 'auth.session_invalid_bounce';
+  severity: 'info' | 'warn' | 'error';
+  message?: string;
+  stack?: string;
+  path?: string;
+  method?: string;
+  httpStatus?: number;
+  correlationId?: string;
+};
+
+function reportToApi(event: RequestEvent, payload: SsrLogEvent): void {
+  try {
+    const base = process.env.PRIVATE_SERVER_URL;
+    const key = process.env.PRIVATE_SERVER_KEY;
+    if (!base || !key) return;
+
+    let ip: string | undefined;
+    try {
+      ip = event.getClientAddress();
+    } catch {
+      ip = undefined;
+    }
+
+    const user = (event.locals as { user?: { id?: string; email?: string } } | undefined)?.user;
+
+    void fetch(`${base.replace(/\/$/, '')}/log/client`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+      body: JSON.stringify({ ...payload, ip, userId: user?.id, userEmail: user?.email }),
+      signal: AbortSignal.timeout(3000)
+    }).catch(() => {});
+  } catch {
+    // never throw from logging
+  }
+}
 
 export const handleError: HandleServerError = ({ error, event, status, message }) => {
   const err = error as Error;
@@ -21,6 +60,17 @@ export const handleError: HandleServerError = ({ error, event, status, message }
     name: err?.name,
     msg: err?.message,
     stack: err?.stack
+  });
+
+  reportToApi(event, {
+    eventType: 'client.error',
+    severity: 'error',
+    message: err?.message ?? message,
+    stack: err?.stack,
+    path: event.url.pathname,
+    method: event.request.method,
+    httpStatus: status,
+    correlationId
   });
 
   return {
@@ -92,6 +142,16 @@ const handlePagesRoutes: Handle = async ({ event, resolve }) => {
     return resolve(event);
   }
 
+  // Session cookie present but the session did not resolve => stale/invalid session (logged best-effort).
+  if (!event?.locals?.user && hasCioCookie && !pathname.includes(ROUTE.LOGOUT)) {
+    reportToApi(event, {
+      eventType: 'auth.session_invalid_bounce',
+      severity: 'warn',
+      path: pathname,
+      method: event.request.method
+    });
+  }
+
   if (!event?.locals?.user && !hasCioCookie) {
     console.log('no user and no cio cookie, redirecting to login');
     const shouldAddRedirectParam = !pathname.includes(ROUTE.LOGOUT);
@@ -114,6 +174,14 @@ const handleAPIRoutes: Handle = async ({ event, resolve }) => {
   }
 
   if (!event.locals.user) {
+    if (getHasCioCookies(event.cookies)) {
+      reportToApi(event, {
+        eventType: 'auth.session_invalid_bounce',
+        severity: 'warn',
+        path: pathname,
+        method: event.request.method
+      });
+    }
     redirect(303, '/login');
   }
 
