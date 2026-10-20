@@ -108,6 +108,9 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
     // Browser auth is first-party through tenant-router or the dashboard proxy,
     // so cookies should stay host-only on the dashboard/public-site origin.
     crossSubDomainCookies: { enabled: false },
+    // Caddy (our only edge) sets a trusted, single-valued x-forwarded-for, so sign-in throttles per real client IP.
+    // If a CDN/LB is ever added in front of Caddy, trustedProxies must be configured or XFF becomes spoofable.
+    ipAddress: { ipAddressHeaders: ['x-forwarded-for'] },
     database: {
       generateId: false
     }
@@ -121,6 +124,8 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
   // global bucket. Path keys are relative to the auth base (no /api/auth prefix).
   rateLimit: {
     customRules: {
+      // Internal SSR session check cannot resolve a client IP and shares one bucket; exempt it entirely.
+      '/get-session': false,
       '/sign-in/email': { window: LOGIN_RATE_LIMIT.window, max: LOGIN_RATE_LIMIT.max },
       '/forget-password': { window: PASSWORD_RESET_RATE_LIMIT.window, max: PASSWORD_RESET_RATE_LIMIT.max },
       '/request-password-reset': { window: PASSWORD_RESET_RATE_LIMIT.window, max: PASSWORD_RESET_RATE_LIMIT.max }

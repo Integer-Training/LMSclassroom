@@ -8,7 +8,6 @@ import { getActor } from './actor';
 export const getSessionData = async (cookies: Cookies): Promise<App.Locals | null> => {
   try {
     const cioCookies = getCioCookieString(cookies);
-    console.log('cioCookies', cioCookies);
 
     if (!cioCookies) return null;
 
@@ -43,7 +42,6 @@ export async function getThroughTrpc(allCookies: string) {
 export async function getThroughAuthClient(allCookies: string) {
   const baseURL = getRequestBaseUrl();
   console.log('baseURL', baseURL);
-  console.log('allCookies', allCookies);
   const session = await authServerClient.getSession({
     fetchOptions: {
       headers: {
