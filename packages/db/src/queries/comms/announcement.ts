@@ -1,6 +1,6 @@
 import * as schema from '@db/schema';
 
-import { and, db, desc, eq, inArray, isNull, or, sql, type DbOrTxClient } from '@db/drizzle';
+import { and, db, desc, eq, inArray, isNull, ne, or, sql, type DbOrTxClient } from '@db/drizzle';
 
 // PearlLMS Phase 6 Step 5 + broadcast extension — announcement queries (docs/COMMS-MODEL.md §4). Visibility
 // scoping is applied HERE at the query layer, off `audience_type`: a learner sees all_learners + their ENROLLED
@@ -70,7 +70,8 @@ export async function listAnnouncementsForLearner(
       and(
         eq(schema.groupmember.profileId, learnerId),
         eq(schema.groupmember.roleId, 3),
-        eq(schema.course.isPublished, true)
+        eq(schema.course.isPublished, true),
+        ne(schema.course.status, 'DELETED')
       )
     );
 

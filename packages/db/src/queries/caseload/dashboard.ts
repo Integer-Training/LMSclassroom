@@ -1,6 +1,6 @@
 import * as schema from '@db/schema';
 
-import { and, db, desc, eq, inArray, sql, type DbOrTxClient } from '@db/drizzle';
+import { and, db, desc, eq, inArray, ne, sql, type DbOrTxClient } from '@db/drizzle';
 
 // PearlLMS Phase 9 — roster-scoped tutor-dashboard aggregates. Every query takes the tutor's ALLOCATED
 // learner-id set (from tutor_allocation, resolved by the caller) and never widens it, so a tutor's
@@ -16,10 +16,7 @@ export interface RosterCourse {
  * Distinct courses the roster is enrolled in (groupmember.roleId = STUDENT), with the per-course count of
  * THOSE learners (roster-scoped, not the whole cohort). Ordered by learner count desc. Empty roster → [].
  */
-export async function getCoursesForLearners(
-  learnerIds: string[],
-  client: DbOrTxClient = db
-): Promise<RosterCourse[]> {
+export async function getCoursesForLearners(learnerIds: string[], client: DbOrTxClient = db): Promise<RosterCourse[]> {
   if (learnerIds.length === 0) return [];
   const rows = await client
     .select({
@@ -30,7 +27,13 @@ export async function getCoursesForLearners(
     .from(schema.groupmember)
     .innerJoin(schema.group, eq(schema.group.id, schema.groupmember.groupId))
     .innerJoin(schema.course, eq(schema.course.groupId, schema.group.id))
-    .where(and(inArray(schema.groupmember.profileId, learnerIds), eq(schema.groupmember.roleId, 3)))
+    .where(
+      and(
+        inArray(schema.groupmember.profileId, learnerIds),
+        eq(schema.groupmember.roleId, 3),
+        ne(schema.course.status, 'DELETED')
+      )
+    )
     .groupBy(schema.course.id, schema.course.title)
     .orderBy(desc(sql`count(distinct ${schema.groupmember.profileId})`));
   return rows.map((r) => ({ courseId: r.courseId, title: r.title ?? 'Untitled course', learners: Number(r.learners) }));
@@ -65,7 +68,13 @@ export async function getEnrolmentsForLearners(
     .from(schema.groupmember)
     .innerJoin(schema.group, eq(schema.group.id, schema.groupmember.groupId))
     .innerJoin(schema.course, eq(schema.course.groupId, schema.group.id))
-    .where(and(inArray(schema.groupmember.profileId, learnerIds), eq(schema.groupmember.roleId, 3)));
+    .where(
+      and(
+        inArray(schema.groupmember.profileId, learnerIds),
+        eq(schema.groupmember.roleId, 3),
+        ne(schema.course.status, 'DELETED')
+      )
+    );
   return rows.map((r) => ({
     learnerId: r.learnerId as string,
     courseId: r.courseId,

@@ -1,6 +1,6 @@
 import * as schema from '@db/schema';
 
-import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, ne, or, sql } from 'drizzle-orm';
 
 import { ROLE } from '@cio/utils/constants';
 import { db, type DbOrTxClient } from '@db/drizzle';
@@ -401,6 +401,7 @@ export async function getEnrolledCohortsByProfile(
              INNER JOIN ${schema.course}
                ON ${schema.cohortCourse.courseId} = ${schema.course.id}
              WHERE ${schema.cohortCourse.cohortId} = ${schema.cohort.id}
+               AND ${schema.course.status} <> 'DELETED'
                AND (
                  ${schema.cohortMember.roleId} <> ${ROLE.STUDENT}
                  OR ${schema.course.isPublished} = true
@@ -482,8 +483,12 @@ export async function getCoursesByCohort(
 > {
   try {
     const whereCondition = onlyPublished
-      ? and(eq(schema.cohortCourse.cohortId, cohortId), eq(schema.course.isPublished, true))
-      : eq(schema.cohortCourse.cohortId, cohortId);
+      ? and(
+          eq(schema.cohortCourse.cohortId, cohortId),
+          eq(schema.course.isPublished, true),
+          ne(schema.course.status, 'DELETED')
+        )
+      : and(eq(schema.cohortCourse.cohortId, cohortId), ne(schema.course.status, 'DELETED'));
 
     const result = await db
       .select({

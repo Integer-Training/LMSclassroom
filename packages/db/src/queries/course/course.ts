@@ -539,7 +539,7 @@ export async function deleteCourse(courseId: string) {
   try {
     const [deleted] = await db
       .update(schema.course)
-      .set({ status: 'DELETED', updatedAt: new Date().toISOString() })
+      .set({ status: 'DELETED', isPublished: false, updatedAt: new Date().toISOString() })
       .where(eq(schema.course.id, courseId))
       .returning();
     return deleted;

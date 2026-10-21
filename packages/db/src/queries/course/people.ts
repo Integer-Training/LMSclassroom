@@ -1,7 +1,7 @@
 import * as schema from '@db/schema';
 
 import { TGroupmember, TNewGroupmember } from '@db/types';
-import { and, eq, inArray, isNull, or } from 'drizzle-orm';
+import { and, eq, inArray, isNull, ne, or } from 'drizzle-orm';
 
 import { ROLE } from '@cio/utils/constants';
 import { db, runInTransaction } from '@db/drizzle';
@@ -199,7 +199,8 @@ export async function listTutorCourses(orgId: string, tutorId: string): Promise<
       and(
         eq(schema.groupmember.profileId, tutorId),
         eq(schema.groupmember.roleId, ROLE.TUTOR),
-        eq(schema.group.organizationId, orgId)
+        eq(schema.group.organizationId, orgId),
+        ne(schema.course.status, 'DELETED')
       )
     )
     .orderBy(schema.course.title);

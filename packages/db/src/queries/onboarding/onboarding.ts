@@ -1,6 +1,6 @@
 import * as schema from '@db/schema';
 
-import { and, db, eq, type DbOrTxClient } from '@db/drizzle';
+import { and, db, eq, ne, type DbOrTxClient } from '@db/drizzle';
 
 // PearlLMS Phase 5 Step 5 — lookups for lite learner onboarding (docs/PROGRESS-MODEL.md §6). Read-only:
 // the published-course picker for the form, and the enrolment-target resolver that binds a chosen course to
@@ -29,7 +29,13 @@ export async function listPublishedCoursesForOrg(
     .select({ courseId: schema.course.id, title: schema.course.title })
     .from(schema.course)
     .innerJoin(schema.group, eq(schema.group.id, schema.course.groupId))
-    .where(and(eq(schema.group.organizationId, orgId), eq(schema.course.isPublished, true)))
+    .where(
+      and(
+        eq(schema.group.organizationId, orgId),
+        eq(schema.course.isPublished, true),
+        ne(schema.course.status, 'DELETED')
+      )
+    )
     .orderBy(schema.course.title);
   return rows.map((r) => ({ courseId: r.courseId, title: r.title ?? null }));
 }
@@ -40,7 +46,7 @@ export async function listAllCoursesForOrg(orgId: string, client: DbOrTxClient =
     .select({ courseId: schema.course.id, title: schema.course.title })
     .from(schema.course)
     .innerJoin(schema.group, eq(schema.group.id, schema.course.groupId))
-    .where(eq(schema.group.organizationId, orgId))
+    .where(and(eq(schema.group.organizationId, orgId), ne(schema.course.status, 'DELETED')))
     .orderBy(schema.course.title);
   return rows.map((r) => ({ courseId: r.courseId, title: r.title ?? null }));
 }
@@ -60,7 +66,7 @@ export async function getCourseEnrolmentTarget(
     })
     .from(schema.course)
     .leftJoin(schema.group, eq(schema.group.id, schema.course.groupId))
-    .where(eq(schema.course.id, courseId))
+    .where(and(eq(schema.course.id, courseId), ne(schema.course.status, 'DELETED')))
     .limit(1);
   if (!row) return null;
   return {

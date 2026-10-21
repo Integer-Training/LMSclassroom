@@ -1,6 +1,6 @@
 import * as schema from '@db/schema';
 
-import { and, db, desc, eq, type DbOrTxClient } from '@db/drizzle';
+import { and, db, desc, eq, ne, type DbOrTxClient } from '@db/drizzle';
 import { isPassingResult } from '@cio/utils/constants';
 import { getOrderedUnitsForCourse, type OrderedUnit } from '../gating';
 import { getAssessmentKeysByLesson } from '../coursework';
@@ -54,7 +54,7 @@ export async function listReportableCourses(orgId: string, client: DbOrTxClient 
     .select({ courseId: schema.course.id, title: schema.course.title })
     .from(schema.course)
     .innerJoin(schema.group, eq(schema.group.id, schema.course.groupId))
-    .where(eq(schema.group.organizationId, orgId))
+    .where(and(eq(schema.group.organizationId, orgId), ne(schema.course.status, 'DELETED')))
     .orderBy(schema.course.title);
   return rows.map((r) => ({ courseId: r.courseId, title: r.title ?? null }));
 }
@@ -114,10 +114,7 @@ export async function getLatestMarkedResultsForCourse(
       )
     )
     .where(
-      and(
-        eq(schema.courseworkSubmission.courseId, courseId),
-        eq(schema.courseworkSubmission.submissionType, 'final')
-      )
+      and(eq(schema.courseworkSubmission.courseId, courseId), eq(schema.courseworkSubmission.submissionType, 'final'))
     )
     .orderBy(
       schema.courseworkSubmission.learnerId,
@@ -178,9 +175,7 @@ export function assembleReportRows(
     // unit with none falls back to the legacy per-unit passing result (null assessmentKey).
     const isUnitPassed = (lessonId: string): boolean => {
       const keys = assessmentKeysByLesson.get(lessonId) ?? [];
-      return keys.length > 0
-        ? keys.every((k) => passed.has(keyOf(lessonId, k)))
-        : passed.has(keyOf(lessonId, null));
+      return keys.length > 0 ? keys.every((k) => passed.has(keyOf(lessonId, k))) : passed.has(keyOf(lessonId, null));
     };
     const p = computeProgress(courseId, units, isUnitPassed, completions.get(learnerId) ?? null);
     return {
@@ -214,5 +209,8 @@ export async function getCourseProgressReport(
     units.map((u) => u.lessonId),
     client
   );
-  return { courseId, rows: assembleReportRows(courseId, units, learners, results, completions, assessmentKeysByLesson) };
+  return {
+    courseId,
+    rows: assembleReportRows(courseId, units, learners, results, completions, assessmentKeysByLesson)
+  };
 }
