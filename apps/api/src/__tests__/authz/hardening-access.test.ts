@@ -62,10 +62,10 @@ describe('canReadLearnerProgress (HP/SW-1) — progress IDOR guard', () => {
     expect(await canReadLearnerProgress(A('t2', 'TUTOR'), LEARNER)).toBe(false);
   });
 
-  it('a course-team TUTOR of the learner may read even without allocation', async () => {
+  it('a course-team TUTOR of the learner may NOT read without allocation (per-learner model)', async () => {
     mAlloc.mockResolvedValue(false as never);
     vi.mocked(isCourseTutorForLearner).mockResolvedValueOnce(true as never);
-    expect(await canReadLearnerProgress(A('t3', 'TUTOR'), LEARNER)).toBe(true);
+    expect(await canReadLearnerProgress(A('t3', 'TUTOR'), LEARNER)).toBe(false);
   });
 
   it('anonymous / empty learner id → false', async () => {

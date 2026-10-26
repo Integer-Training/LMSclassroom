@@ -90,11 +90,11 @@ describe('canReadCoursework — self / allocated tutor / admin only', () => {
     mockedAllocated.mockResolvedValueOnce(false);
     expect(await canReadCoursework(tutor, { learnerId: 'u-A' })).toBe(false);
   });
-  // Course→tutor assignment: a course-team TUTOR of the learner's course can read even without allocation.
-  it('TUTOR not allocated but course-team tutor of the learner → true', async () => {
+  // Course-team alone no longer grants learner access (per-learner model): allocation is the only path.
+  it('TUTOR not allocated but course-team tutor of the learner → false', async () => {
     mockedAllocated.mockResolvedValue(false);
     vi.mocked(isCourseTutorForLearner).mockResolvedValueOnce(true);
-    expect(await canReadCoursework(tutor, { learnerId: 'u-A' })).toBe(true);
+    expect(await canReadCoursework(tutor, { learnerId: 'u-A' })).toBe(false);
   });
 });
 

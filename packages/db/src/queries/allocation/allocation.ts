@@ -6,10 +6,10 @@ import { alias } from 'drizzle-orm/pg-core';
 // Tutor↔learner allocation (PearlLMS Phase 3). Provider-wide pairs; a tutor is "staff" only for the
 // learners allocated to them. `isTutorAllocatedToLearner` backs the real isAllocatedTutor guard.
 //
-// PearlLMS course→tutor assignment: a tutor can ALSO be responsible for a learner by being a course-team
-// TUTOR (groupmember roleId 2) of a course the learner is enrolled in as a STUDENT (roleId 3) — the
-// Moodle "course teacher" model. That responsibility is derived live from course-team membership (no extra
-// table). The tutor roster and the isAllocatedTutor guard union BOTH sources (allocation OR course-team).
+// Per-learner model: the tutor roster (`listLearnersForTutor`) and the isAllocatedTutor guard are ALLOCATION
+// ONLY — a tutor sees/reaches just their individually-allocated learners. Course-team membership (a
+// course-team TUTOR, groupmember roleId 2, of a course) grants COURSE-level access only (`isCourseTutor`);
+// it no longer adds learners to the roster or grants learner-level access.
 
 const ROLE_STUDENT_ID = 3;
 const ROLE_TUTOR_ID = 2;
@@ -164,38 +164,23 @@ function mergeLearners(...lists: AllocatedLearner[][]): AllocatedLearner[] {
   return [...byId.values()].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
 }
 
-/** The distinct STUDENT learners enrolled in a course this tutor is a course-team TUTOR of. */
-async function listCourseTeamLearnersForTutor(tutorId: string): Promise<AllocatedLearner[]> {
-  const tut = alias(schema.groupmember, 'tut_member');
-  const stu = alias(schema.groupmember, 'stu_member');
-  return db
-    .selectDistinct({ learnerId: stu.profileId, name: schema.profile.fullname, email: schema.profile.email })
-    .from(tut)
-    .innerJoin(stu, and(eq(stu.groupId, tut.groupId), eq(stu.roleId, ROLE_STUDENT_ID)))
-    .innerJoin(schema.profile, eq(schema.profile.id, stu.profileId))
-    .where(and(eq(tut.profileId, tutorId), eq(tut.roleId, ROLE_TUTOR_ID))) as Promise<AllocatedLearner[]>;
-}
-
 /**
- * The learners ONE tutor is responsible for — the caseload's roster (PearlLMS Phase 3 Step 4, extended for
- * course→tutor assignment). The UNION of: learners allocated to them (`tutor_allocation`) AND learners
- * enrolled in a course they are a course-team TUTOR of (Moodle course-teacher). Distinct by learner, ordered
- * by name. Mirrors the isAllocatedTutor guard so the caseload never lists a learner the tutor can't reach.
+ * The learners ONE tutor is responsible for — the caseload's roster (PearlLMS Phase 3 Step 4). ALLOCATION
+ * ONLY (per-learner model): just the learners individually allocated to them (`tutor_allocation`). Course-team
+ * membership does NOT add learners here. Distinct by learner, ordered by name. Mirrors the isAllocatedTutor
+ * guard so the caseload never lists a learner the tutor can't reach.
  */
 export async function listLearnersForTutor(tutorId: string): Promise<AllocatedLearner[]> {
-  const [allocated, courseTeam] = await Promise.all([
-    db
-      .selectDistinct({
-        learnerId: schema.tutorAllocation.learnerId,
-        name: schema.profile.fullname,
-        email: schema.profile.email
-      })
-      .from(schema.tutorAllocation)
-      .leftJoin(schema.profile, eq(schema.profile.id, schema.tutorAllocation.learnerId))
-      .where(eq(schema.tutorAllocation.tutorId, tutorId)) as Promise<AllocatedLearner[]>,
-    listCourseTeamLearnersForTutor(tutorId)
-  ]);
-  return mergeLearners(allocated, courseTeam);
+  const allocated = (await db
+    .selectDistinct({
+      learnerId: schema.tutorAllocation.learnerId,
+      name: schema.profile.fullname,
+      email: schema.profile.email
+    })
+    .from(schema.tutorAllocation)
+    .leftJoin(schema.profile, eq(schema.profile.id, schema.tutorAllocation.learnerId))
+    .where(eq(schema.tutorAllocation.tutorId, tutorId))) as AllocatedLearner[];
+  return mergeLearners(allocated);
 }
 
 export interface AllocatedTutor {

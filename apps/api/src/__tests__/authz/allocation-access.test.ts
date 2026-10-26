@@ -46,12 +46,11 @@ describe('isAllocatedTutor — DB-backed, TUTOR-only', () => {
     expect(await isAllocatedTutor(tutor, 'u-learner')).toBe(false);
   });
 
-  // Course→tutor assignment (Moodle course-teacher): responsibility also comes from course-team membership.
-  it('TUTOR not allocated but course-team TUTOR of a course the learner is in → true', async () => {
+  // Course-team alone no longer grants learner access (per-learner model): allocation is the only path.
+  it('TUTOR not allocated but course-team TUTOR of a course the learner is in → false', async () => {
     mockedIsAllocated.mockResolvedValue(false);
     mockedIsCourseTutorForLearner.mockResolvedValue(true);
-    expect(await isAllocatedTutor(tutor, 'u-learner')).toBe(true);
-    expect(mockedIsCourseTutorForLearner).toHaveBeenCalledWith('u-tutor', 'u-learner');
+    expect(await isAllocatedTutor(tutor, 'u-learner')).toBe(false);
   });
 
   it('TUTOR neither allocated nor a course-team tutor → false', async () => {
