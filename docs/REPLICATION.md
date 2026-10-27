@@ -26,8 +26,11 @@
 | D4 | Brand name **Gecko Programmes**. **Domain, logo, sender email: TBD (owner will supply)** — use the placeholders below. **Colours: identical to Pearl.** |
 | D5 | **Start empty** — no learners, tutors, courses. Course *content* may be copied from Pearl **later, on request** (Phase 11). |
 | D6 | **Every feature, every screen, including the hidden ones** must exist and be wired exactly as in Pearl. |
-| D7 | Connect to the **same Pearl CRM** — ⚠ see §3 "Open question Q1": no CRM↔LMS code exists today. |
-| D8 | **New SMTP account + sender domain** for Gecko (own SPF/DKIM/DMARC). |
+| D7 | **CRM: manual at launch** (same as Pearl/Integer today — no CRM↔LMS code exists; Pearl prod has 0 registrations ever and all learners were created by staff, checked 2026-10-27). Staff create learners in the Learners page. Phase 9 = nothing to build. |
+| D8 | **New SMTP account + sender domain** for Gecko — provider **Amazon SES** (own SPF/DKIM/DMARC). |
+| D11 | **Inherited issues (§2): carry as-is** — faithful replica; no fixes unless separately approved (and then in Pearl too). K1/K4/K5 are still handled because they block launch. |
+| D12 | **Supabase: Pro plan; the owner creates the project** and supplies the connection strings / S3 keys — the agent never creates or pays for Supabase resources. |
+| D13 | **Droplet: 2 vCPU / 4 GB (`s-2vcpu-4gb`), same as Pearl** — accept 20–45 min on-box deploys that slow the live site; 4 GB swap mandatory; strictly one deploy at a time. |
 | D9 | Audience = developer / AI agent. |
 | D10 | Secrets kept **locally** at `C:\Users\PC\Projects\_secrets\geckoprogrammes\` (outside every git repo). |
 
@@ -133,21 +136,21 @@ faithful replica); fix only items the owner approves — and if fixed, fix in Pe
 | K10 | Dead/stub screens: Billing & AI-credits (Polar removed), Settings→Integrations (Telegram, handlers commented out), Workspaces (upstream), Zapier ("coming soon"), Audience export (`alert`), Quiz play → `play.classroomio.com`, `/home` & `/welcome` always redirect. | Appendix A | Ship as-is (hidden). |
 | K11 | Duplicate models: two lock models (`sequential_unlock` and `progressionMode`), two completion tables (`course_completion`, `course_completion_record`). | DB/API | Tech debt. |
 | K12 | `/internal/*` cron endpoints have no scheduler in the repo. | API | Find out what (if anything) calls them on Pearl before go-live. |
-| K13 | No container memory limits; dashboard build hard-codes an 8 GB Node heap. | compose / Dockerfile | Size the droplet at 8 GB (Phase 5). |
+| K13 | No container memory limits; dashboard build hard-codes an 8 GB Node heap. | compose / Dockerfile | Accepted (D13: 4 GB) — 4 GB swap + sequential builds + one deploy at a time. |
 | K14 | ACCESS.md says Managers compose announcements; the route guard is admin-only. | docs | Doc drift. |
 
 ---
 
-## 3. Open questions (must be answered before the phase that needs them)
+## 3. Open questions
 
-| # | Question | Needed by |
-|---|---|---|
-| **Q1** | **CRM.** There is **no CRM↔LMS code** in either repo (LMSclassroom or project-spark). The LMS's only machine surface is `GET /register/courses` + `POST /register` (Bearer `PRIVATE_SERVER_KEY`) which creates a *pending registration*. What should "same Pearl CRM integration" do for Gecko? (a) CRM pushes enquiries into Gecko `/register`; (b) CRM reads Gecko learner data (needs a read-only DB role/view); (c) manual for now. | Phase 9 |
-| Q2 | Domain, logo files, sender email address. | Phases 2, 5, 6 |
-| Q3 | Fix any of K2/K3/K6–K9 in Gecko (and Pearl)? Default no. | Phase 3 |
-| Q4 | Supabase plan: **Pro** recommended (PITR, no pausing, storage limit > 50 MB which video uploads need). | Phase 4 |
-| Q5 | Droplet size: **4 vCPU / 8 GB** recommended (~$48/mo) vs Pearl's 2 vCPU / 4 GB. | Phase 5 |
-| Q6 | SMTP provider (SES / Postmark / Resend / ZeptoMail). | Phase 6 |
+| # | Question | Needed by | Status |
+|---|---|---|---|
+| Q1 | CRM integration | Phase 9 | **Answered → D7 (manual)** |
+| Q2 | Domain, logo files, sender email address | Phases 2, 5, 6 | **OPEN — owner supplies later**; use placeholders until then |
+| Q3 | Fix inherited issues? | Phase 3 | **Answered → D11 (carry as-is)** |
+| Q4 | Supabase plan | Phase 4 | **Answered → D12 (Pro, owner creates)** |
+| Q5 | Droplet size | Phase 5 | **Answered → D13 (4 GB)** |
+| Q6 | SMTP provider | Phase 6 | **Answered → Amazon SES** |
 
 ---
 
@@ -160,7 +163,7 @@ faithful replica); fix only items the owner approves — and if fixed, fix in Pe
    - Record here as you go: Supabase DB password + ref, S3 keys, droplet IP, SSH key name, SMTP creds.
 2. Accounts/access needed: GitHub org `Integer-Training` (repo `newlmsgecko` exists, empty);
    Supabase org (billing for Pro); DigitalOcean team; domain registrar/DNS for `{{GECKO_DOMAIN}}`;
-   SMTP provider account.
+   Amazon SES account (AWS).
 3. Local tools: Node 22 + pnpm (version from root `package.json` `packageManager`), Docker, git,
    `openssl`, `psql` (optional).
 
@@ -256,7 +259,7 @@ tests still green, and an email preview (Mailpit locally) shows the Gecko masthe
 
 ## Phase 4 — Supabase project (Postgres + Storage)
 
-1. Create project (name `GECKOLMS`), region **eu-west-1** (same as Pearl) or eu-west-2; plan per Q4.
+1. **Owner creates** the project (D12, **Pro** plan), name `GECKOLMS`, region **eu-west-1** (same as Pearl) or eu-west-2, and hands over the values below.
    Strong DB password (no `@:/?#` or URL-encode it) → secrets folder.
 2. **Connection strings** → `gecko.env`:
    `DATABASE_URL` = Transaction pooler `:6543`; `DIRECT_DATABASE_URL` = **Session pooler** `:5432`
@@ -305,7 +308,7 @@ and Supabase Security Advisor shows no "RLS disabled" errors.
 
 ## Phase 5 — DigitalOcean droplet, DNS, TLS
 
-1. Droplet: Ubuntu 24.04, **`s-4vcpu-8gb`** (Q5), region `lon1`, monitoring on, new SSH key
+1. Droplet: Ubuntu 24.04, **`s-2vcpu-4gb`** (D13, same as Pearl), region `lon1`, monitoring on, new SSH key
    `ssh-keygen -t ed25519 -f ~/.ssh/geckolms_deploy` (**do not reuse** `pearllms_deploy`).
 2. Firewall: DO Cloud Firewall inbound 22/80/443 only; host `ufw allow OpenSSH 80 443`. Never publish
    3081/3082/6379.
@@ -323,8 +326,12 @@ OK and `dig +short {{APP_DOMAIN}}` returns the droplet IP.
 
 ## Phase 6 — Email (new SMTP + sender domain)
 
-1. Create the Gecko sender identity at the provider (Q6) on `{{SENDER_DOMAIN}}`; if SES, request
-   production access (leave sandbox) before inviting real people.
+1. **Amazon SES** (D8), region `eu-west-2` (London) or `eu-west-1`: verify domain identity
+   `{{SENDER_DOMAIN}}` with Easy DKIM; create **SMTP credentials** (SES console → SMTP settings →
+   creates an IAM user; host `email-smtp.<region>.amazonaws.com`, port 587) → `gecko.env`;
+   **request production access** (leave the sandbox — sandbox only mails verified addresses) before
+   inviting real people; set a custom MAIL FROM (`bounce.{{SENDER_DOMAIN}}`) for SPF alignment; watch
+   bounces/complaints in the SES console (the LMS has no bounce webhook).
 2. DNS: **SPF** (provider include), **DKIM** (provider CNAMEs/TXT), **DMARC**
    `_dmarc.{{SENDER_DOMAIN}}  v=DMARC1; p=none; rua=mailto:dmarc@{{GECKO_DOMAIN}}; fo=1` → tighten to
    `quarantine` after 2–4 clean weeks.
@@ -343,7 +350,8 @@ OK and `dig +short {{APP_DOMAIN}}` returns the droplet IP.
 1. Fill every `FILL` in `/opt/geckolms/.env` (25 keys — Appendix E §3.1). Confirm with
    `grep -c FILL /opt/geckolms/.env` → `0`.
 2. First deploy, **detached** (SSH drops must not kill it):
-   `nohup /root/deploy.sh > /root/deploy.log 2>&1 &` — ~5–8 min on 8 GB (25–45 on 4 GB). Only one deploy
+   `nohup /root/deploy.sh > /root/deploy.log 2>&1 &` — expect **20–45 min on the 4 GB droplet** (D13);
+   the site is slow but up while it builds (check `docker ps` / `free -h` before assuming an outage). Only one deploy
    at a time, ever. Success marker `=== COMPLETE`; failure = `failed to solve|exited with code [1-9]`
    (do **not** grep `ERROR:` — the Dockerfile echoes a literal guard string).
 3. API boot auto-runs `db:setup`: roles → advisory lock → baseline → `drizzle-kit migrate`
@@ -439,8 +447,9 @@ Trigger each at least once (or render in Mailpit locally) and confirm Gecko bran
 
 ---
 
-## Phase 9 — CRM connection (blocked on Q1)
-Options once answered (details Appendix E §2.8):
+## Phase 9 — CRM connection — **NOT AT LAUNCH (D7: manual)**
+Nothing to build. Staff create learners in Learners (temp password shown once). Gecko's CRM process is
+manual, exactly like Pearl today. Kept for later — options if a link is ever wanted (Appendix E §2.8):
 - **(a) CRM pushes enquiries** → CRM calls `POST https://{{APP_DOMAIN}}/proxy/register` with a key.
   Recommended: add a **dedicated** `CRM_INTAKE_KEY` route guard rather than sharing `PRIVATE_SERVER_KEY`
   (which also secures the dashboard↔API channel). CRM side: a per-brand LMS endpoint/key setting.
