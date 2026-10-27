@@ -16,6 +16,69 @@
 
 ---
 
+## ▶ CURRENT STATUS — read this first (update it as phases complete)
+
+_Last updated 2026-10-27._
+
+| Phase | State | Notes |
+|---|---|---|
+| 0 Accounts & secrets | ✅ done | Secrets folder `C:\Users\PC\Projects\_secrets\geckoprogrammes\` (`gecko.env` + `README.md`). `BETTER_AUTH_SECRET`, `PRIVATE_SERVER_KEY`, `QUEUE_DASHBOARD_PASSWORD` generated. Supabase ref/region/endpoints pre-filled. |
+| 1 Gecko repo | ⏳ **not started** — next | `newlmsgecko` exists on GitHub, empty. |
+| 2 Rebrand | ⏳ not started | domain/logo/sender still TBD → placeholders. |
+| 3 Bootstrap / deploy.sh / RLS SQL | ⏳ not started | |
+| 4 Supabase | 🟡 **project created by owner**; keys pending | `newlmsgecko`, ref `fymygmepoynwurpajcwf`, **eu-central-1 (Frankfurt)**, Postgres 17, Pro. **Owner still to:** paste DB password + 2 pooler URIs + S3 access keys into `gecko.env`; create buckets `documents` (private), `videos` (private), `media` (public); set global upload limit ≥ 800 MB. Agent then verifies read-only (Supabase MCP) without printing values. RLS SQL runs after first deploy. |
+| 5 Droplet / DNS / TLS | 🟡 **droplet done + verified**; DNS pending domain | See Phase 5 (as-built). |
+| 6 Email (Amazon SES) | ⏳ blocked on domain | |
+| 7 First deploy + bootstrap | ⏳ blocked on 1–6 | |
+| 8 Screen verification | ⏳ | |
+| 9 CRM | ➖ none at launch (D7) | |
+| 10 Go-live | ⏳ | |
+| 11 Course copy | ➖ only on request | |
+
+**Still needed from the owner:** domain (→ `{{APP_DOMAIN}}` = `learn.<domain>`), logo set, sender
+email address; Supabase keys + buckets (Phase 4 row above).
+
+### Kickoff prompt for a new Claude CLI session (paste as the first message)
+
+```
+You are building "Gecko Programmes" — a separate, rebranded replica of our live LMS (PearlLMS).
+
+READ FIRST, fully, before doing anything:
+  C:\Users\PC\Projects\LMSclassroom\docs\REPLICATION.md
+Start with "CURRENT STATUS", then §0 decisions (D1–D13), §2 inherited issues, the phases and
+"Done when" checks. Appendices A–E inventory every screen, API route, table, env var and brand
+string. Where an appendix disagrees with the code, the code wins — note it and fix the appendix.
+
+SCOPE OF THIS SESSION: Phases 1–3 (repo, rebrand, bootstrap/deploy.sh/RLS SQL). Domain, logo and
+sender email are NOT decided — use the {{…}} placeholders / neutral placeholder assets. Inherited
+issues in §2 are carried AS-IS (D11). Do not attempt Phases 4–7 until I say so: Supabase and the
+droplet already exist (owner-created); never create or pay for cloud resources yourself.
+
+HARD RULES:
+  1. NEVER modify C:\Users\PC\Projects\LMSclassroom (Pearl) code, its GitHub repo, its Supabase
+     project cvtmymxxjgjshrzsjxnj, or its droplet. Pearl is live with real learners. Read-only.
+     The ONE exception: keep the "CURRENT STATUS" table in docs/REPLICATION.md up to date, as a
+     local commit I will push.
+  2. Secrets live ONLY in C:\Users\PC\Projects\_secrets\geckoprogrammes\ (outside git). Never
+     print or commit them — the Gecko repo will be PUBLIC (AGPL-3.0). Check before every commit.
+  3. Localhost first. Commit locally; NEVER push or deploy — I do that myself via `!` commands
+     you give me.
+  4. Before changing anything non-obvious, explain WHAT / WHY / IMPACT and get my approval.
+  5. Ask clarifying questions as plain-text numbered options in chat (e.g. "1a / 1b"), never the
+     AskUserQuestion pop-up. Check the code before asking anything it can answer.
+  6. Use agents for parallel work; set the model on every agent: Haiku = lookups/checks,
+     Sonnet = routine coding (Sonnet high for security-sensitive work like the bootstrap script),
+     Opus = planning + final review. Helper reports ≤200 words.
+  7. The lefthook pre-commit runs a prettier check: on failure run `pnpm format:changed`,
+     re-stage, commit again. Never skip hooks.
+  8. Report honestly: test counts, anything skipped, anything that differs from the spec.
+
+Start by reading the spec, then give me a short plan for Phases 1–3 (steps, agent split, how you'll
+verify each "Done when") and wait for my go-ahead.
+```
+
+---
+
 ## 0. Decisions already made (by the owner, 2026-10-27)
 
 | # | Decision |
@@ -43,8 +106,8 @@
 | `{{GECKO_DOMAIN}}` | the brand's root domain | **TBD** |
 | `{{APP_DOMAIN}}` | the LMS host, recommended `learn.{{GECKO_DOMAIN}}` | **TBD** |
 | `{{SENDER_DOMAIN}}` | email sending domain, recommended `mail.{{GECKO_DOMAIN}}` | **TBD** |
-| `{{SB_REF}}` / `{{SB_REGION}}` | new Supabase project ref / region | created in Phase 4 |
-| `{{DROPLET_IP}}` | new droplet IPv4 | created in Phase 5 |
+| `{{SB_REF}}` / `{{SB_REGION}}` | Supabase project ref / region | **`fymygmepoynwurpajcwf` / `eu-central-1` (Frankfurt)** — created 2026-10-27 |
+| `{{DROPLET_IP}}` | droplet IPv4 | **`178.62.26.146`** (`geckolms`, LON1) — created 2026-10-27 |
 | `{{LOGO}}` | logo files (SVG + PNG 512², favicon set, OG image 1200×630) | **TBD** |
 
 ### Do we need the ClassroomIO repo? **No.**
@@ -259,8 +322,19 @@ tests still green, and an email preview (Mailpit locally) shows the Gecko masthe
 
 ## Phase 4 — Supabase project (Postgres + Storage)
 
-1. **Owner creates** the project (D12, **Pro** plan), name `GECKOLMS`, region **eu-west-1** (same as Pearl) or eu-west-2, and hands over the values below.
-   Strong DB password (no `@:/?#` or URL-encode it) → secrets folder.
+1. ✅ **Created by the owner 2026-10-27** (D12, Pro): name `newlmsgecko`, ref `fymygmepoynwurpajcwf`,
+   region **eu-central-1 (Frankfurt)**, Postgres 17. Droplet is in London — ~15 ms per DB round trip,
+   comparable to Pearl (London droplet ↔ Ireland DB). Strong DB password (no `@:/?#` or URL-encode it)
+   → secrets folder. Already pre-filled in `gecko.env`: storage endpoints, region, public media URL, CSP
+   hosts; the pooler hosts are `aws-?-eu-central-1.pooler.supabase.com` — replace `?` with the digit shown
+   in the Connect dialog.
+   **Where the owner finds each value** (paste into `gecko.env`, never into chat):
+   - DB password: set at creation; else Project Settings → Database → *Reset database password*.
+   - Pooler URIs: **Connect** (top of dashboard) → *Transaction pooler* (`:6543`) and *Session pooler*
+     (`:5432`); replace `[YOUR-PASSWORD]`. Do **not** use "Direct connection" (IPv6-only).
+   - S3 keys: Project Settings → **Storage** → S3 Connection (enabled) → *New access key* → Access key ID +
+     Secret (secret shown once).
+   - **Not needed:** anon/publishable key, service_role key, JWT secret (the app never uses supabase-js).
 2. **Connection strings** → `gecko.env`:
    `DATABASE_URL` = Transaction pooler `:6543`; `DIRECT_DATABASE_URL` = **Session pooler** `:5432`
    (droplets are IPv4-only — the direct `db.<ref>` host is IPv6). Leave `DATABASE_SSL` unset.
@@ -308,16 +382,37 @@ and Supabase Security Advisor shows no "RLS disabled" errors.
 
 ## Phase 5 — DigitalOcean droplet, DNS, TLS
 
-1. Droplet: Ubuntu 24.04, **`s-2vcpu-4gb`** (D13, same as Pearl), region `lon1`, monitoring on, new SSH key
-   `ssh-keygen -t ed25519 -f ~/.ssh/geckolms_deploy` (**do not reuse** `pearllms_deploy`).
-2. Firewall: DO Cloud Firewall inbound 22/80/443 only; host `ufw allow OpenSSH 80 443`. Never publish
-   3081/3082/6379.
-3. Swap 4 GB (`fallocate`…, `vm.swappiness=10`); install Docker (`get.docker.com`) + compose plugin + git.
-4. `git clone https://github.com/Integer-Training/newlmsgecko.git /opt/geckolms`;
+**As built (2026-10-27, steps 1–3 ✅ done and verified over SSH):**
+| Item | Value |
+|---|---|
+| Droplet | `geckolms`, DO project **D2D**, **LON1**, Basic Regular **`s-2vcpu-4gb` ($24/mo)**, Ubuntu 24.04 LTS, monitoring on, no DO backups |
+| IPs | public IPv4 **`178.62.26.146`**, private `10.131.0.2` (VPC `default-lon1`), no IPv6 |
+| SSH | key `~/.ssh/geckolms_deploy` (ed25519, comment `geckolms-deploy`; DO key name `geckolms_deploy`) → `ssh -i ~/.ssh/geckolms_deploy root@178.62.26.146` |
+| Cloud firewall | `geckolms-fw`: inbound SSH 22, HTTP 80, HTTPS 443 (all IPv4/IPv6); outbound ICMP + all TCP + all UDP |
+| Verified | `/root/init-done.txt` 12:15 UTC; swap 4.0 GiB; Docker 29.9.2; Compose v5.6.1; ufw active (OpenSSH, 80, 443); 2 vCPU / 3.8 GiB; `/opt/geckolms` exists (empty) |
+
+1. ✅ Droplet created with the SSH key above (**do not reuse** `pearllms_deploy`).
+2. ✅ Firewall: cloud `geckolms-fw` + host ufw. Never publish 3081/3082/6379.
+3. ✅ Swap + Docker + ufw + `/opt/geckolms` were done by this **DO startup script** (user-data) — reuse it
+   verbatim if the droplet is ever rebuilt:
+   ```bash
+   #!/bin/bash
+   set -e
+   export DEBIAN_FRONTEND=noninteractive
+   fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+   echo '/swapfile none swap sw 0 0' >> /etc/fstab
+   echo 'vm.swappiness=10' > /etc/sysctl.d/99-swappiness.conf && sysctl -p /etc/sysctl.d/99-swappiness.conf
+   apt-get update && apt-get -y upgrade && apt-get install -y ca-certificates curl git ufw
+   curl -fsSL https://get.docker.com | sh
+   ufw allow OpenSSH && ufw allow 80/tcp && ufw allow 443/tcp && ufw --force enable
+   mkdir -p /opt/geckolms
+   echo "geckolms init done $(date -u)" > /root/init-done.txt
+   ```
+4. ⏳ (after Phase 1 push) `git clone https://github.com/Integer-Training/newlmsgecko.git /opt/geckolms`;
    copy `gecko.env` → `/opt/geckolms/.env`, `chmod 600`.
-5. DNS: `A {{APP_DOMAIN}} → {{DROPLET_IP}}` (TTL 300), optional `CAA 0 issue "letsencrypt.org"`.
+5. ⏳ (needs domain) DNS: `A {{APP_DOMAIN}} → 178.62.26.146` (TTL 300), optional `CAA 0 issue "letsencrypt.org"`.
    Must resolve **before** the first `up -d` (Caddy gets the cert via HTTP-01). Single host only.
-6. `/root/deploy.sh` → `exec /opt/geckolms/scripts/deploy.sh "$@"`.
+6. ⏳ (after Phase 3) `/root/deploy.sh` → `exec /opt/geckolms/scripts/deploy.sh "$@"`.
 
 **Done when:** `ssh -i ~/.ssh/geckolms_deploy root@{{DROPLET_IP}} 'docker compose version; free -h; swapon --show'`
 OK and `dig +short {{APP_DOMAIN}}` returns the droplet IP.
