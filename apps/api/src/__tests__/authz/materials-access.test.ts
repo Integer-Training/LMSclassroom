@@ -5,7 +5,7 @@ import type { AuthSession } from '@api/types/auth';
 
 import { isCourseGroupMember } from '@cio/db/queries/group';
 import { getCourseById } from '@cio/db/queries/course';
-import { getCourseMaterialKeys } from '@cio/db/queries/lesson';
+import { getMaterialKeyLessonMap } from '@cio/db/queries/lesson';
 import { assertCourseMaterialDownloadAccess, requireCourseContentRead } from '@api/middlewares/guards';
 
 // PearlLMS Phase 2 Step 4 — guarded material serving.
@@ -18,7 +18,6 @@ import { assertCourseMaterialDownloadAccess, requireCourseContentRead } from '@a
 vi.mock('@cio/db/queries/group', () => ({ isCourseGroupMember: vi.fn() }));
 vi.mock('@cio/db/queries/course', () => ({ getCourseById: vi.fn() }));
 vi.mock('@cio/db/queries/lesson', () => ({
-  getCourseMaterialKeys: vi.fn(),
   getMaterialKeyLessonMap: vi.fn(async () => new Map())
 }));
 // Phase 4 gating is OFF here (this is a Phase-2 material-access test) — isUnitUnlocked short-circuits open.
@@ -29,7 +28,7 @@ vi.mock('@cio/db/queries/gating', () => ({
 
 const mockedIsMember = vi.mocked(isCourseGroupMember);
 const mockedGetCourse = vi.mocked(getCourseById);
-const mockedMaterialKeys = vi.mocked(getCourseMaterialKeys);
+const mockedMaterialKeys = vi.mocked(getMaterialKeyLessonMap);
 
 const ORG = 'org-1';
 const learner: Actor = { authenticated: true, userId: 'u-learner', role: 'LEARNER', status: 'ACTIVE', orgId: ORG };
@@ -86,14 +85,14 @@ describe('assertCourseMaterialDownloadAccess — G3 course-bound download', () =
   it('enrolled learner, published, CURRENT material key → allowed', async () => {
     mockedIsMember.mockResolvedValue(true);
     mockedGetCourse.mockResolvedValue(published);
-    mockedMaterialKeys.mockResolvedValue(new Set([MAT]));
+    mockedMaterialKeys.mockResolvedValue(new Map([[MAT, 'l1']]));
     expect(await status(assertCourseMaterialDownloadAccess(learner, 'course-1', [MAT]))).toBe(0);
   });
 
   it('enrolled learner, published, REMOVED/foreign material key → 403 (currency)', async () => {
     mockedIsMember.mockResolvedValue(true);
     mockedGetCourse.mockResolvedValue(published);
-    mockedMaterialKeys.mockResolvedValue(new Set([MAT])); // OTHER_MAT no longer current
+    mockedMaterialKeys.mockResolvedValue(new Map([[MAT, 'l1']])); // OTHER_MAT no longer current
     expect(await status(assertCourseMaterialDownloadAccess(learner, 'course-1', [OTHER_MAT]))).toBe(403);
   });
 
@@ -104,14 +103,14 @@ describe('assertCourseMaterialDownloadAccess — G3 course-bound download', () =
   it('enrolled learner, published, CURRENT flat-key material → allowed (SW-7 currency, not prefix)', async () => {
     mockedIsMember.mockResolvedValue(true);
     mockedGetCourse.mockResolvedValue(published);
-    mockedMaterialKeys.mockResolvedValue(new Set([SUBMISSION])); // the flat key IS a current material of the course
+    mockedMaterialKeys.mockResolvedValue(new Map([[SUBMISSION, 'l1']])); // the flat key IS a current material of the course
     expect(await status(assertCourseMaterialDownloadAccess(learner, 'course-1', [SUBMISSION]))).toBe(0);
   });
 
   it('enrolled learner, published, coursework/foreign key (not a current material) → 403 (IDOR stays closed)', async () => {
     mockedIsMember.mockResolvedValue(true);
     mockedGetCourse.mockResolvedValue(published);
-    mockedMaterialKeys.mockResolvedValue(new Set([MAT])); // the coursework key is NOT in the course's materials
+    mockedMaterialKeys.mockResolvedValue(new Map([[MAT, 'l1']])); // the coursework key is NOT in the course's materials
     expect(
       await status(assertCourseMaterialDownloadAccess(learner, 'course-1', ['coursework/other-learner/answer.pdf']))
     ).toBe(403);

@@ -148,11 +148,13 @@ export const ZCourseDocumentPresignUrlUpload = z.object({
 export type TCourseDocumentPresignUrlUpload = z.infer<typeof ZCourseDocumentPresignUrlUpload>;
 
 export const ZCourseDownloadPresignedUrl = z.object({
-  keys: z.array(z.string().min(1)).min(1),
+  // Scalability F2: bounded input — every real caller signs ONE key (the guard does per-key work, so an
+  // unbounded array was a cheap amplification lever). 1024 matches the S3 object-key ceiling.
+  keys: z.array(z.string().min(1).max(1024)).min(1).max(100),
   // PearlLMS Phase 2 Step 4: bind the download to a course so the guard can apply the content-read
   // rule + verify each material key is current (closes gap G3). Absent = org-level asset path, which
   // the guard restricts to staff.
-  courseId: z.string().min(1).optional()
+  courseId: z.string().uuid().optional()
 });
 export type TCourseDownloadPresignedUrl = z.infer<typeof ZCourseDownloadPresignedUrl>;
 

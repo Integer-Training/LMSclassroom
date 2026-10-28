@@ -8,13 +8,14 @@ import { isCourseGroupMember } from '@cio/db/queries/group';
 import { isTutorAllocatedToLearner, listAllocatedLearnerIdsForCourse } from '@cio/db/queries/allocation';
 import { listEnrolledLearnersWithName } from '@cio/db/queries/reports';
 import {
+  getPassedLessonIdsForLearnerCourse,
   getSubmissionByFeedbackFileKey,
   getSubmissionByFileKey,
   hasLearnerPassedUnit
 } from '@cio/db/queries/coursework';
-import { getCourseMaterialKeys, getMaterialKeyLessonMap } from '@cio/db/queries/lesson';
+import { getMaterialKeyLessonMap } from '@cio/db/queries/lesson';
 import { getCourseSequentialUnlock, getOrderedUnitsForCourse } from '@cio/db/queries/gating';
-import { findGatePredecessorIndex, isNonGatingUnit } from '@cio/utils/constants';
+import { findGatePredecessorIndex, isNonGatingUnit, isProgressBatched } from '@cio/utils/constants';
 import { getCourseById } from '@cio/db/queries/course';
 import { forbidden, unauthorized } from '@api/middlewares/guards/require-role';
 
@@ -219,6 +220,32 @@ export async function isUnitUnlocked(courseId: string, lessonId: string, learner
 }
 
 /**
+ * Are ALL of these units unlocked for the learner? Same decision as calling isUnitUnlocked per unit, but
+ * the sequential flag and the ordered units are loaded once and (PROGRESS_BATCHED, default on) the gate
+ * predecessors' passed state comes from one batched read. Nothing is cached across requests.
+ */
+async function areUnitsUnlocked(courseId: string, lessonIds: string[], learnerId: string): Promise<boolean> {
+  if (lessonIds.length === 0) return true;
+  if (!isProgressBatched()) {
+    for (const lessonId of lessonIds) if (!(await isUnitUnlocked(courseId, lessonId, learnerId))) return false;
+    return true;
+  }
+  if (!(await getCourseSequentialUnlock(courseId))) return true;
+
+  const units = await getOrderedUnitsForCourse(courseId);
+  const predecessors = new Set<string>();
+  for (const lessonId of lessonIds) {
+    const idx = units.findIndex((u) => u.lessonId === lessonId);
+    if (idx === -1 || isNonGatingUnit(units[idx])) continue; // not in ordering / exempt-or-optional → open
+    const p = findGatePredecessorIndex(units, idx);
+    if (p !== null) predecessors.add(units[p].lessonId);
+  }
+  if (predecessors.size === 0) return true;
+  const passed = await getPassedLessonIdsForLearnerCourse(learnerId, courseId, undefined, [...predecessors]);
+  return [...predecessors].every((id) => passed.has(id));
+}
+
+/**
  * Route guard for the material-serving READ paths (lesson GET, lesson-language GET). Enforces the
  * content-read rule on the `:courseId` in the path: staff OR an enrolled learner of a PUBLISHED
  * course. Closes gap G2 — the stock lesson read never checked publish state, so a learner enrolled
@@ -295,19 +322,19 @@ export async function assertCourseMaterialDownloadAccess(
   // `materials/{courseId}/…` scheme AND legacy/flat keys that predate it). Removed/cross-course keys are also
   // refused (not current). This replaces the earlier `materials/`-prefix filter, which wrongly 403'd real
   // flat-key materials for learners.
-  const currentKeys = await getCourseMaterialKeys(courseId);
-  if (!keys.every((key) => currentKeys.has(key))) {
+  // Scalability F2: ONE read of the key → unit map serves both checks (its key set IS the current-material
+  // set — same documents/videos scan as getCourseMaterialKeys). Read fresh per request, never cached.
+  const keyLesson = await getMaterialKeyLessonMap(courseId);
+  if (!keys.every((key) => keyLesson.has(key))) {
     throw new AppError('You do not have access to these files', ErrorCodes.FORBIDDEN, 403);
   }
 
   // Phase 4: a locked unit's materials are refused (this path has no lessonId, so resolve each material key →
-  // its owning unit → isUnitUnlocked). Non-staff learners only — staff returned above.
-  const keyLesson = await getMaterialKeyLessonMap(courseId);
-  for (const key of keys) {
-    const lessonId = keyLesson.get(key);
-    if (lessonId && !(await isUnitUnlocked(courseId, lessonId, actor.userId))) {
-      throw new AppError(LOCKED_MESSAGE, ErrorCodes.FORBIDDEN, 403);
-    }
+  // its owning unit → unlock state). Non-staff learners only — staff returned above. Evaluated ONCE per
+  // distinct unit, with the course's ordered units + sequential flag loaded once (not per key).
+  const lessonIds = [...new Set(keys.map((key) => keyLesson.get(key)).filter((id): id is string => !!id))];
+  if (!(await areUnitsUnlocked(courseId, lessonIds, actor.userId))) {
+    throw new AppError(LOCKED_MESSAGE, ErrorCodes.FORBIDDEN, 403);
   }
 }
 
@@ -378,14 +405,36 @@ export async function assertCourseworkDownloadAccess(actor: Actor, keys: string[
     throw new AppError('No files requested', ErrorCodes.VALIDATION_ERROR, 400);
   }
 
-  for (const key of keys) {
-    // A key is either a learner submission file (coursework/…) or a tutor feedback file
-    // (coursework-feedback/…). Try both authoritative owner lookups; access to the owning submission is
-    // then decided by canReadCoursework (learner-self / allocated tutor / admin) — identical for both.
-    const submission = (await getSubmissionByFileKey(key)) ?? (await getSubmissionByFeedbackFileKey(key));
-    if (!submission || !(await canReadCoursework(actor, submission))) {
-      // 403 (not 404) whether the key is unknown or simply not the caller's — never reveal which.
-      throw new AppError('You do not have access to this coursework file', ErrorCodes.FORBIDDEN, 403);
-    }
+  // Per-request memo ONLY (never across requests): canReadCoursework depends on just (actor, owning row's
+  // learnerId), so many keys of one learner cost a single allocation check.
+  const readable = new Map<string, Promise<boolean>>();
+  const canRead = (learnerId: string) => {
+    let p = readable.get(learnerId);
+    if (!p) readable.set(learnerId, (p = canReadCoursework(actor, { learnerId })));
+    return p;
+  };
+
+  // A key is either a learner submission file (coursework/…) or a tutor feedback file
+  // (coursework-feedback/…). Route by prefix so the normal case is ONE owner lookup (a feedback key no longer
+  // scans the submission table first); an unrecognised prefix or a miss still falls through to the other
+  // table (legacy containment fallback). Keys resolve in parallel; access is decided on the OWNING row's
+  // learnerId (never one parsed from the key) by canReadCoursework — identical for both kinds. All-or-nothing.
+  const ownerOf = async (key: string) => {
+    const bySubmission = () => getSubmissionByFileKey(key);
+    const byFeedback = () => getSubmissionByFeedbackFileKey(key);
+    const [first, second] = key.startsWith('coursework-feedback/')
+      ? [byFeedback, bySubmission]
+      : [bySubmission, byFeedback];
+    return (await first()) ?? (await second());
+  };
+  const results = await Promise.all(
+    [...new Set(keys)].map(async (key) => {
+      const submission = await ownerOf(key);
+      return !!submission && (await canRead(submission.learnerId));
+    })
+  );
+  if (!results.every(Boolean)) {
+    // 403 (not 404) whether the key is unknown or simply not the caller's — never reveal which.
+    throw new AppError('You do not have access to this coursework file', ErrorCodes.FORBIDDEN, 403);
   }
 }

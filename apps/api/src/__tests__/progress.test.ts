@@ -1,20 +1,24 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // PearlLMS Phase 5 Step 3 — the shared progress computation (docs/PROGRESS-MODEL.md §3), TEST-FIRST.
 // Fixtures: fresh (nothing passed), mid-chain (some passed), completed (all passed). Exempt units
 // (induction / id-check) are excluded from BOTH numerator and denominator. DB reads are mocked.
 
 vi.mock('@cio/db/queries/gating', () => ({ getOrderedUnitsForCourse: vi.fn() }));
-vi.mock('@cio/db/queries/coursework', () => ({ hasLearnerPassedUnit: vi.fn() }));
+vi.mock('@cio/db/queries/coursework', () => ({
+  hasLearnerPassedUnit: vi.fn(),
+  getPassedLessonIdsForLearnerCourse: vi.fn()
+}));
 vi.mock('@cio/db/queries/completion', () => ({ getCourseCompletion: vi.fn() }));
 
 import { getOrderedUnitsForCourse } from '@cio/db/queries/gating';
-import { hasLearnerPassedUnit } from '@cio/db/queries/coursework';
+import { getPassedLessonIdsForLearnerCourse, hasLearnerPassedUnit } from '@cio/db/queries/coursework';
 import { getCourseCompletion } from '@cio/db/queries/completion';
 import { computeLearnerCourseProgress } from '@cio/db/queries/progress';
 
 const mUnits = vi.mocked(getOrderedUnitsForCourse);
 const mPassed = vi.mocked(hasLearnerPassedUnit);
+const mBatched = vi.mocked(getPassedLessonIdsForLearnerCourse);
 const mCompletion = vi.mocked(getCourseCompletion);
 
 const L = 'learner-1';
@@ -24,6 +28,9 @@ const unit = (lessonId: string, unitType: string | null, title: string) => ({ le
 function passedSet(...lessonIds: string[]) {
   const set = new Set(lessonIds);
   mPassed.mockImplementation(async (_l: string, lessonId: string) => set.has(lessonId));
+  mBatched.mockImplementation(async (_l: string, _c: string, _client: unknown, ids?: string[]) => {
+    return new Set((ids ?? []).filter((id) => set.has(id)));
+  });
 }
 
 // A representative iCQ-shaped course: 2 exempt (induction, id-check) + 3 non-exempt sessions.
@@ -96,5 +103,35 @@ describe('computeLearnerCourseProgress — exempt units excluded from numerator 
     expect(p.passed).toBe(0);
     expect(p.completed).toBe(false);
     expect(p.currentPosition).toBeNull();
+  });
+});
+
+// ── Phase F: PROGRESS_BATCHED wiring (SQL-level old-vs-new equivalence: perf-f/progress-equivalence) ──
+describe('computeLearnerCourseProgress — PROGRESS_BATCHED', () => {
+  afterEach(() => {
+    delete process.env.PROGRESS_BATCHED;
+  });
+
+  it('default ON: ONE batched read over the non-exempt units, on the caller’s client; per-unit helper unused', async () => {
+    mUnits.mockResolvedValue(ICQ_UNITS as never);
+    passedSet('s1');
+    const client = { client: true } as never;
+    const p = await computeLearnerCourseProgress(L, C, client);
+    expect(mBatched).toHaveBeenCalledTimes(1);
+    expect(mBatched).toHaveBeenCalledWith(L, C, client, ['s1', 's2', 's3']);
+    expect(mPassed).not.toHaveBeenCalled();
+    expect(p.passed).toBe(1);
+  });
+
+  it('PROGRESS_BATCHED=false → the per-unit helper, same numbers', async () => {
+    mUnits.mockResolvedValue(ICQ_UNITS as never);
+    passedSet('s1', 's3');
+    const on = await computeLearnerCourseProgress(L, C);
+    process.env.PROGRESS_BATCHED = 'false';
+    mBatched.mockClear();
+    const off = await computeLearnerCourseProgress(L, C);
+    expect(mBatched).not.toHaveBeenCalled();
+    expect(mPassed).toHaveBeenCalledTimes(3); // exempt units never asked about
+    expect(off).toEqual(on);
   });
 });

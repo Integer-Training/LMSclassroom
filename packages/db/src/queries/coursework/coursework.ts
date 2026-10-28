@@ -79,7 +79,11 @@ export async function getAssessmentKeysByLesson(
 ): Promise<Map<string, string[]>> {
   const map = await getAssessmentItemsByLesson(lessonIds, client);
   const out = new Map<string, string[]>();
-  for (const [lessonId, items] of map) out.set(lessonId, items.map((i) => i.key));
+  for (const [lessonId, items] of map)
+    out.set(
+      lessonId,
+      items.map((i) => i.key)
+    );
   return out;
 }
 
@@ -221,10 +225,7 @@ export async function getSubmissionByFeedbackFileKey(key: string): Promise<Cours
   const [row] = await db
     .select({ submission: schema.courseworkSubmission })
     .from(schema.courseworkResult)
-    .innerJoin(
-      schema.courseworkSubmission,
-      eq(schema.courseworkSubmission.id, schema.courseworkResult.submissionId)
-    )
+    .innerJoin(schema.courseworkSubmission, eq(schema.courseworkSubmission.id, schema.courseworkResult.submissionId))
     .where(sql`${schema.courseworkResult.feedbackFiles} @> ${JSON.stringify([{ key }])}::jsonb`)
     .limit(1);
   return (row?.submission as CourseworkSubmissionRow) ?? null;
@@ -467,6 +468,101 @@ export async function hasLearnerPassedUnit(
   }
   const byKey = await getLatestMarkedResultsByAssessment(learnerId, lessonId, client);
   return assessmentKeys.every((k) => isPassingResult(byKey.get(k) ?? null));
+}
+
+/**
+ * BATCHED twin of hasLearnerPassedUnit (scalability Phase F): the set of units of ONE course this learner has
+ * passed, in 2–3 queries instead of ~2 per unit. It MUST stay result-identical to hasLearnerPassedUnit:
+ *  - TAGGED unit (≥1 assessment item): passed iff EVERY tagged key's latest FINAL *verdict* passes — the
+ *    latest per (lesson, key) wins over an earlier Pass, a key with no verdict (or a null result) fails;
+ *  - UNTAGGED unit (legacy): the result of the highest-version submission that has ANY result row — no
+ *    final/verdict/assessment_key filter, so a draft's feedback row can decide it (getLatestMarkedResult).
+ * Do NOT substitute assembleReportRows' legacy rule here: it is not equivalent for untagged units.
+ * `lessonIds` may be passed when the caller already holds the course's units (saves the lesson lookup);
+ * read-your-writes inside a transaction works by passing the tx as `client`.
+ */
+export async function getPassedLessonIdsForLearnerCourse(
+  learnerId: string,
+  courseId: string,
+  client: DbOrTxClient = db,
+  lessonIds?: string[]
+): Promise<Set<string>> {
+  const passed = new Set<string>();
+  const ids =
+    lessonIds ??
+    (await client.select({ id: schema.lesson.id }).from(schema.lesson).where(eq(schema.lesson.courseId, courseId))).map(
+      (r) => r.id
+    );
+  if (ids.length === 0) return passed;
+
+  // Query 1 — the assessment keys of every unit (a unit missing from the map has none → legacy rule).
+  const keysByLesson = await getAssessmentKeysByLesson(ids, client);
+  const taggedIds = ids.filter((id) => (keysByLesson.get(id) ?? []).length > 0);
+  const untaggedIds = ids.filter((id) => (keysByLesson.get(id) ?? []).length === 0);
+
+  // Query 2 — latest FINAL verdict per (lesson, assessment key). Same filters/ordering as
+  // getLatestMarkedResultsByAssessment; a null `result` on the latest verdict still shadows an earlier Pass.
+  if (taggedIds.length > 0) {
+    const rows = await client
+      .selectDistinctOn([schema.courseworkSubmission.lessonId, schema.courseworkSubmission.assessmentKey], {
+        lessonId: schema.courseworkSubmission.lessonId,
+        assessmentKey: schema.courseworkSubmission.assessmentKey,
+        result: schema.courseworkResult.result
+      })
+      .from(schema.courseworkSubmission)
+      .innerJoin(
+        schema.courseworkResult,
+        and(
+          eq(schema.courseworkResult.submissionId, schema.courseworkSubmission.id),
+          eq(schema.courseworkResult.kind, 'verdict')
+        )
+      )
+      .where(
+        and(
+          eq(schema.courseworkSubmission.learnerId, learnerId),
+          inArray(schema.courseworkSubmission.lessonId, taggedIds),
+          eq(schema.courseworkSubmission.submissionType, 'final'),
+          isNotNull(schema.courseworkSubmission.assessmentKey)
+        )
+      )
+      .orderBy(
+        schema.courseworkSubmission.lessonId,
+        schema.courseworkSubmission.assessmentKey,
+        desc(schema.courseworkSubmission.version)
+      );
+    const byLessonKey = new Map<string, Map<string, string>>();
+    for (const r of rows) {
+      if (!r.assessmentKey || r.result == null) continue;
+      let m = byLessonKey.get(r.lessonId);
+      if (!m) byLessonKey.set(r.lessonId, (m = new Map()));
+      m.set(r.assessmentKey, r.result);
+    }
+    for (const id of taggedIds) {
+      const byKey = byLessonKey.get(id);
+      if ((keysByLesson.get(id) ?? []).every((k) => isPassingResult(byKey?.get(k) ?? null))) passed.add(id);
+    }
+  }
+
+  // Query 3 — legacy untagged units only: highest-version submission that has ANY result (no filters).
+  if (untaggedIds.length > 0) {
+    const rows = await client
+      .selectDistinctOn([schema.courseworkSubmission.lessonId], {
+        lessonId: schema.courseworkSubmission.lessonId,
+        result: schema.courseworkResult.result
+      })
+      .from(schema.courseworkSubmission)
+      .innerJoin(schema.courseworkResult, eq(schema.courseworkResult.submissionId, schema.courseworkSubmission.id))
+      .where(
+        and(
+          eq(schema.courseworkSubmission.learnerId, learnerId),
+          inArray(schema.courseworkSubmission.lessonId, untaggedIds)
+        )
+      )
+      .orderBy(schema.courseworkSubmission.lessonId, desc(schema.courseworkSubmission.version));
+    for (const r of rows) if (isPassingResult(r.result)) passed.add(r.lessonId);
+  }
+
+  return passed;
 }
 
 /**

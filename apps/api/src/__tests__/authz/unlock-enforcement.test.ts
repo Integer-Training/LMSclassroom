@@ -12,23 +12,34 @@ vi.mock('@cio/db/queries/gating', () => ({
   getCourseSequentialUnlock: vi.fn(),
   getOrderedUnitsForCourse: vi.fn()
 }));
-vi.mock('@cio/db/queries/coursework', () => ({
-  hasLearnerPassedUnit: vi.fn(),
-  getSubmissionByFileKey: vi.fn(),
-  isUnitUploadClosed: vi.fn(async () => false)
-}));
+// The batched primitive (PROGRESS_BATCHED, default on) is driven off the same per-unit mock, so both code paths
+// answer from one source of truth in this file.
+vi.mock('@cio/db/queries/coursework', () => {
+  const hasLearnerPassedUnit = vi.fn();
+  return {
+    hasLearnerPassedUnit,
+    getPassedLessonIdsForLearnerCourse: vi.fn(
+      async (learnerId: string, _courseId: string, _client: unknown, ids: string[]) => {
+        const passed = new Set<string>();
+        for (const id of ids) if (await hasLearnerPassedUnit(learnerId, id)) passed.add(id);
+        return passed;
+      }
+    ),
+    getSubmissionByFileKey: vi.fn(),
+    isUnitUploadClosed: vi.fn(async () => false)
+  };
+});
 vi.mock('@cio/db/queries/group', () => ({ isCourseGroupMember: vi.fn(async () => true) }));
 vi.mock('@cio/db/queries/course', () => ({
   getCourseById: vi.fn(async () => [{ isPublished: true, status: 'ACTIVE' }])
 }));
 vi.mock('@cio/db/queries/lesson', () => ({
-  getCourseMaterialKeys: vi.fn(),
   getMaterialKeyLessonMap: vi.fn()
 }));
 
 import { getCourseSequentialUnlock, getOrderedUnitsForCourse } from '@cio/db/queries/gating';
 import { hasLearnerPassedUnit } from '@cio/db/queries/coursework';
-import { getCourseMaterialKeys, getMaterialKeyLessonMap } from '@cio/db/queries/lesson';
+import { getMaterialKeyLessonMap } from '@cio/db/queries/lesson';
 import {
   requireCourseContentRead,
   requireCourseworkSubmit,
@@ -38,7 +49,6 @@ import {
 const mToggle = vi.mocked(getCourseSequentialUnlock);
 const mUnits = vi.mocked(getOrderedUnitsForCourse);
 const mPassed = vi.mocked(hasLearnerPassedUnit);
-const mMatKeys = vi.mocked(getCourseMaterialKeys);
 const mKeyLesson = vi.mocked(getMaterialKeyLessonMap);
 
 const ORG = 'org-1';
@@ -59,8 +69,7 @@ beforeEach(() => {
   mToggle.mockResolvedValue(true); // gated
   mUnits.mockResolvedValue(CHAIN as never);
   mPassed.mockResolvedValue(false); // u1 not passed → u2 locked
-  mMatKeys.mockResolvedValue(new Set([MAT_KEY]) as never); // key is a current material of c1
-  mKeyLesson.mockResolvedValue(new Map([[MAT_KEY, 'u2']]) as never); // that material belongs to u2
+  mKeyLesson.mockResolvedValue(new Map([[MAT_KEY, 'u2']]) as never); // key is a current material of c1, and belongs to u2
 });
 
 function status(p: Promise<unknown>): Promise<number> {

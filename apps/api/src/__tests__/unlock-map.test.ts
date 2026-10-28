@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Actor } from '@cio/db/actor';
 
 // PearlLMS Phase 4 Step 3 — the outline unlock-map service. Per-unit lock state for a learner's outline,
@@ -9,15 +9,30 @@ vi.mock('@cio/db/queries/gating', () => ({
   getCourseSequentialUnlock: vi.fn(),
   getOrderedUnitsForCourse: vi.fn()
 }));
-vi.mock('@cio/db/queries/coursework', () => ({ hasLearnerPassedUnit: vi.fn() }));
+// The batched primitive (PROGRESS_BATCHED, default on) is driven off the per-unit mock so one source of truth
+// answers on both code paths.
+vi.mock('@cio/db/queries/coursework', () => {
+  const hasLearnerPassedUnit = vi.fn();
+  return {
+    hasLearnerPassedUnit,
+    getPassedLessonIdsForLearnerCourse: vi.fn(
+      async (learnerId: string, _c: string, _client: unknown, ids: string[]) => {
+        const passed = new Set<string>();
+        for (const id of ids) if (await hasLearnerPassedUnit(learnerId, id)) passed.add(id);
+        return passed;
+      }
+    )
+  };
+});
 
 import { getCourseSequentialUnlock, getOrderedUnitsForCourse } from '@cio/db/queries/gating';
-import { hasLearnerPassedUnit } from '@cio/db/queries/coursework';
+import { getPassedLessonIdsForLearnerCourse, hasLearnerPassedUnit } from '@cio/db/queries/coursework';
 import { getCourseUnlockMap } from '@api/services/gating/unlock';
 
 const mToggle = vi.mocked(getCourseSequentialUnlock);
 const mUnits = vi.mocked(getOrderedUnitsForCourse);
 const mPassed = vi.mocked(hasLearnerPassedUnit);
+const mBatched = vi.mocked(getPassedLessonIdsForLearnerCourse);
 
 const ORG = 'org-1';
 const learner: Actor = { authenticated: true, userId: 'L', role: 'LEARNER', status: 'ACTIVE', orgId: ORG };
@@ -65,5 +80,30 @@ describe('getCourseUnlockMap', () => {
     mPassed.mockResolvedValue(true);
     const map = await getCourseUnlockMap(learner, 'c1');
     expect(map['C']).toEqual({ unlocked: true, lockedByTitle: null });
+  });
+});
+
+describe('getCourseUnlockMap — PROGRESS_BATCHED (Phase F)', () => {
+  afterEach(() => {
+    delete process.env.PROGRESS_BATCHED;
+  });
+
+  it('default ON: ONE batched read asking only about the gate predecessors (not exempt / not the tail)', async () => {
+    mPassed.mockResolvedValue(true);
+    const map = await getCourseUnlockMap(learner, 'c1');
+    expect(mBatched).toHaveBeenCalledTimes(1);
+    expect(mBatched).toHaveBeenCalledWith('L', 'c1', undefined, ['A']); // only A gates anything (C gates on A)
+    expect(map['C']).toEqual({ unlocked: true, lockedByTitle: null });
+  });
+
+  it('PROGRESS_BATCHED=false → per-unit helper, identical map', async () => {
+    mPassed.mockResolvedValue(false);
+    const on = await getCourseUnlockMap(learner, 'c1');
+    process.env.PROGRESS_BATCHED = 'false';
+    mBatched.mockClear();
+    const off = await getCourseUnlockMap(learner, 'c1');
+    expect(mBatched).not.toHaveBeenCalled();
+    expect(off).toEqual(on);
+    expect(off['C']).toEqual({ unlocked: false, lockedByTitle: 'Session A' });
   });
 });

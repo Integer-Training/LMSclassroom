@@ -1,7 +1,7 @@
 import type { Actor } from '@cio/db/actor';
 import { getCourseSequentialUnlock, getOrderedUnitsForCourse } from '@cio/db/queries/gating';
-import { hasLearnerPassedUnit } from '@cio/db/queries/coursework';
-import { findGatePredecessorIndex, isNonGatingUnit } from '@cio/utils/constants';
+import { getPassedLessonIdsForLearnerCourse, hasLearnerPassedUnit } from '@cio/db/queries/coursework';
+import { findGatePredecessorIndex, isNonGatingUnit, isProgressBatched } from '@cio/utils/constants';
 import { isRole } from '@cio/utils/auth';
 
 // Per-unit lock state for a learner's course OUTLINE (PearlLMS Phase 4 Step 3). PRESENTATION only — the
@@ -31,6 +31,17 @@ export async function getCourseUnlockMap(actor: Actor, courseId: string): Promis
 
   const learnerId = actor.authenticated ? actor.userId : '';
   const passedCache = new Map<string, boolean>();
+  // PROGRESS_BATCHED (default on): resolve every gate predecessor's passed state in ONE batched read.
+  if (isProgressBatched()) {
+    const predecessorIds = new Set<string>();
+    for (let i = 0; i < units.length; i++) {
+      if (isNonGatingUnit(units[i])) continue;
+      const p = findGatePredecessorIndex(units, i);
+      if (p !== null) predecessorIds.add(units[p].lessonId);
+    }
+    const passedIds = await getPassedLessonIdsForLearnerCourse(learnerId, courseId, undefined, [...predecessorIds]);
+    for (const id of predecessorIds) passedCache.set(id, passedIds.has(id));
+  }
   const passed = async (lessonId: string): Promise<boolean> => {
     if (!passedCache.has(lessonId)) passedCache.set(lessonId, await hasLearnerPassedUnit(learnerId, lessonId));
     return passedCache.get(lessonId)!;

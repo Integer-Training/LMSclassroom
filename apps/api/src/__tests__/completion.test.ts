@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // PearlLMS Phase 5 Step 2 — completion RULE + idempotent insert + backfill (TEST-FIRST, written before
 // the implementation). The rule composes the Phase-3 passed-helper across the course's NON-EXEMPT units
@@ -7,23 +7,30 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // transactionality are proven in the live harness (committed output in the step report).
 
 vi.mock('@cio/db/queries/gating', () => ({ getOrderedUnitsForCourse: vi.fn() }));
-vi.mock('@cio/db/queries/coursework', () => ({ hasLearnerPassedUnit: vi.fn() }));
+vi.mock('@cio/db/queries/coursework', () => ({
+  hasLearnerPassedUnit: vi.fn(),
+  getPassedLessonIdsForLearnerCourse: vi.fn()
+}));
 
 import { getOrderedUnitsForCourse } from '@cio/db/queries/gating';
-import { hasLearnerPassedUnit } from '@cio/db/queries/coursework';
+import { getPassedLessonIdsForLearnerCourse, hasLearnerPassedUnit } from '@cio/db/queries/coursework';
 import { isCourseComplete, insertCompletionIfAbsent, backfillCompletions } from '@cio/db/queries/completion';
 
 const mUnits = vi.mocked(getOrderedUnitsForCourse);
 const mPassed = vi.mocked(hasLearnerPassedUnit);
+const mBatched = vi.mocked(getPassedLessonIdsForLearnerCourse);
 
 const L = 'learner-1';
 const C = 'course-1';
 const unit = (lessonId: string, unitType: string | null) => ({ lessonId, unitType, title: lessonId });
 
-/** Drive hasLearnerPassedUnit off an explicit passed-set of lessonIds. */
+/** Drive hasLearnerPassedUnit AND its batched twin off an explicit passed-set of lessonIds. */
 function passedSet(...lessonIds: string[]) {
   const set = new Set(lessonIds);
   mPassed.mockImplementation(async (_learner: string, lessonId: string) => set.has(lessonId));
+  mBatched.mockImplementation(async (_l: string, _c: string, _client: unknown, ids?: string[]) => {
+    return new Set((ids ?? []).filter((id) => set.has(id)));
+  });
 }
 
 beforeEach(() => vi.clearAllMocks());
@@ -75,6 +82,41 @@ describe('isCourseComplete — all non-exempt units passed', () => {
     mUnits.mockResolvedValue([]);
     passedSet();
     expect(await isCourseComplete(L, C)).toBe(false);
+  });
+});
+
+// ── Phase F: PROGRESS_BATCHED wiring (the old-vs-new SQL equivalence lives in perf-f/progress-equivalence) ──
+describe('isCourseComplete — PROGRESS_BATCHED', () => {
+  afterEach(() => {
+    delete process.env.PROGRESS_BATCHED;
+  });
+
+  it('default ON: one batched read for the non-exempt units only, on the SAME client (read-your-writes in the tx)', async () => {
+    mUnits.mockResolvedValue([unit('ind', 'induction'), unit('s1', 'session'), unit('s2', 'session')]);
+    passedSet('s1', 's2');
+    const tx = { tx: true } as never;
+    expect(await isCourseComplete(L, C, tx)).toBe(true);
+    expect(mBatched).toHaveBeenCalledTimes(1);
+    expect(mBatched).toHaveBeenCalledWith(L, C, tx, ['s1', 's2']); // exempt induction not asked about
+    expect(mPassed).not.toHaveBeenCalled();
+  });
+
+  it('batched: one unpassed required unit → not complete', async () => {
+    mUnits.mockResolvedValue([unit('s1', 'session'), unit('s2', 'session')]);
+    passedSet('s1');
+    expect(await isCourseComplete(L, C)).toBe(false);
+  });
+
+  it('PROGRESS_BATCHED=false falls back to the per-unit helper (still passing the client) and agrees', async () => {
+    process.env.PROGRESS_BATCHED = 'false';
+    mUnits.mockResolvedValue([unit('s1', 'session'), unit('s2', 'session')]);
+    passedSet('s1', 's2');
+    const tx = { tx: true } as never;
+    expect(await isCourseComplete(L, C, tx)).toBe(true);
+    expect(mBatched).not.toHaveBeenCalled();
+    expect(mPassed).toHaveBeenCalledWith(L, 's1', tx);
+    passedSet('s1');
+    expect(await isCourseComplete(L, C, tx)).toBe(false);
   });
 });
 

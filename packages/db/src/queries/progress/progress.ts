@@ -1,7 +1,7 @@
 import { db, type DbOrTxClient } from '@db/drizzle';
-import { isNonGatingUnit } from '@cio/utils/constants';
+import { isNonGatingUnit, isProgressBatched } from '@cio/utils/constants';
 import { getOrderedUnitsForCourse } from '../gating';
-import { hasLearnerPassedUnit } from '../coursework';
+import { getPassedLessonIdsForLearnerCourse, hasLearnerPassedUnit } from '../coursework';
 import { getCourseCompletion } from '../completion';
 
 // PearlLMS Phase 5 Step 3 — the ONE shared progress computation (docs/PROGRESS-MODEL.md §3). Both the
@@ -83,10 +83,20 @@ export async function computeLearnerCourseProgress(
   client: DbOrTxClient = db
 ): Promise<CourseProgress> {
   const units = await getOrderedUnitsForCourse(courseId, client);
-  const passed = new Set<string>();
-  for (const u of units) {
-    if (!isNonGatingUnit(u) && (await hasLearnerPassedUnit(learnerId, u.lessonId, client))) {
-      passed.add(u.lessonId);
+  const gating = units.filter((u) => !isNonGatingUnit(u));
+  // PROGRESS_BATCHED (default on): one batched read for the whole course; off → the per-unit helper.
+  let passed: Set<string>;
+  if (isProgressBatched()) {
+    passed = await getPassedLessonIdsForLearnerCourse(
+      learnerId,
+      courseId,
+      client,
+      gating.map((u) => u.lessonId)
+    );
+  } else {
+    passed = new Set<string>();
+    for (const u of gating) {
+      if (await hasLearnerPassedUnit(learnerId, u.lessonId, client)) passed.add(u.lessonId);
     }
   }
   const completionRow = await getCourseCompletion(learnerId, courseId, client);

@@ -237,3 +237,9 @@ None of these cache authorization. Roles, status and allocation are always read 
 | `COURSE_ORG_CACHE_TTL_MS` | API | courseId -> orgId binding cache for `requireCourseInOrg` (evicted on course delete). `0` disables. | _unset (10 min)_ |
 | `ORG_OG_CACHE_TTL_MS` | API | In-memory OG image render cache per siteName. `0` disables. | _unset (5 min)_ |
 | `SSR_SESSION_MEMO_TTL_MS` | dashboard | OPTIONAL cross-request memo of the SSR get-session result (clamped to 5s; `none`/`error` at most 1s). **Off by default** — it would let a deactivation/role change lag by that long on SSR pages (the API still re-checks every call). Concurrent identical lookups are always coalesced. | _unset (off)_ |
+
+## 14. Learner progress batching (scalability Phase F) — kill switch
+
+| Var | Read by | Purpose | Default |
+|---|---|---|---|
+| `PROGRESS_BATCHED` | API | `false`/`0`/`off`/`no` switches the learner-progress readers (course progress, the completion rule inside the marking transaction, the outline unlock map and the material-download unlock check) back to the per-unit `hasLearnerPassedUnit` helper (~2 queries per unit). The default batched path (`getPassedLessonIdsForLearnerCourse`, 2–3 queries per course) is proven result-identical by `apps/api/src/__tests__/perf-f/progress-equivalence.test.ts`. Read per call; nothing is cached, so deactivation/allocation/role rules are unaffected. | _unset (on)_ |

@@ -1,9 +1,9 @@
 import * as schema from '@db/schema';
 
 import { and, db, desc, eq, sql, type DbOrTxClient } from '@db/drizzle';
-import { isNonGatingUnit, isPassingResult } from '@cio/utils/constants';
+import { isNonGatingUnit, isPassingResult, isProgressBatched } from '@cio/utils/constants';
 import { getOrderedUnitsForCourse } from '../gating';
-import { hasLearnerPassedUnit } from '../coursework';
+import { getPassedLessonIdsForLearnerCourse, hasLearnerPassedUnit } from '../coursework';
 
 // PearlLMS Phase 5 Step 2 — completion RULE, idempotent record, and backfill (docs/PROGRESS-MODEL.md §1-2).
 // The rule is the ONE authority: completion = every NON-EXEMPT unit of the course has a passing latest
@@ -34,6 +34,16 @@ export async function isCourseComplete(
   const units = await getOrderedUnitsForCourse(courseId, client);
   const required = units.filter((u) => !isNonGatingUnit(u));
   if (required.length === 0) return false;
+  if (isProgressBatched()) {
+    // One batched read on the SAME `client` (the recordResult tx), so the just-recorded Pass is visible.
+    const passed = await getPassedLessonIdsForLearnerCourse(
+      learnerId,
+      courseId,
+      client,
+      required.map((u) => u.lessonId)
+    );
+    return required.every((u) => passed.has(u.lessonId));
+  }
   for (const u of required) {
     if (!(await hasLearnerPassedUnit(learnerId, u.lessonId, client))) return false;
   }
