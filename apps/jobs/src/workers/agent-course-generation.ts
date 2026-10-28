@@ -53,17 +53,26 @@ worker.on('failed', async (job, err) => {
 
   const data = job.data as { runId?: string; organizationId?: string };
 
-  await recordDeadLetterJob({
-    organizationId: data?.organizationId ?? null,
-    domain: 'agent-course-generation',
-    runId: data?.runId ?? null,
-    queueName: QUEUE_NAMES.agentCourseGeneration,
-    jobName: job.name,
-    bullmqJobId: job.id ?? null,
-    payload: job.data as Record<string, unknown>,
-    error: { code: 'WORKER_EXHAUSTED_RETRIES', message: errorMessage(err), stack: err.stack },
-    attempts: job.attemptsMade
-  });
+  // A failed dead-letter write must not become an unhandled rejection (the process exits on those); log it instead.
+  try {
+    await recordDeadLetterJob({
+      organizationId: data?.organizationId ?? null,
+      domain: 'agent-course-generation',
+      runId: data?.runId ?? null,
+      queueName: QUEUE_NAMES.agentCourseGeneration,
+      jobName: job.name,
+      bullmqJobId: job.id ?? null,
+      payload: job.data as Record<string, unknown>,
+      error: { code: 'WORKER_EXHAUSTED_RETRIES', message: errorMessage(err), stack: err.stack },
+      attempts: job.attemptsMade
+    });
+  } catch (dlqError) {
+    log.error('dead-letter-record-failed', {
+      jobName: job.name,
+      bullmqJobId: job.id,
+      error: errorMessage(dlqError)
+    });
+  }
 });
 
 worker.on('ready', () =>

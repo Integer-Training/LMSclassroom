@@ -6,12 +6,12 @@ import { zValidator } from '@hono/zod-validator';
 import { createRateLimiter } from '@api/middlewares/rate-limiter';
 import { DEFAULT_WINDOW_MS } from '@api/constants/rate-limiter';
 import { publicApiCors } from '@api/middlewares/cors';
+import { extractClientIp } from '@api/utils/redis/key-generators';
 
 const widgetPayloadIpLimiter = createRateLimiter({
   maxRequests: 100,
   windowMs: DEFAULT_WINDOW_MS,
-  keyGenerator: (c) =>
-    `widget_payload_ip:${c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown'}`
+  keyGenerator: (c) => `widget_payload_ip:${extractClientIp(c)}`
 });
 
 const widgetPayloadKeyLimiter = createRateLimiter({

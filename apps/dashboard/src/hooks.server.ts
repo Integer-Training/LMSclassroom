@@ -153,7 +153,6 @@ const handlePagesRoutes: Handle = async ({ event, resolve }) => {
   }
 
   if (!event?.locals?.user && !hasCioCookie) {
-    console.log('no user and no cio cookie, redirecting to login');
     const shouldAddRedirectParam = !pathname.includes(ROUTE.LOGOUT);
     const fullPath = pathname + event.url.search;
     const redirectPath = shouldAddRedirectParam

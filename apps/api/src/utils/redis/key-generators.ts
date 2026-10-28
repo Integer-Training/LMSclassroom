@@ -15,32 +15,25 @@ function normalizeIp(value: string | null | undefined): string | null {
 }
 
 /**
- * Extract real client IP address considering various proxy headers
+ * Extract real client IP address.
+ *
+ * Deployment is Caddy -> dashboard (SSR proxy) -> api, with no Cloudflare in front. Caddy overwrites
+ * X-Forwarded-For with the real peer address, so its first hop is the visitor. `cf-connecting-ip` and
+ * `x-real-ip` are plain client-supplied headers on this path (attacker-spoofable), so they are ignored: trusting
+ * them let anyone bypass the per-IP limits. Revisit if a CDN / load balancer is ever added in front.
+ *
+ * Priority order:
+ * 1. First X-Forwarded-For hop (set by Caddy)
+ * 2. Socket address (direct connections, local dev)
  */
 export const extractClientIp = (c: Context): string => {
-  // Priority order (most trusted first):
-  // 1. CF-Connecting-IP (Cloudflare)
-  // 2. X-Real-IP (nginx)
-  // 3. X-Forwarded-For (standard, but can be spoofed)
-  // 4. Connection IP (least reliable)
-
-  const cfConnectingIp = normalizeIp(c.req.header('cf-connecting-ip'));
-  const realIp = normalizeIp(c.req.header('x-real-ip'));
   const forwardedFor = c.req.header('x-forwarded-for');
   const connInfo = getConnInfo(c);
   const remoteAddress = normalizeIp(connInfo.remote.address);
 
-  if (cfConnectingIp) {
-    return cfConnectingIp;
-  }
-
-  if (realIp) {
-    return realIp;
-  }
-
   if (forwardedFor) {
     // x-forwarded-for can contain multiple IPs: "client, proxy1, proxy2"
-    // The first IP is usually the original client
+    // The first IP is the original client as seen by Caddy
     return normalizeIp(forwardedFor.split(',')[0]) ?? 'unknown';
   }
 

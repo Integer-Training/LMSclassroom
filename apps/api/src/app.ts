@@ -88,10 +88,17 @@ function recordApiError(c: Context, err: unknown, httpStatus: number, severity: 
   }
 }
 
+const accessLogger = logger();
+
 // Create Hono app with chaining for RPC support
 export const app = new Hono()
   // Middleware
-  .use('*', logger())
+  // Skip the docker healthcheck (`/`, every 10s) and `/health` so the access log is not flooded with probes.
+  .use('*', async (c, next) => {
+    if (c.req.path === '/' || c.req.path === '/health') return next();
+
+    return accessLogger(c, next);
+  })
   // HP/SA-5 — assign a correlation id first so every downstream log line + error response can reference it.
   .use('*', correlationId())
   .use('*', prettyJSON())

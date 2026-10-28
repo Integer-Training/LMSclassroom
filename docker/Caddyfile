@@ -18,5 +18,10 @@
 		-Server
 	}
 
-	reverse_proxy dashboard:3082
+	# Never forward client-supplied real-IP headers: no Cloudflare is in front, so they are spoofable and the api
+	# rate limiters key on X-Forwarded-For (which Caddy sets itself) instead.
+	reverse_proxy dashboard:3082 {
+		header_up -CF-Connecting-IP
+		header_up -X-Real-IP
+	}
 }

@@ -14,7 +14,6 @@ export async function preloadVerifiedCustomDomainOriginsRegistry(): Promise<void
 }
 
 export function resolveTrustedBrowserOriginForCors(origin: string): string | undefined {
-  console.log('check origin', origin);
   return resolveTrustedBrowserOrigin(origin, staticTrustedOriginEntries);
 }
 

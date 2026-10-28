@@ -2,7 +2,6 @@ import type { Cookies } from '@sveltejs/kit';
 import { authServerClient } from './server';
 import { classroomio } from '$lib/utils/services/api';
 import { getCioCookieString } from '$lib/utils/functions/cookies';
-import { getRequestBaseUrl } from '$lib/utils/services/api';
 import { getActor } from './actor';
 
 export const getSessionData = async (cookies: Cookies): Promise<App.Locals | null> => {
@@ -12,7 +11,6 @@ export const getSessionData = async (cookies: Cookies): Promise<App.Locals | nul
     if (!cioCookies) return null;
 
     const locals = await getThroughAuthClient(cioCookies);
-    console.log('has locals', !!locals);
     if (!locals) return null;
 
     // This will always be true because if we don't have classroomio cookies, we won't be able to this line of code.
@@ -40,8 +38,6 @@ export async function getThroughTrpc(allCookies: string) {
 }
 
 export async function getThroughAuthClient(allCookies: string) {
-  const baseURL = getRequestBaseUrl();
-  console.log('baseURL', baseURL);
   const session = await authServerClient.getSession({
     fetchOptions: {
       headers: {

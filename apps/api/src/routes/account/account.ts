@@ -29,9 +29,7 @@ export const accountRouter = new Hono()
     const user = c.get('user')!;
 
     try {
-      console.time('accountRouter');
       const accountData = await getAccountData(user.id);
-      console.timeEnd('accountRouter');
 
       return c.json(
         {

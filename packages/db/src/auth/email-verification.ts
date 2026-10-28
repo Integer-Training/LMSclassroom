@@ -69,7 +69,6 @@ async function sendOrgAwareVerifyEmail(options: {
  */
 export const sendVerificationEmail = async (options: EmailVerificationOptions) => {
   const { user, url } = options;
-  console.log('\nsendVerificationEmail', options);
 
   // The purpose of this is to prevent verification email trigger from better-auth because we already have a flow in the UI for triggering this email.
   if (!url.includes('trigger=app') && !url.includes('trigger%3Dapp')) {
@@ -91,7 +90,6 @@ export const sendVerificationEmail = async (options: EmailVerificationOptions) =
  */
 export const sendChangeEmailConfirmation = async (options: ChangeEmailConfirmationOptions) => {
   const { user, newEmail, url } = options;
-  console.log('\nsendChangeEmailConfirmation', options);
 
   await sendOrgAwareVerifyEmail({
     to: user.email,

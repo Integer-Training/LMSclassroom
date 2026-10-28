@@ -5,6 +5,10 @@ import { orgMemberMiddleware } from '@api/middlewares/org-member';
 import { orgAdminMiddleware } from '@api/middlewares/org-admin';
 import { requireAdminOrApiKey } from '@api/middlewares/guards';
 import { b64EnvelopeRewrite } from '@api/middlewares/b64-envelope';
+import { createRateLimiter } from '@api/middlewares/rate-limiter';
+import { agentChatKeyGenerator, agentUploadKeyGenerator } from '@api/utils/redis/key-generators';
+import type { MiddlewareHandler } from 'hono';
+import { every } from 'hono/combine';
 import { handleError, AppError } from '@api/utils/errors';
 import { MAX_AGENT_DOCUMENT_SIZE } from '@api/constants/upload';
 import { zValidator } from '@hono/zod-validator';
@@ -81,6 +85,36 @@ import { summarizeConversation } from '@cio/core/services/agent/summarize';
 import { agentHistoryRouter } from './history';
 import { agentRunsRouter } from './runs';
 
+// Per-user caps on the paid/expensive AI endpoints: a short burst limit plus a daily ceiling. Both are checked, so a
+// script cannot drain provider credit; normal tutoring use is far below either.
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function limitPerMinuteAndDay(
+  keyGenerator: (c: Parameters<MiddlewareHandler>[0]) => string,
+  messages: { minute: string; day: string }
+): MiddlewareHandler {
+  const perMinute = createRateLimiter({ windowMs: 60 * 1000, maxRequests: 10, message: messages.minute, keyGenerator });
+  const perDay = createRateLimiter({
+    windowMs: DAY_MS,
+    maxRequests: 200,
+    message: messages.day,
+    keyGenerator: (c) => `${keyGenerator(c)}:day`
+  });
+
+  // `every` runs both and short-circuits on the first 429 response.
+  return every(perMinute, perDay);
+}
+
+export const agentChatLimit = limitPerMinuteAndDay(agentChatKeyGenerator, {
+  minute: 'Too many AI requests. Please slow down.',
+  day: 'Daily AI request limit reached. Please try again tomorrow.'
+});
+
+export const agentUploadLimit = limitPerMinuteAndDay(agentUploadKeyGenerator, {
+  minute: 'Too many uploads. Please slow down.',
+  day: 'Daily upload limit reached. Please try again tomorrow.'
+});
+
 const agentCoreRouter = new Hono()
   .get('/status', authMiddleware, orgMemberMiddleware, zValidator('query', ZAgentStatusQuery), async (c) => {
     try {
@@ -122,7 +156,7 @@ const agentCoreRouter = new Hono()
       return handleError(c, error, 'Failed to get agent status');
     }
   })
-  .post('/upload', authMiddleware, orgMemberMiddleware, async (c) => {
+  .post('/upload', authMiddleware, orgMemberMiddleware, agentUploadLimit, async (c) => {
     try {
       const user = c.get('user')!;
       const orgId = c.req.header('cio-org-id')!;
@@ -384,7 +418,7 @@ const agentCoreRouter = new Hono()
       return handleError(c, error, 'Failed to summarize conversation');
     }
   })
-  .post('/chat', authMiddleware, orgMemberMiddleware, zValidator('json', ZAgentChatBody), async (c) => {
+  .post('/chat', authMiddleware, orgMemberMiddleware, agentChatLimit, zValidator('json', ZAgentChatBody), async (c) => {
     const user = c.get('user')!;
     const orgId = c.req.header('cio-org-id')!;
 
@@ -606,54 +640,60 @@ const agentCoreRouter = new Hono()
           completedStepCount += 1;
         },
         onFinish: async ({ totalUsage, finishReason: resultFinishReason, steps }) => {
-          completedStepCount = steps.length;
-          finishReason = resultFinishReason;
-          const durationMs = Date.now() - startTime;
-          const inputTokens = totalUsage?.inputTokens ?? 0;
-          const outputTokens = totalUsage?.outputTokens ?? 0;
+          // Runs after the response stream is already sent, outside the request's try/catch: an uncaught throw here
+          // (usage write, DB blip) would surface as an unhandled rejection. Log it and move on.
+          try {
+            completedStepCount = steps.length;
+            finishReason = resultFinishReason;
+            const durationMs = Date.now() - startTime;
+            const inputTokens = totalUsage?.inputTokens ?? 0;
+            const outputTokens = totalUsage?.outputTokens ?? 0;
 
-          // Cache hit/miss visibility. If cacheRead stays 0 across repeated
-          // turns of the same conversation, a silent invalidator is leaking
-          // into the cached prefix — audit system prompt and tool definitions.
-          if (isAnthropic) {
-            const details = totalUsage?.inputTokenDetails;
-            const cacheRead = details?.cacheReadTokens ?? 0;
-            const cacheWrite = details?.cacheWriteTokens ?? 0;
-            const uncached = details?.noCacheTokens ?? inputTokens;
-            const total = uncached + cacheRead + cacheWrite;
-            const hitRate = total > 0 ? Math.round((cacheRead / total) * 100) : 0;
-            console.log(
-              `[agent.chat] cache hit=${hitRate}% read=${cacheRead} write=${cacheWrite} uncached=${uncached} output=${outputTokens}`
-            );
-          }
+            // Cache hit/miss visibility. If cacheRead stays 0 across repeated
+            // turns of the same conversation, a silent invalidator is leaking
+            // into the cached prefix — audit system prompt and tool definitions.
+            if (isAnthropic) {
+              const details = totalUsage?.inputTokenDetails;
+              const cacheRead = details?.cacheReadTokens ?? 0;
+              const cacheWrite = details?.cacheWriteTokens ?? 0;
+              const uncached = details?.noCacheTokens ?? inputTokens;
+              const total = uncached + cacheRead + cacheWrite;
+              const hitRate = total > 0 ? Math.round((cacheRead / total) * 100) : 0;
+              console.log(
+                `[agent.chat] cache hit=${hitRate}% read=${cacheRead} write=${cacheWrite} uncached=${uncached} output=${outputTokens}`
+              );
+            }
 
-          if (totalUsage) {
-            await recordTokenUsage(
+            if (totalUsage) {
+              await recordTokenUsage(
+                orgId,
+                user.id,
+                courseId,
+                {
+                  promptTokens: inputTokens,
+                  completionTokens: outputTokens,
+                  totalTokens: inputTokens + outputTokens
+                },
+                providerConfig.model || providerConfig.provider
+              );
+            }
+
+            if (role === AgentRole.STUDENT) {
+              await incrementStudentTutorCount(orgId, user.id, courseId);
+            }
+
+            trackAgentEvent(AgentEvent.CHAT_COMPLETED, {
               orgId,
-              user.id,
+              userId: user.id,
               courseId,
-              {
-                promptTokens: inputTokens,
-                completionTokens: outputTokens,
-                totalTokens: inputTokens + outputTokens
-              },
-              providerConfig.model || providerConfig.provider
-            );
+              inputTokens,
+              outputTokens,
+              model: providerConfig.model || providerConfig.provider,
+              durationMs
+            });
+          } catch (onFinishError) {
+            console.error('[agent.chat] onFinish failed:', onFinishError);
           }
-
-          if (role === AgentRole.STUDENT) {
-            await incrementStudentTutorCount(orgId, user.id, courseId);
-          }
-
-          trackAgentEvent(AgentEvent.CHAT_COMPLETED, {
-            orgId,
-            userId: user.id,
-            courseId,
-            inputTokens,
-            outputTokens,
-            model: providerConfig.model || providerConfig.provider,
-            durationMs
-          });
         }
       });
 

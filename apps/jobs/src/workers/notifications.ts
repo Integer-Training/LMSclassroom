@@ -73,17 +73,26 @@ worker.on('failed', async (job, err) => {
   const isFinalAttempt = job.attemptsMade >= (job.opts.attempts ?? 1);
   if (!isFinalAttempt) return;
 
-  await recordDeadLetterJob({
-    organizationId: null,
-    domain: 'notifications',
-    runId: null,
-    queueName: QUEUE_NAMES.notifications,
-    jobName: job.name,
-    bullmqJobId: job.id ?? null,
-    payload: job.data as Record<string, unknown>,
-    error: { code: 'WORKER_EXHAUSTED_RETRIES', message: errorMessage(err), stack: err.stack },
-    attempts: job.attemptsMade
-  });
+  // A failed dead-letter write must not become an unhandled rejection (the process exits on those); log it instead.
+  try {
+    await recordDeadLetterJob({
+      organizationId: null,
+      domain: 'notifications',
+      runId: null,
+      queueName: QUEUE_NAMES.notifications,
+      jobName: job.name,
+      bullmqJobId: job.id ?? null,
+      payload: job.data as Record<string, unknown>,
+      error: { code: 'WORKER_EXHAUSTED_RETRIES', message: errorMessage(err), stack: err.stack },
+      attempts: job.attemptsMade
+    });
+  } catch (dlqError) {
+    log.error('dead-letter-record-failed', {
+      jobName: job.name,
+      bullmqJobId: job.id,
+      error: errorMessage(dlqError)
+    });
+  }
 });
 
 worker.on('ready', () => log.info('notifications-worker-ready'));

@@ -25,9 +25,14 @@ async function startServer() {
   // Connect to Redis (non-blocking: API starts even if Redis fails)
   await connectRedis();
 
-  preloadVerifiedCustomDomainOriginsRegistry().then(() => {
-    console.log('Verified custom domain origins preloaded');
-  });
+  // Best-effort warm-up: a DB blip here must not become an unhandled rejection (the process exits on those).
+  preloadVerifiedCustomDomainOriginsRegistry()
+    .then(() => {
+      console.log('Verified custom domain origins preloaded');
+    })
+    .catch((error) => {
+      console.error('Failed to preload verified custom domain origins:', error);
+    });
 
   serve({ fetch: app.fetch, port: API_PORT });
 

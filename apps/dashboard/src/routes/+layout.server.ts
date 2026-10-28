@@ -24,12 +24,9 @@ interface LoadOutput {
 }
 
 export const load = async ({ url, cookies, request, locals }): Promise<LoadOutput> => {
-  const loadStart = performance.now();
   const debugPlay = cookies.get('debugPlay');
 
-  const orgSiteInfoStart = performance.now();
   const orgSiteInfo = await getOrgSiteInfo(url, cookies);
-  const orgSiteInfoMs = Math.round((performance.now() - orgSiteInfoStart) * 100) / 100;
 
   if (orgSiteInfo.isOrgSite && orgSiteInfo.org?.siteName) {
     const warmUrl = resolveOrgSiteOgWarmUrl({
@@ -57,11 +54,6 @@ export const load = async ({ url, cookies, request, locals }): Promise<LoadOutpu
     locals,
     uploadLimits: getUploadLimits()
   };
-
-  const loadMs = Math.round((performance.now() - loadStart) * 100) / 100;
-  console.log(
-    `[+layout.server] load: ${loadMs}ms (getOrgSiteInfo: ${orgSiteInfoMs}ms) | PUBLIC_IS_SELFHOSTED=${PUBLIC_IS_SELFHOSTED}`
-  );
 
   // If it isn't a registered dashboard domain and also not a valid sub domain.
   // if (!APP_SUBDOMAINS.includes(orgSiteInfo.subdomain) && !dev && !orgSiteInfo.isOrgSite) {
