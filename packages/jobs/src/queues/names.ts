@@ -50,6 +50,8 @@ export const JOB_NAMES = {
     mediaJobReap: 'media-job-reap',
     analyticsDailyRollup: 'analytics-daily-rollup',
     assetStorageCleanup: 'asset-storage-cleanup',
-    systemEventPurge: 'system-event-purge'
+    systemEventPurge: 'system-event-purge',
+    complianceExpiryScan: 'compliance-expiry-scan',
+    complianceReminderScan: 'compliance-reminder-scan'
   }
 } as const;

@@ -19,6 +19,7 @@ import {
 } from '@cio/jobs';
 
 import { logRedisUnavailableOnce } from '@cio/core/utils/redis/redis';
+import { enqueueFailureToAppError } from '@api/utils/queue-errors';
 import type { TMediaJob } from '@db/types';
 
 export interface StartTranscriptionOnlyMediaJobInput {
@@ -99,11 +100,7 @@ export async function startTranscriptionOnlyMediaJob(input: StartTranscriptionOn
       }
     });
 
-    throw new AppError(
-      error instanceof Error ? error : 'Failed to enqueue transcription job',
-      ErrorCodes.INTERNAL_ERROR,
-      500
-    );
+    throw enqueueFailureToAppError(error, 'Failed to enqueue transcription job');
   }
 }
 
@@ -178,11 +175,7 @@ export async function startThumbnailRegenJob(input: StartThumbnailRegenInput): P
       }
     });
 
-    throw new AppError(
-      error instanceof Error ? error : 'Failed to enqueue thumbnail job',
-      ErrorCodes.INTERNAL_ERROR,
-      500
-    );
+    throw enqueueFailureToAppError(error, 'Failed to enqueue thumbnail job');
   }
 }
 
@@ -249,7 +242,7 @@ export async function startMediaJob(input: StartMediaJobInput): Promise<TMediaJo
       }
     });
 
-    throw new AppError(error instanceof Error ? error : 'Failed to enqueue media job', ErrorCodes.INTERNAL_ERROR, 500);
+    throw enqueueFailureToAppError(error, 'Failed to enqueue media job');
   }
 }
 

@@ -7,6 +7,7 @@ import {
 import { DASH_ANALYTICS_TTL_SECONDS, dashAnalyticsKey } from '@api/utils/redis/key-generators';
 import { env } from '@cio/core/config/env';
 import { logRedisUnavailableOnce, redis } from '@cio/core/utils/redis/redis';
+import { REDIS_CACHE_TIMEOUT_MS, withTimeout } from '@cio/core/utils/with-timeout';
 
 export type LandingStats = {
   totals: {
@@ -51,7 +52,7 @@ function computeRange(days: number): { fromDate: string; toDate: string } {
 async function readCache<T>(key: string): Promise<T | null> {
   if (!env.REDIS_URL) return null;
   try {
-    const raw = await redis.get(key);
+    const raw = await withTimeout(redis.get(key), REDIS_CACHE_TIMEOUT_MS, 'analytics cache read');
     if (!raw) return null;
     return JSON.parse(raw) as T;
   } catch (error) {
@@ -63,7 +64,11 @@ async function readCache<T>(key: string): Promise<T | null> {
 async function writeCache(key: string, value: unknown): Promise<void> {
   if (!env.REDIS_URL) return;
   try {
-    await redis.setEx(key, DASH_ANALYTICS_TTL_SECONDS, JSON.stringify(value));
+    await withTimeout(
+      redis.setEx(key, DASH_ANALYTICS_TTL_SECONDS, JSON.stringify(value)),
+      REDIS_CACHE_TIMEOUT_MS,
+      'analytics cache write'
+    );
   } catch (error) {
     logRedisUnavailableOnce('Redis set failed for analytics cache, continuing', error);
   }

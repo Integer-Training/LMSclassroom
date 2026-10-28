@@ -63,16 +63,19 @@ export const handleError: HandleServerError = ({ error, event, status, message }
     stack: err?.stack
   });
 
-  reportToApi(event, {
-    eventType: 'client.error',
-    severity: 'error',
-    message: err?.message ?? message,
-    stack: err?.stack,
-    path: event.url.pathname,
-    method: event.request.method,
-    httpStatus: status,
-    correlationId
-  });
+  // 401/403/404 are routine (expired link, wrong URL, no access) and would only flood the event log.
+  if (status !== 401 && status !== 403 && status !== 404) {
+    reportToApi(event, {
+      eventType: 'client.error',
+      severity: 'error',
+      message: err?.message ?? message,
+      stack: err?.stack,
+      path: event.url.pathname,
+      method: event.request.method,
+      httpStatus: status,
+      correlationId
+    });
+  }
 
   return {
     message: 'Something went wrong. Please try again, and quote this reference if it persists.',

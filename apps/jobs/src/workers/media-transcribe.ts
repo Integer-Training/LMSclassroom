@@ -8,6 +8,7 @@ import { JOB_NAMES, QUEUE_NAMES, createRedisConnection } from '@cio/jobs';
 import { JobCanceledError, errorMessage } from '../utils/cancel';
 import { env } from '../config/env';
 import { log } from '../utils/logger';
+import { registerShutdownTask } from '../utils/shutdown';
 import { processTranscribeAudio } from '../processors/media';
 
 const concurrency = Number.parseInt(env.TRANSCRIBE_WORKER_CONCURRENCY ?? '1', 10) || 1;
@@ -84,12 +85,7 @@ worker.on('failed', async (job, err) => {
 worker.on('ready', () => log.info('transcribe-worker-ready', { concurrency, queue: QUEUE_NAMES.mediaTranscribe }));
 worker.on('error', (err) => log.error('transcribe-worker-error', { error: errorMessage(err) }));
 
-const shutdown = async (signal: string) => {
-  log.info('transcribe-worker-shutdown', { signal });
-  await worker.close();
+registerShutdownTask('media-transcribe', async (force) => {
+  await worker.close(force);
   await connection.quit();
-  process.exit(0);
-};
-
-process.on('SIGTERM', () => void shutdown('SIGTERM'));
-process.on('SIGINT', () => void shutdown('SIGINT'));
+});

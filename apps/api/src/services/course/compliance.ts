@@ -3,9 +3,7 @@ import type { Actor } from '@cio/db/actor';
 import { isAllocatedTutor } from '@api/middlewares/guards';
 import {
   createCourseCertificateIssue,
-  createCourseCompletionNotificationEvent,
   createCourseCompletionRecord,
-  createCourseCompletionRecordIfAbsent,
   createCourseCompletionRecordsBulk,
   createCourseCompletionRecordsIfAbsentBulk,
   getCourseComplianceHistoryRows,
@@ -13,9 +11,6 @@ import {
   getLatestComplianceRecordsByProfiles,
   getOrgComplianceLearnerRows,
   getStudentCourseMembersForCompliance,
-  listComplianceRecordsReadyForExpiry,
-  listLatestComplianceRecordsForReminderScan,
-  updateCourseCertificateIssueStatusByRecordId,
   updateCourseCompletionRecord,
   updateCourseCompletionRecordsByIds,
   type OrgComplianceLearnerRow
@@ -45,8 +40,6 @@ type ComplianceStatus =
   | 'non_compliant'
   | 'waived';
 
-type ComplianceSettings = NonNullable<Awaited<ReturnType<typeof getComplianceCourseOrThrow>>['compliance']>;
-
 function ensureFutureOrPresentIsoDate(dateIso: string, field: string) {
   const date = new Date(dateIso);
   if (Number.isNaN(date.getTime())) {
@@ -54,19 +47,10 @@ function ensureFutureOrPresentIsoDate(dateIso: string, field: string) {
   }
 }
 
-function getReminderEventType(daysUntilDue: number) {
-  return `reminder_${daysUntilDue}d`;
-}
-
 function addMonths(isoDate: string, months: number) {
   const date = new Date(isoDate);
   date.setUTCMonth(date.getUTCMonth() + months);
   return date.toISOString();
-}
-
-function getWholeDaysUntil(startDate: Date, endDate: Date) {
-  const millisecondsPerDay = 24 * 60 * 60 * 1000;
-  return Math.ceil((endDate.getTime() - startDate.getTime()) / millisecondsPerDay);
 }
 
 function getStatusCounts(records: Array<{ record: TCourseCompletionRecord | null }>) {
@@ -614,123 +598,9 @@ export async function waiveCourseCompliance(courseId: string, actorProfileId: st
   };
 }
 
-export async function runComplianceExpiryCheck() {
-  const nowIso = new Date().toISOString();
-  const records = await listComplianceRecordsReadyForExpiry(nowIso);
-
-  let processedCount = 0;
-  let createdCycleCount = 0;
-  let skippedCount = 0;
-
-  for (const record of records) {
-    if (!record.validUntil) {
-      skippedCount += 1;
-      continue;
-    }
-
-    const nextDueDate = record.validUntil;
-
-    await db.transaction(async (tx) => {
-      await updateCourseCompletionRecord(
-        record.id,
-        {
-          expiredAt: nowIso
-        },
-        tx
-      );
-
-      await updateCourseCertificateIssueStatusByRecordId(record.id, 'expired', tx);
-
-      // ON CONFLICT DO NOTHING (null = next cycle already exists). A caught unique-violation here would leave
-      // the transaction aborted and roll back the expiry/certificate updates above without any error.
-      const created = await createCourseCompletionRecordIfAbsent(
-        {
-          courseId: record.courseId,
-          groupMemberId: record.groupMemberId,
-          profileId: record.profileId,
-          cycleNumber: record.cycleNumber + 1,
-          status: 'not_started',
-          dueDate: nextDueDate,
-          attempts: 0,
-          timeSpentMinutes: 0
-        },
-        tx
-      );
-
-      processedCount += 1;
-      if (created) {
-        createdCycleCount += 1;
-      } else {
-        skippedCount += 1;
-      }
-    });
-  }
-
-  return {
-    processedCount,
-    createdCycleCount,
-    skippedCount
-  };
-}
-
-export async function runComplianceReminderScan() {
-  const now = new Date();
-  const rows = await listLatestComplianceRecordsForReminderScan();
-
-  let scannedCount = 0;
-  let statusUpdatedCount = 0;
-  let reminderEventCount = 0;
-
-  for (const row of rows) {
-    scannedCount += 1;
-
-    const compliance = row.course.compliance as ComplianceSettings | null;
-    if (!compliance) {
-      continue;
-    }
-
-    if (row.record.status === 'waived') {
-      continue;
-    }
-
-    const dueDate = new Date(row.record.dueDate);
-    if (Number.isNaN(dueDate.getTime())) {
-      continue;
-    }
-
-    const daysUntilDue = getWholeDaysUntil(now, dueDate);
-    const gracePeriodDays = compliance.gracePeriodDays ?? 0;
-    let nextStatus: ComplianceStatus | null = null;
-
-    if (daysUntilDue < 0) {
-      const gracePeriodEndsAt = new Date(dueDate.getTime() + gracePeriodDays * 24 * 60 * 60 * 1000);
-      nextStatus = gracePeriodDays > 0 && now <= gracePeriodEndsAt ? 'in_grace_period' : 'non_compliant';
-    } else if ((compliance.reminderDaysBefore ?? []).includes(daysUntilDue)) {
-      nextStatus = 'expiring_soon';
-
-      const createdEvent = await createCourseCompletionNotificationEvent({
-        courseCompletionRecordId: row.record.id,
-        channel: 'email',
-        eventType: getReminderEventType(daysUntilDue)
-      });
-
-      if (createdEvent) {
-        reminderEventCount += 1;
-      }
-    }
-
-    if (nextStatus && row.record.status !== nextStatus) {
-      await updateCourseCompletionRecord(row.record.id, { status: nextStatus });
-      statusUpdatedCount += 1;
-    }
-  }
-
-  return {
-    scannedCount,
-    statusUpdatedCount,
-    reminderEventCount
-  };
-}
+// The expiry / reminder scans run in the jobs worker now (see @cio/core compliance/scans); re-exported so the
+// existing import path keeps working.
+export { runComplianceExpiryCheck, runComplianceReminderScan } from '@cio/core/services/compliance/scans';
 
 type OrgComplianceStatus = ComplianceStatus | 'no_record';
 

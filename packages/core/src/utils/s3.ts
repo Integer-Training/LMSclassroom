@@ -10,6 +10,7 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { getPresignS3Client, getS3Client, getStorageConfig } from '../config/storage';
 import { logRedisUnavailableOnce, redis } from './redis/redis';
+import { REDIS_CACHE_TIMEOUT_MS, withTimeout } from './with-timeout';
 
 export type GetSignedUrlParameters = Parameters<typeof getSignedUrl>;
 
@@ -68,7 +69,7 @@ export async function generateDownloadPresignedUrls(
 
   let cachedValues: (string | null)[] | null = null;
   try {
-    cachedValues = await redis.mGet(cacheKeys);
+    cachedValues = await withTimeout(redis.mGet(cacheKeys), REDIS_CACHE_TIMEOUT_MS, 'presign cache read');
   } catch (error) {
     logRedisUnavailableOnce('Redis cache unavailable for presigned URLs, falling back to S3', error);
   }
@@ -119,7 +120,7 @@ export async function generateDownloadPresignedUrls(
         pipeline.setEx(cacheKey, PRESIGN_CACHE_TTL_SECONDS, result.presignedUrl);
       }
     });
-    await pipeline.exec();
+    await withTimeout(pipeline.exec(), REDIS_CACHE_TIMEOUT_MS, 'presign cache write');
   } catch (error) {
     logRedisUnavailableOnce('Redis cache write unavailable for presigned URLs, continuing without cache', error);
     // URLs are already in signedUrls; cache write failure is non-fatal

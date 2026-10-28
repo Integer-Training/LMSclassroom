@@ -9,6 +9,7 @@ import { runAgentCourseGenerationJob } from '@cio/core';
 import { errorMessage } from '../utils/cancel';
 import { env } from '../config/env';
 import { log } from '../utils/logger';
+import { registerShutdownTask } from '../utils/shutdown';
 
 const concurrency = Number.parseInt(env.AGENT_COURSE_GENERATION_WORKER_CONCURRENCY ?? '1', 10) || 1;
 const connection = createRedisConnection();
@@ -80,12 +81,7 @@ worker.on('ready', () =>
 );
 worker.on('error', (err) => log.error('agent-course-generation-worker-error', { error: errorMessage(err) }));
 
-const shutdown = async (signal: string) => {
-  log.info('agent-course-generation-worker-shutdown', { signal });
-  await worker.close();
+registerShutdownTask('agent-course-generation', async (force) => {
+  await worker.close(force);
   await connection.quit();
-  process.exit(0);
-};
-
-process.on('SIGTERM', () => void shutdown('SIGTERM'));
-process.on('SIGINT', () => void shutdown('SIGINT'));
+});

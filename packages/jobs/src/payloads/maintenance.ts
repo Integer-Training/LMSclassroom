@@ -6,7 +6,9 @@ export const ZRetentionCompactPayload = z.object({
     .object({
       mediaJob: z.number().int().positive().optional(),
       jobStep: z.number().int().positive().optional(),
-      deadLetterJob: z.number().int().positive().optional()
+      deadLetterJob: z.number().int().positive().optional(),
+      notification: z.number().int().positive().optional(),
+      analyticsPageEvent: z.number().int().positive().optional()
     })
     .optional()
 });
@@ -31,6 +33,10 @@ export const ZAnalyticsDailyRollupPayload = z.object({
   daysAgo: z.number().int().positive().default(1)
 });
 export type TAnalyticsDailyRollupPayload = z.infer<typeof ZAnalyticsDailyRollupPayload>;
+
+/** Compliance scans take no input: they sweep every compliance course. */
+export const ZComplianceScanPayload = z.object({});
+export type TComplianceScanPayload = z.infer<typeof ZComplianceScanPayload>;
 
 export const ZMediaJobReapPayload = z.object({
   staleAfterMinutes: z.number().int().positive().default(30)

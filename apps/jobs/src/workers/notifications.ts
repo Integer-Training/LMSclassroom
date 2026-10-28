@@ -8,6 +8,7 @@ import { JOB_NAMES, QUEUE_NAMES, createRedisConnection } from '@cio/jobs';
 import { errorMessage } from '../utils/cancel';
 import { env } from '../config/env';
 import { log } from '../utils/logger';
+import { registerShutdownTask } from '../utils/shutdown';
 import {
   processNotifyCourseExercise,
   processNotifyCourseSessionUpdate,
@@ -50,7 +51,11 @@ async function registerSchedulers(): Promise<void> {
     await notificationsQueue.upsertJobScheduler(
       'session-reminder-scan-scheduler',
       { every: SESSION_REMINDER_SCAN_INTERVAL_MS },
-      { name: JOB_NAMES.notifications.sessionReminderScan, data: {} }
+      {
+        name: JOB_NAMES.notifications.sessionReminderScan,
+        data: {},
+        opts: { removeOnComplete: { count: 50 }, removeOnFail: { count: 200 } }
+      }
     );
     log.info('session-reminder-scan-scheduler-registered', { everyMs: SESSION_REMINDER_SCAN_INTERVAL_MS });
   } catch (err) {
@@ -98,14 +103,9 @@ worker.on('failed', async (job, err) => {
 worker.on('ready', () => log.info('notifications-worker-ready'));
 worker.on('error', (err) => log.error('notifications-worker-error', { error: errorMessage(err) }));
 
-const shutdown = async (signal: string) => {
-  log.info('notifications-worker-shutdown', { signal });
-  await worker.close();
+registerShutdownTask('notifications', async (force) => {
+  await worker.close(force);
   await notificationsQueue.close();
   await schedulerConnection.quit();
   await connection.quit();
-  process.exit(0);
-};
-
-process.on('SIGTERM', () => void shutdown('SIGTERM'));
-process.on('SIGINT', () => void shutdown('SIGINT'));
+});

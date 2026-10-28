@@ -17,13 +17,16 @@ const BROWSER_EVENT_TYPES = new Set(['client.error']);
 const SERVER_EVENT_TYPES = new Set(['client.error', 'api.error', 'auth.session_invalid_bounce']);
 const SEVERITIES = new Set(['info', 'warn', 'error']);
 
-// Hard per-IP throttle for untrusted browser callers (~30/min). Trusted SSR calls are skipped.
+// Hard per-IP throttle for untrusted browser callers (~30/min). Trusted dashboard-SSR calls are limited too (they
+// all arrive from the dashboard container, so one shared, much higher bucket) so a runaway SSR error loop cannot
+// flood the event log either.
+const TRUSTED_SSR_MAX_PER_MINUTE = 600;
 const clientLogRateLimit = createRateLimiter({
   windowMs: 60 * 1000,
-  maxRequests: 30,
+  maxRequests: (c) => (isTrustedServerApiKeyRequest(c) ? TRUSTED_SSR_MAX_PER_MINUTE : 30),
   message: 'Too many log events.',
-  keyGenerator: (c) => `log-client:ip:${extractClientIp(c)}`,
-  skip: (c) => isTrustedServerApiKeyRequest(c)
+  keyGenerator: (c) =>
+    isTrustedServerApiKeyRequest(c) ? 'log-client:dashboard-ssr' : `log-client:ip:${extractClientIp(c)}`
 });
 
 const str = (v: unknown, max: number): string | null => (typeof v === 'string' && v ? v.slice(0, max) : null);

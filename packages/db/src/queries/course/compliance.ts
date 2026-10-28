@@ -503,9 +503,47 @@ export async function updateCourseCertificateIssueStatusByRecordId(
   }
 }
 
-export async function listComplianceRecordsReadyForExpiry(nowIso: string): Promise<TCourseCompletionRecord[]> {
+/** Set the SAME certificate status on many records' certificate issues in one UPDATE ... IN (...) (chunked). */
+export async function updateCourseCertificateIssueStatusByRecordIds(
+  courseCompletionRecordIds: string[],
+  status: string,
+  dbClient: DbOrTxClient = db
+): Promise<number> {
+  if (courseCompletionRecordIds.length === 0) return 0;
   try {
-    return await db
+    let updated = 0;
+    for (let i = 0; i < courseCompletionRecordIds.length; i += BULK_CHUNK_SIZE) {
+      const rows = await dbClient
+        .update(schema.courseCertificateIssue)
+        .set({ status })
+        .where(
+          inArray(
+            schema.courseCertificateIssue.courseCompletionRecordId,
+            courseCompletionRecordIds.slice(i, i + BULK_CHUNK_SIZE)
+          )
+        )
+        .returning({ id: schema.courseCertificateIssue.id });
+      updated += rows.length;
+    }
+    return updated;
+  } catch (error) {
+    console.error('updateCourseCertificateIssueStatusByRecordIds error:', error);
+    throw new Error(
+      `Failed to update course certificate issue statuses: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
+}
+
+/**
+ * Records whose validity has lapsed and are not yet expired. `limit` bounds one batch for the chunked expiry scan
+ * (each processed record gets `expiredAt`, so it drops out of the next call).
+ */
+export async function listComplianceRecordsReadyForExpiry(
+  nowIso: string,
+  limit?: number
+): Promise<TCourseCompletionRecord[]> {
+  try {
+    const query = db
       .select({
         record: schema.courseCompletionRecord
       })
@@ -520,8 +558,9 @@ export async function listComplianceRecordsReadyForExpiry(nowIso: string): Promi
           sql`${schema.courseCompletionRecord.expiredAt} IS NULL`
         )
       )
-      .orderBy(asc(schema.courseCompletionRecord.validUntil))
-      .then((rows) => rows.map((row) => row.record));
+      .orderBy(asc(schema.courseCompletionRecord.validUntil));
+
+    return await (limit ? query.limit(limit) : query).then((rows) => rows.map((row) => row.record));
   } catch (error) {
     console.error('listComplianceRecordsReadyForExpiry error:', error);
     throw new Error(

@@ -15,8 +15,14 @@ import {
 import { isCourseTeamMemberOrOrgAdmin } from '@cio/db/queries/group';
 import { getCourseOrganizationId } from '@cio/db/queries/tag';
 import type { TAiAgentRun, TAiAgentRunEvent, TAiAgentRunStatus, TAiAgentRunStep } from '@cio/db/types';
-import { QUEUE_NAMES, enqueueAgentCourseGenerationRun, getQueue, isRedisConfigured } from '@cio/jobs';
-import { AppError } from '@api/utils/errors';
+import {
+  QUEUE_NAMES,
+  enqueueAgentCourseGenerationRun,
+  getQueue,
+  isQueueUnavailableError,
+  isRedisConfigured
+} from '@cio/jobs';
+import { AppError, ErrorCodes } from '@api/utils/errors';
 
 const ACTIVE_RUN_STATUSES = new Set<TAiAgentRunStatus>(['queued', 'running', 'waiting_for_input', 'paused']);
 
@@ -186,6 +192,10 @@ async function enqueueAgentRun(run: TAiAgentRun, reason: 'created' | 'resumed' |
       message: 'Failed to enqueue background course generation',
       payload: { reason, error: { code: 'AGENT_RUN_ENQUEUE_FAILED', message } }
     });
+
+    if (isQueueUnavailableError(error)) {
+      throw new AppError('Job queue unavailable', ErrorCodes.QUEUE_UNAVAILABLE, 503);
+    }
 
     throw new AppError(message, 'AGENT_RUN_ENQUEUE_FAILED', 500);
   }

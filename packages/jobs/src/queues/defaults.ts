@@ -15,13 +15,13 @@ export const QUEUE_DEFAULTS: Record<QueueName, JobsOptions> = {
     attempts: 3,
     backoff: { type: 'exponential', delay: 30_000 },
     removeOnComplete: { age: 86_400, count: 1_000 },
-    removeOnFail: { age: 7 * 86_400 }
+    removeOnFail: { age: 7 * 86_400, count: 1_000 }
   },
   [QUEUE_NAMES.mediaTranscribe]: {
     attempts: 4,
     backoff: { type: 'exponential', delay: 60_000 },
     removeOnComplete: { age: 86_400, count: 500 },
-    removeOnFail: { age: 14 * 86_400 }
+    removeOnFail: { age: 14 * 86_400, count: 1_000 }
   },
   [QUEUE_NAMES.emails]: {
     attempts: 5,
@@ -33,37 +33,37 @@ export const QUEUE_DEFAULTS: Record<QueueName, JobsOptions> = {
     attempts: 3,
     backoff: { type: 'exponential', delay: 5_000 },
     removeOnComplete: { age: 6 * 3_600, count: 5_000 },
-    removeOnFail: { age: 7 * 86_400 }
+    removeOnFail: { age: 7 * 86_400, count: 5_000 }
   },
   [QUEUE_NAMES.webhooks]: {
     attempts: 8,
     backoff: { type: 'exponential', delay: 30_000 },
     removeOnComplete: { age: 86_400, count: 5_000 },
-    removeOnFail: { age: 14 * 86_400 }
+    removeOnFail: { age: 14 * 86_400, count: 5_000 }
   },
   [QUEUE_NAMES.courseImports]: {
     attempts: 3,
     backoff: { type: 'exponential', delay: 30_000 },
     removeOnComplete: { age: 7 * 86_400, count: 500 },
-    removeOnFail: { age: 14 * 86_400 }
+    removeOnFail: { age: 14 * 86_400, count: 1_000 }
   },
   [QUEUE_NAMES.agentCourseGeneration]: {
     attempts: 3,
     backoff: { type: 'exponential', delay: 60_000 },
     removeOnComplete: { age: 7 * 86_400, count: 1_000 },
-    removeOnFail: { age: 14 * 86_400 }
+    removeOnFail: { age: 14 * 86_400, count: 1_000 }
   },
   [QUEUE_NAMES.onboardingBootstrap]: {
     attempts: 3,
     backoff: { type: 'exponential', delay: 30_000 },
     removeOnComplete: { age: 7 * 86_400, count: 500 },
-    removeOnFail: { age: 14 * 86_400 }
+    removeOnFail: { age: 14 * 86_400, count: 500 }
   },
   [QUEUE_NAMES.maintenance]: {
     attempts: 2,
     backoff: { type: 'exponential', delay: 60_000 },
     removeOnComplete: { age: 86_400, count: 100 },
-    removeOnFail: { age: 7 * 86_400 }
+    removeOnFail: { age: 7 * 86_400, count: 500 }
   }
 };
 

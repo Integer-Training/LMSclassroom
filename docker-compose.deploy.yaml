@@ -85,6 +85,13 @@ services:
       # Auth secrets — generate strong random values (openssl rand -hex 32); see docs/DEPLOY.md
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?generate a strong BETTER_AUTH_SECRET}
       PRIVATE_SERVER_KEY: ${PRIVATE_SERVER_KEY:?generate a strong PRIVATE_SERVER_KEY}
+      # Phase J tuning/flags: all optional, empty = built-in default (see docs/ENV.md).
+      SHUTDOWN_TIMEOUT: ${API_SHUTDOWN_TIMEOUT:-}
+      REPORT_STATEMENT_TIMEOUT_MS: ${REPORT_STATEMENT_TIMEOUT_MS:-}
+      SYSTEM_EVENT_THROTTLE_WINDOW_MS: ${SYSTEM_EVENT_THROTTLE_WINDOW_MS:-}
+      COHORT_GOAL_REMINDER_EMAILS_ENABLED: ${COHORT_GOAL_REMINDER_EMAILS_ENABLED:-}
+    # Let in-flight requests finish on redeploy: SHUTDOWN_TIMEOUT (25s drain) + pool close fits inside 60s.
+    stop_grace_period: 60s
     logging: *logging
     restart: unless-stopped
 
@@ -123,6 +130,9 @@ services:
       # presigned uploads/downloads (connect-src) and public media images (img/media-src) work.
       CSP_CONNECT_SRC_DOMAINS: ${CSP_CONNECT_SRC_DOMAINS:-}
       CSP_MEDIA_SRC_DOMAINS: ${CSP_MEDIA_SRC_DOMAINS:-}
+      # adapter-node: seconds to wait for in-flight requests after SIGTERM before exiting.
+      SHUTDOWN_TIMEOUT: '30'
+    stop_grace_period: 60s
     logging: *logging
     restart: unless-stopped
 
@@ -157,6 +167,20 @@ services:
       SMTP_SENDER: ${SMTP_SENDER:?}
       SMTP_REPLY_TO: ${SMTP_REPLY_TO:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Phase J flags: all optional, empty = built-in default (see docs/ENV.md). Each retention purge can be switched off.
+      SHUTDOWN_TIMEOUT: ${JOBS_SHUTDOWN_TIMEOUT:-}
+      FFMPEG_TIMEOUT_MS: ${FFMPEG_TIMEOUT_MS:-}
+      RETENTION_PURGES_ENABLED: ${RETENTION_PURGES_ENABLED:-}
+      RETENTION_SESSIONS_ENABLED: ${RETENTION_SESSIONS_ENABLED:-}
+      RETENTION_VERIFICATIONS_ENABLED: ${RETENTION_VERIFICATIONS_ENABLED:-}
+      RETENTION_NOTIFICATIONS_ENABLED: ${RETENTION_NOTIFICATIONS_ENABLED:-}
+      RETENTION_DEAD_LETTER_ENABLED: ${RETENTION_DEAD_LETTER_ENABLED:-}
+      RETENTION_ANALYTICS_EVENTS_ENABLED: ${RETENTION_ANALYTICS_EVENTS_ENABLED:-}
+      RETENTION_JOB_RECORDS_ENABLED: ${RETENTION_JOB_RECORDS_ENABLED:-}
+      COMPLIANCE_EXPIRY_SCAN_ENABLED: ${COMPLIANCE_EXPIRY_SCAN_ENABLED:-}
+      COMPLIANCE_REMINDER_SCAN_ENABLED: ${COMPLIANCE_REMINDER_SCAN_ENABLED:-}
+    # An ffmpeg/Whisper job can run for many minutes: give the workers time to finish (or hand back) on redeploy.
+    stop_grace_period: 300s
     logging: *logging
     restart: unless-stopped
 

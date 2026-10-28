@@ -8,6 +8,7 @@ import { JOB_NAMES, QUEUE_NAMES, createRedisConnection } from '@cio/jobs';
 import { errorMessage } from '../utils/cancel';
 import { env } from '../config/env';
 import { log } from '../utils/logger';
+import { registerShutdownTask } from '../utils/shutdown';
 import { processSendEmail } from '../processors/emails';
 
 const concurrency = Number.parseInt(env.EMAIL_WORKER_CONCURRENCY ?? '5', 10) || 5;
@@ -72,12 +73,7 @@ worker.on('failed', async (job, err) => {
 worker.on('ready', () => log.info('email-worker-ready', { concurrency, queue: QUEUE_NAMES.emails }));
 worker.on('error', (err) => log.error('email-worker-error', { error: errorMessage(err) }));
 
-const shutdown = async (signal: string) => {
-  log.info('email-worker-shutdown', { signal });
-  await worker.close();
+registerShutdownTask('emails', async (force) => {
+  await worker.close(force);
   await connection.quit();
-  process.exit(0);
-};
-
-process.on('SIGTERM', () => void shutdown('SIGTERM'));
-process.on('SIGINT', () => void shutdown('SIGINT'));
+});

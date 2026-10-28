@@ -788,3 +788,17 @@ export async function selectCountryBreakdown(orgId: string, fromDate: string, to
     throw new Error('Failed to select country breakdown');
   }
 }
+
+/** Latest UTC day (YYYY-MM-DD) already present in analytics_org_daily, or null when nothing was rolled up yet. */
+export async function selectLatestOrgDailyRollupDate(): Promise<string | null> {
+  try {
+    const [row] = await db
+      .select({ latest: sql<string | null>`max(${schema.analyticsOrgDaily.date})` })
+      .from(schema.analyticsOrgDaily);
+
+    return row?.latest ?? null;
+  } catch (error) {
+    console.error('selectLatestOrgDailyRollupDate error:', error);
+    throw new Error('Failed to read the latest analytics rollup date');
+  }
+}

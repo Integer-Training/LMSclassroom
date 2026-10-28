@@ -56,6 +56,55 @@ export function runInTransaction<T>(fn: (tx: TxClient) => Promise<T>): Promise<T
   return db.transaction(fn);
 }
 
+/**
+ * Run `fn` in a transaction whose statements are capped by `statement_timeout` (default 20s). For KNOWN heavy
+ * report reads only: the setting is transaction-local (`set_config(..., true)` == `SET LOCAL`), so it never leaks to
+ * other pooled sessions and nothing is changed on the shared role. A statement that exceeds it fails with
+ * SQLSTATE 57014 (query_canceled), which the caller's normal error path turns into a clean error.
+ */
+export function withStatementTimeout<T>(fn: (tx: TxClient) => Promise<T>, timeoutMs = 20_000): Promise<T> {
+  const ms = Math.max(1, Math.floor(timeoutMs));
+
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('statement_timeout', ${`${ms}ms`}, true)`);
+    return fn(tx);
+  });
+}
+
+/** Statement cap for the heavy report reads, in ms. `REPORT_STATEMENT_TIMEOUT_MS=0` turns the cap off. */
+function reportStatementTimeoutMs(): number {
+  const raw = process.env.REPORT_STATEMENT_TIMEOUT_MS;
+  if (raw === undefined || raw === '') return 20_000;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 20_000;
+}
+
+/**
+ * Wrap a known-heavy report read in a transaction-local `statement_timeout` (see `withStatementTimeout`). Called with
+ * the default pool client it opens the capped transaction; called with a caller-supplied transaction it just runs
+ * (the caller owns that transaction). Cap off => runs directly with the client it was given.
+ */
+export function withReportTimeout<T>(client: DbOrTxClient, fn: (client: DbOrTxClient) => Promise<T>): Promise<T> {
+  const timeoutMs = reportStatementTimeoutMs();
+  if (timeoutMs === 0 || client !== db) {
+    return fn(client);
+  }
+
+  return withStatementTimeout((tx) => fn(tx), timeoutMs);
+}
+
+/**
+ * Drain and close the postgres pool (graceful shutdown): in-flight queries get up to `timeoutSeconds` to finish,
+ * then connections are ended. Safe to call more than once.
+ */
+export async function closeDb(timeoutSeconds = 5): Promise<void> {
+  try {
+    await databaseClient.end({ timeout: timeoutSeconds });
+  } catch (error) {
+    console.error('closeDb failed:', error);
+  }
+}
+
 export * from 'drizzle-orm';
 export * from './schema';
 

@@ -10,6 +10,7 @@ import {
 } from '@cio/db/queries/dash';
 import { dashLoginActivityKey } from '@api/utils/redis/key-generators';
 import { logRedisUnavailableOnce, redis } from '@cio/core/utils/redis/redis';
+import { REDIS_CACHE_TIMEOUT_MS, withTimeout } from '@cio/core/utils/with-timeout';
 
 import { OrganisationAnalytics } from '@api/types';
 import { getOrgIdBySiteName } from '@cio/db/queries';
@@ -123,7 +124,7 @@ export async function getStudentLoginActivity(orgId: string, days: number): Prom
 
   if (env.REDIS_URL) {
     try {
-      const cached = await redis.get(cacheKey);
+      const cached = await withTimeout(redis.get(cacheKey), REDIS_CACHE_TIMEOUT_MS, 'login activity cache read');
       if (cached) {
         const rows = parseLoginActivityCache(cached);
         if (rows) {
@@ -147,7 +148,11 @@ export async function getStudentLoginActivity(orgId: string, days: number): Prom
 
     if (env.REDIS_URL) {
       try {
-        await redis.setEx(cacheKey, LOGIN_ACTIVITY_CACHE_TTL_SECONDS, JSON.stringify(result));
+        await withTimeout(
+          redis.setEx(cacheKey, LOGIN_ACTIVITY_CACHE_TTL_SECONDS, JSON.stringify(result)),
+          REDIS_CACHE_TIMEOUT_MS,
+          'login activity cache write'
+        );
       } catch (error) {
         logRedisUnavailableOnce('Redis set failed for login activity cache, continuing', error);
       }

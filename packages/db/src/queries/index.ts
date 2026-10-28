@@ -21,3 +21,4 @@ export * from './widget';
 export * from './jobs';
 export * from './media-transcript';
 export * from './system-events';
+export * from './retention';

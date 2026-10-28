@@ -67,7 +67,85 @@ function truncate(value: string | null | undefined, max: number): string | null 
   return value.length > max ? value.slice(0, max) : value;
 }
 
+// Write throttling. A failing endpoint (or a client stuck in an error loop) would otherwise insert one row per
+// request. Only the high-volume error families are throttled: one row per (eventType, path, status) per window,
+// with the suppressed repeats counted into a follow-up summary row. Security/audit events (auth.login.failure,
+// deactivated sign-in, rate-limited, ...) are NEVER sampled — every one is written.
+const THROTTLED_EVENT_TYPES = new Set(['api.error', 'client.error']);
+const THROTTLE_MAX_KEYS = 1000;
+
+type ThrottleEntry = { windowEndsAt: number; suppressed: number; template: RecordSystemEventInput };
+const throttleEntries = new Map<string, ThrottleEntry>();
+
+/** Window in ms; `SYSTEM_EVENT_THROTTLE_WINDOW_MS=0` turns throttling off. Read per call so it can be tuned/tested. */
+function throttleWindowMs(): number {
+  const raw = process.env.SYSTEM_EVENT_THROTTLE_WINDOW_MS;
+  if (raw === undefined || raw === '') return 60_000;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 60_000;
+}
+
+/** Test seam: forget all throttle state. */
+export function resetSystemEventThrottle(): void {
+  throttleEntries.clear();
+}
+
+function flushThrottleEntry(key: string, entry: ThrottleEntry): void {
+  if (throttleEntries.get(key) === entry) {
+    throttleEntries.delete(key);
+  }
+
+  if (entry.suppressed > 0) {
+    void writeSystemEvent({
+      ...entry.template,
+      message: `${entry.template.message ?? entry.template.eventType} (+${entry.suppressed} similar suppressed)`,
+      metadata: { ...(entry.template.metadata ?? {}), suppressedCount: entry.suppressed }
+    });
+  }
+}
+
+/** Returns true when the event should be dropped (and counted) because an identical one was just written. */
+function shouldSuppress(input: RecordSystemEventInput): boolean {
+  const windowMs = throttleWindowMs();
+  if (windowMs === 0 || !THROTTLED_EVENT_TYPES.has(input.eventType)) {
+    return false;
+  }
+
+  const now = Date.now();
+  const key = `${input.eventType}|${input.method ?? ''}|${input.path ?? ''}|${input.httpStatus ?? ''}`;
+  const existing = throttleEntries.get(key);
+
+  if (existing && now < existing.windowEndsAt) {
+    existing.suppressed += 1;
+    return true;
+  }
+
+  if (!existing && throttleEntries.size >= THROTTLE_MAX_KEYS) {
+    for (const [k, v] of throttleEntries) {
+      if (now >= v.windowEndsAt) throttleEntries.delete(k);
+    }
+    // Still full of live windows: write through untracked rather than grow without bound.
+    if (throttleEntries.size >= THROTTLE_MAX_KEYS) return false;
+  }
+
+  const entry: ThrottleEntry = { windowEndsAt: now + windowMs, suppressed: 0, template: input };
+  throttleEntries.set(key, entry);
+  // Emit the count when the window closes (unref'd so it never holds the process open).
+  const timer = setTimeout(() => flushThrottleEntry(key, entry), windowMs);
+  timer.unref?.();
+
+  return false;
+}
+
 export async function recordSystemEvent(input: RecordSystemEventInput): Promise<void> {
+  if (shouldSuppress(input)) {
+    return;
+  }
+
+  await writeSystemEvent(input);
+}
+
+async function writeSystemEvent(input: RecordSystemEventInput): Promise<void> {
   try {
     await insertSystemEvent({
       eventType: input.eventType,

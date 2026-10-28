@@ -80,6 +80,9 @@ export const ErrorCodes = {
 
   OPENAI_KEY_MISSING: 'OPENAI_KEY_MISSING',
 
+  // The BullMQ/Redis job queue is unreachable (enqueue fails fast and the caller answers 503).
+  QUEUE_UNAVAILABLE: 'QUEUE_UNAVAILABLE',
+
   // Profile errors
   PROFILE_UPDATE_FAILED: 'PROFILE_UPDATE_FAILED',
   PROFILE_NOT_FOUND: 'PROFILE_NOT_FOUND',

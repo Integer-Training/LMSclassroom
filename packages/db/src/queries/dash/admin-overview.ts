@@ -1,6 +1,19 @@
 import * as schema from '@db/schema';
 
-import { and, db, desc, eq, gte, inArray, isNull, ne, sql, type DbOrTxClient, type SQL } from '@db/drizzle';
+import {
+  and,
+  db,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNull,
+  ne,
+  sql,
+  withReportTimeout,
+  type DbOrTxClient,
+  type SQL
+} from '@db/drizzle';
 import { PASSING_RESULTS } from '@cio/utils/constants';
 
 // PearlLMS admin dashboard — org-wide aggregate reads. CRITICAL: these are scoped by the org member set
@@ -114,11 +127,7 @@ export interface MonthCount {
 // ── Completions / certificates / time-to-complete (PearlLMS reports) ─────────────────────────────
 
 /** Course completions per calendar month for a year (the completions-over-time chart). */
-export async function getCompletionsTrend(
-  orgId: string,
-  year: number,
-  client: DbOrTxClient = db
-): Promise<MonthCount[]> {
+async function getCompletionsTrendImpl(orgId: string, year: number, client: DbOrTxClient = db): Promise<MonthCount[]> {
   const rows = await client
     .select({
       month: sql<number>`cast(extract(month from ${schema.courseCompletion.completedAt}) as int)`,
@@ -138,8 +147,13 @@ export async function getCompletionsTrend(
   return fillMonths(rows.map((r) => ({ month: Number(r.month), count: Number(r.count) })));
 }
 
+/** Heavy org-wide aggregate: capped by a transaction-local statement_timeout (see `withReportTimeout`). */
+export function getCompletionsTrend(orgId: string, year: number, client: DbOrTxClient = db): Promise<MonthCount[]> {
+  return withReportTimeout(client, (c) => getCompletionsTrendImpl(orgId, year, c));
+}
+
 /** Completion totals: overall, this calendar month, and per course (org-scoped). */
-export async function getCompletionStats(
+async function getCompletionStatsImpl(
   orgId: string,
   client: DbOrTxClient = db
 ): Promise<{ total: number; thisMonth: number; byCourse: { courseId: string; count: number }[] }> {
@@ -167,6 +181,14 @@ export async function getCompletionStats(
   return { total, thisMonth: Number(tm?.count ?? 0), byCourse };
 }
 
+/** Heavy org-wide aggregate: capped by a transaction-local statement_timeout (see `withReportTimeout`). */
+export function getCompletionStats(
+  orgId: string,
+  client: DbOrTxClient = db
+): Promise<{ total: number; thisMonth: number; byCourse: { courseId: string; count: number }[] }> {
+  return withReportTimeout(client, (c) => getCompletionStatsImpl(orgId, c));
+}
+
 /** Certificates earned in the org (groupmember.certificateEarnedAt): total + this calendar month. */
 export async function getCertificateStats(
   orgId: string,
@@ -191,7 +213,7 @@ export async function getCertificateStats(
 }
 
 /** Average days from enrolment (groupmember.createdAt) to course completion — org-wide + per course. */
-export async function getTimeToCompleteStats(
+async function getTimeToCompleteStatsImpl(
   orgId: string,
   client: DbOrTxClient = db
 ): Promise<{ avgDays: number | null; byCourse: { courseId: string; avgDays: number }[] }> {
@@ -235,6 +257,14 @@ export async function getTimeToCompleteStats(
   };
 }
 
+/** Heavy org-wide aggregate: capped by a transaction-local statement_timeout (see `withReportTimeout`). */
+export function getTimeToCompleteStats(
+  orgId: string,
+  client: DbOrTxClient = db
+): Promise<{ avgDays: number | null; byCourse: { courseId: string; avgDays: number }[] }> {
+  return withReportTimeout(client, (c) => getTimeToCompleteStatsImpl(orgId, c));
+}
+
 /** New enrolments (groupmember STUDENT) per calendar month for a year — the enrolment-trend bar chart. */
 export async function getEnrollmentTrend(
   orgId: string,
@@ -257,7 +287,7 @@ export async function getEnrollmentTrend(
 }
 
 /** Coursework submissions per calendar month for a year — the submissions-over-time chart. */
-export async function getSubmissionsOverTime(
+async function getSubmissionsOverTimeImpl(
   orgId: string,
   year: number,
   client: DbOrTxClient = db
@@ -281,8 +311,13 @@ export async function getSubmissionsOverTime(
   return fillMonths(rows.map((r) => ({ month: Number(r.month), count: Number(r.count) })));
 }
 
+/** Heavy org-wide aggregate: capped by a transaction-local statement_timeout (see `withReportTimeout`). */
+export function getSubmissionsOverTime(orgId: string, year: number, client: DbOrTxClient = db): Promise<MonthCount[]> {
+  return withReportTimeout(client, (c) => getSubmissionsOverTimeImpl(orgId, year, c));
+}
+
 /** Org-wide study seconds per 'YYYY-MM', all learners summed — the study-hours area chart source. */
-export async function getOrgStudyHoursMonthly(
+async function getOrgStudyHoursMonthlyImpl(
   orgId: string,
   year: number,
   client: DbOrTxClient = db
@@ -304,6 +339,15 @@ export async function getOrgStudyHoursMonthly(
     .where(sql`${schema.unitTimeMonthly.yearMonth} like ${`${year}-%`}`)
     .groupBy(schema.unitTimeMonthly.yearMonth);
   return rows.map((r) => ({ yearMonth: r.yearMonth, seconds: Number(r.seconds) }));
+}
+
+/** Heavy org-wide aggregate: capped by a transaction-local statement_timeout (see `withReportTimeout`). */
+export function getOrgStudyHoursMonthly(
+  orgId: string,
+  year: number,
+  client: DbOrTxClient = db
+): Promise<{ yearMonth: string; seconds: number }[]> {
+  return withReportTimeout(client, (c) => getOrgStudyHoursMonthlyImpl(orgId, year, c));
 }
 
 export interface OnlineUserRow {

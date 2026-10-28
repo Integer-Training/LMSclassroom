@@ -1,6 +1,6 @@
 import { FlowProducer, Queue } from 'bullmq';
 
-import { getSharedRedisConnection } from '../connection';
+import { closeSharedRedisConnection, ensureProducerReady, getSharedRedisConnection } from '../connection';
 import { QUEUE_NAMES, type QueueName } from './names';
 import { buildQueueOptions } from './defaults';
 
@@ -10,13 +10,36 @@ import { buildQueueOptions } from './defaults';
  * connection per process. These are for the API enqueue path.
  */
 
+/**
+ * Producer queue that rejects fast (instead of hanging) when Redis is unreachable; see `ensureProducerReady`.
+ * Only the entry points that talk to Redis for a write are gated — reads already fail fast on the producer connection.
+ */
+class ProducerQueue extends Queue {
+  override async add(...args: Parameters<Queue['add']>): ReturnType<Queue['add']> {
+    await ensureProducerReady();
+    return super.add(...args);
+  }
+
+  override async addBulk(...args: Parameters<Queue['addBulk']>): ReturnType<Queue['addBulk']> {
+    await ensureProducerReady();
+    return super.addBulk(...args);
+  }
+}
+
+class ProducerFlowProducer extends FlowProducer {
+  override async add(...args: Parameters<FlowProducer['add']>): ReturnType<FlowProducer['add']> {
+    await ensureProducerReady();
+    return super.add(...args);
+  }
+}
+
 const queues = new Map<QueueName, Queue>();
 let flowProducer: FlowProducer | undefined;
 
 export function getQueue(name: QueueName): Queue {
   let queue = queues.get(name);
   if (!queue) {
-    queue = new Queue(name, {
+    queue = new ProducerQueue(name, {
       ...buildQueueOptions(name),
       connection: getSharedRedisConnection()
     });
@@ -31,7 +54,7 @@ export function getQueue(name: QueueName): Queue {
 
 export function getFlowProducer(): FlowProducer {
   if (!flowProducer) {
-    flowProducer = new FlowProducer({ connection: getSharedRedisConnection() });
+    flowProducer = new ProducerFlowProducer({ connection: getSharedRedisConnection() });
     flowProducer.on('error', (error) => {
       console.error('BullMQ flow producer error:', error);
     });
@@ -49,6 +72,8 @@ export async function closeAllQueues(): Promise<void> {
     await flowProducer.close();
     flowProducer = undefined;
   }
+
+  await closeSharedRedisConnection();
 }
 
 /** Returns every queue name in registration order. */

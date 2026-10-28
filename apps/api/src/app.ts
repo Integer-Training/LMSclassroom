@@ -34,8 +34,7 @@ import { licenseRouter } from '@api/routes/license';
 import { lmsRouter } from '@api/routes/lms/lms';
 import { logger } from 'hono/logger';
 import type { Context } from 'hono';
-import { recordSystemEvent } from '@cio/db';
-import { extractClientIp } from '@api/utils/redis/key-generators';
+import { recordApiError } from '@api/utils/record-api-error';
 import { logRouter } from '@api/routes/log';
 // ROUTES
 import { hlsRouter } from '@api/routes/hls';
@@ -60,34 +59,6 @@ import { signupGuard } from '@api/middlewares/signup-guard';
 import { ssoDiscoveryRouter } from '@api/routes/sso/discovery';
 import { unsplashRouter } from '@api/routes/unsplash/unsplash';
 import { v1Router } from '@api/routes/v1';
-
-// PearlLMS Phase 10 — best-effort 'api.error' capture for the system event log. Fire-and-forget; must never
-// throw or alter the error response. recordSystemEvent masks the IP and caps message/stack.
-function recordApiError(c: Context, err: unknown, httpStatus: number, severity: 'warn' | 'error') {
-  try {
-    const user = c.get('user');
-    const actor = c.get('actor');
-    const e = err as { message?: string; stack?: string } | undefined;
-    void Promise.resolve(
-      recordSystemEvent({
-        eventType: 'api.error',
-        severity,
-        httpStatus,
-        path: c.req.path,
-        method: c.req.method,
-        message: e?.message ?? String(err),
-        stack: e?.stack,
-        correlationId: (c.get('correlationId') as string | undefined) ?? undefined,
-        userId: user?.id ?? undefined,
-        userEmail: user?.email ?? undefined,
-        organizationId: actor?.orgId ?? undefined,
-        ip: extractClientIp(c)
-      })
-    ).catch(() => {});
-  } catch {
-    // never throw from error handling
-  }
-}
 
 const accessLogger = logger();
 

@@ -8,6 +8,10 @@ import IORedis, { type Redis, type RedisOptions } from 'ioredis';
  * single shared connection. This module exposes both a singleton (for
  * enqueue paths in the API) and a factory (for each Worker process).
  *
+ * Producers (the API's Queue/FlowProducer instances) use their OWN fail-fast connection, see
+ * `getSharedRedisConnection`: a Redis outage must surface as a quick error on the enqueue path, not a request that
+ * hangs behind ioredis' offline queue. Worker, blocking and scheduler connections keep the resilient defaults.
+ *
  * Self-hosted note: Redis is required to enqueue or process jobs. Callers
  * should fail loudly when `REDIS_URL` is not configured rather than silently
  * dropping work.
@@ -164,18 +168,119 @@ export function createRedisConnection(options: RedisConnectionOptions = {}): Red
   return connection;
 }
 
+/**
+ * Options for the producer connection used to enqueue jobs. Unlike the worker defaults, commands are NOT queued
+ * while disconnected and fail after a single retry, so an enqueue against a down Redis rejects within
+ * `connectTimeout` instead of hanging the caller. `retryStrategy` is kept so the connection still heals itself.
+ * (A Queue is a non-blocking connection, so `maxRetriesPerRequest: 1` is accepted by BullMQ here.)
+ */
+export const PRODUCER_CONNECTION_OPTIONS: RedisOptions = {
+  enableOfflineQueue: false,
+  maxRetriesPerRequest: 1,
+  connectTimeout: 3_000
+};
+
 let sharedConnection: Redis | undefined;
+let producerFailFast = true;
 
 /**
- * Lazily-created shared connection used by Queue/FlowProducer instances on
- * the API side. Throws `RedisNotConfiguredError` if `REDIS_URL` is missing.
+ * The jobs process also enqueues (e.g. the session-reminder scan enqueues emails). It rides out Redis blips on the
+ * resilient default connection rather than dropping work, so it opts out of fail-fast before the first enqueue.
+ */
+export function configureProducerFailFast(failFast: boolean): void {
+  if (sharedConnection) {
+    throw new Error('configureProducerFailFast must be called before the shared Redis connection is created.');
+  }
+
+  producerFailFast = failFast;
+}
+
+/**
+ * Lazily-created shared PRODUCER connection used by Queue/FlowProducer instances on the API side (fail-fast, see
+ * `PRODUCER_CONNECTION_OPTIONS`). Throws `RedisNotConfiguredError` if `REDIS_URL` is missing.
  */
 export function getSharedRedisConnection(): Redis {
   if (!sharedConnection) {
-    sharedConnection = createRedisConnection();
+    sharedConnection = createRedisConnection(producerFailFast ? PRODUCER_CONNECTION_OPTIONS : {});
   }
 
   return sharedConnection;
+}
+
+export class QueueUnavailableError extends Error {
+  constructor(detail: string) {
+    super(`Job queue unavailable: ${detail}`);
+    this.name = 'QueueUnavailableError';
+  }
+}
+
+/**
+ * Fail-fast gate for the producer path. A BullMQ Queue waits for its connection's FIRST ready event inside `add()`,
+ * which would hang forever on a cold start with Redis down (ioredis never emits `end` while it keeps retrying). So
+ * before enqueuing we wait at most `connectTimeout` for a connection that is still coming up, and reject at once for
+ * one that is already reconnecting. No-op when fail-fast is disabled (the jobs process).
+ */
+export async function ensureProducerReady(): Promise<void> {
+  if (!producerFailFast) {
+    return;
+  }
+
+  const connection = getSharedRedisConnection();
+  if (connection.status === 'ready') {
+    return;
+  }
+
+  if (connection.status !== 'connecting' && connection.status !== 'connect' && connection.status !== 'wait') {
+    throw new QueueUnavailableError(`redis ${connection.status}`);
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      connection.off('ready', onReady);
+      reject(new QueueUnavailableError('redis not ready'));
+    }, PRODUCER_CONNECTION_OPTIONS.connectTimeout);
+    const onReady = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+
+    connection.once('ready', onReady);
+  });
+}
+
+/** Close the shared producer connection (graceful shutdown). */
+export async function closeSharedRedisConnection(): Promise<void> {
+  const connection = sharedConnection;
+  sharedConnection = undefined;
+
+  if (!connection) {
+    return;
+  }
+
+  try {
+    await connection.quit();
+  } catch {
+    connection.disconnect();
+  }
+}
+
+const QUEUE_UNAVAILABLE_PATTERN =
+  /enableOfflineQueue|Connection is closed|Reached the max retries per request|ECONNREFUSED|ECONNRESET|ECONNABORTED|ETIMEDOUT|Connection timeout|Stream isn't writeable|READONLY/i;
+
+/** True when an enqueue/queue read failed because Redis is unreachable (so callers can answer 503, not 500). */
+export function isQueueUnavailableError(error: unknown): boolean {
+  if (error instanceof RedisNotConfiguredError || error instanceof QueueUnavailableError) {
+    return true;
+  }
+
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const message = 'message' in error && typeof error.message === 'string' ? error.message : '';
+  const name = 'name' in error && typeof error.name === 'string' ? error.name : '';
+
+  return QUEUE_UNAVAILABLE_PATTERN.test(message) || name === 'MaxRetriesPerRequestError';
 }
 
 /**

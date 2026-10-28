@@ -58,7 +58,7 @@ const TRANSIENT_REDIS_ERROR_CODES = new Set([
 ]);
 
 const TRANSIENT_REDIS_MESSAGE_PATTERN =
-  /ECONNABORTED|ECONNRESET|ECONNREFUSED|ETIMEDOUT|Connection is closed|Socket closed unexpectedly|Connection timeout|client is closed/i;
+  /ECONNABORTED|ECONNRESET|ECONNREFUSED|ETIMEDOUT|Connection is closed|Socket closed unexpectedly|Connection timeout|client is closed|client is offline/i;
 
 const TRANSIENT_REDIS_LOG_INTERVAL_MS = 10_000;
 let lastTransientRedisLogAt = 0;

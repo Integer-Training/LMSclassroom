@@ -4,6 +4,8 @@ import { ZodError } from 'zod';
 
 import { AppError, ErrorCodes, type ErrorCode, isUniqueConstraintViolation } from '@cio/utils/errors';
 
+import { recordApiError } from '@api/utils/record-api-error';
+
 // AppError moved to `@cio/utils/errors` so it can be thrown from
 // non-api workspace packages (notably `@cio/core`). Re-exported
 // here to keep the long-standing `@api/utils/errors` import path working
@@ -76,6 +78,7 @@ export const handleError = (
 
   if (error instanceof AppError) {
     const isServerError = error.statusCode >= 500;
+    if (isServerError) recordApiError(c, error, error.statusCode, 'error');
     const responseCode = isServerError ? (fallbackCode ?? error.code) : error.code;
     // For a 5xx the message is genericised (fallbackMessage) so no internal detail leaks; deliberate 4xx
     // AppError messages are developer-authored user-facing text and are preserved. The correlation id is only
@@ -104,6 +107,8 @@ export const handleError = (
       409
     );
   }
+
+  recordApiError(c, error, 500, 'error');
 
   return c.json<ErrorResponse>(
     {

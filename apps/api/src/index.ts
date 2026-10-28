@@ -4,7 +4,11 @@ import './instrument';
 import { API_PORT } from '@api/constants';
 import { app } from '@api/app';
 import { configureOpenAPI } from '@api/utils/openapi';
-import { connectRedis } from '@cio/core/utils/redis/redis';
+import { closeDb } from '@cio/db';
+import { closeAllQueues } from '@cio/jobs';
+import { connectRedis, redis } from '@cio/core/utils/redis/redis';
+import * as Sentry from '@sentry/node';
+import { createShutdownHandler, resolveShutdownTimeoutMs } from '@api/shutdown';
 import { env } from '@cio/core/config/env';
 import { preloadVerifiedCustomDomainOriginsRegistry } from '@api/utils/origins';
 import { registerProcessErrorGuards } from '@api/process-error-guards';
@@ -34,7 +38,22 @@ async function startServer() {
       console.error('Failed to preload verified custom domain origins:', error);
     });
 
-  serve({ fetch: app.fetch, port: API_PORT });
+  const server = serve({ fetch: app.fetch, port: API_PORT });
+
+  // docker stop / redeploy => SIGTERM: drain in-flight requests (SHUTDOWN_TIMEOUT seconds, default 25), then release
+  // BullMQ producer, Redis and the DB pool. Needs the entrypoint to exec node so the signal reaches this process.
+  const shutdown = createShutdownHandler({
+    server,
+    timeoutMs: resolveShutdownTimeoutMs(process.env.SHUTDOWN_TIMEOUT),
+    cleanup: [
+      { name: 'bullmq-queues', run: () => closeAllQueues() },
+      { name: 'redis', run: async () => (redis.isOpen ? await redis.quit() : undefined) },
+      { name: 'database', run: () => closeDb(5) },
+      { name: 'sentry', run: () => Sentry.flush(2000) }
+    ]
+  });
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
 
   if (env.NODE_ENV !== 'production') {
     showRoutes(app, { colorize: true });

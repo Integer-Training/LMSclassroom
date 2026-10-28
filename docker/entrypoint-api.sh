@@ -10,4 +10,7 @@ else
 fi
 
 echo "Starting API..."
-exec pnpm --filter @cio/api start
+# exec node directly (not via pnpm): the API must be PID 1 so docker's SIGTERM reaches it and it can drain
+# in-flight requests (see apps/api/src/shutdown.ts). `pnpm --filter @cio/api start` is `node dist/index.js` in apps/api.
+cd /app/apps/api
+exec node dist/index.js
