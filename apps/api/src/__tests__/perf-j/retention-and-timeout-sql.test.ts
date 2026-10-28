@@ -87,12 +87,26 @@ describe('batched retention purges', () => {
 
   it('sessions: only those expired for more than a day; verifications: only expired', async () => {
     await purgeExpiredSessionsBatch();
-    expect(flat()).toContain("expires_at < (now() at time zone 'utc') - interval '1 day'");
+    expect(flat()).toContain("s.expires_at < (now() at time zone 'utc') - interval '1 day'");
     expect(flat()).toContain('delete from session');
 
     await purgeExpiredVerificationsBatch();
     expect(flat()).toContain("expires_at < (now() at time zone 'utc')");
     expect(flat()).toContain('delete from verification');
+  });
+
+  it('sessions: a row is only deleted when a newer session or login event still carries the same last-seen (last-seen unchanged)', async () => {
+    await purgeExpiredSessionsBatch();
+    const q = flat();
+    // getLastSeenForUserIds = max(login event, session.updated_at): never drop the user's latest-updated signal.
+    expect(q).toContain(
+      'exists ( select 1 from session n where n.user_id = s.user_id and n.id <> s.id and (n.updated_at > s.updated_at or (n.updated_at = s.updated_at and n.id > s.id)) )'
+    );
+    expect(q).toContain(
+      "or exists ( select 1 from analytics_login_events l where l.user_id = s.user_id and l.logged_in_at >= (s.updated_at at time zone 'utc') )"
+    );
+    // both guards are ANDed with the expiry filter, not alternatives to it
+    expect(q).toMatch(/s\.expires_at < .* and \( exists \(/);
   });
 
   it('notifications: READ ones older than the window only (unread kept forever)', async () => {

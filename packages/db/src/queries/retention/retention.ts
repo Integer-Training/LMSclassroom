@@ -16,11 +16,30 @@ async function deleteBatch(statement: SQL): Promise<number> {
   return Number((rows as unknown as Array<{ n?: number }>)[0]?.n ?? 0);
 }
 
-/** Better Auth never deletes expired sessions. Expired for more than a day (impersonation sessions share expires_at). */
+/**
+ * Better Auth never deletes expired sessions. Expired for more than a day (impersonation sessions share expires_at).
+ * "Last seen" = max(analytics_login_events.logged_in_at, session.updated_at) (getLastSeenForUserIds / getLastLogin) and
+ * drives the active/inactive/created badges, so a session row is only removed when something at least as recent still
+ * carries that user's last-seen: another session with a later updated_at (id breaks ties), or a login event at/after it.
+ * The user's newest session therefore survives unless a login event covers it, so last-seen never changes.
+ */
 export function purgeExpiredSessionsBatch(batchSize = RETENTION_DEFAULT_BATCH_SIZE): Promise<number> {
   return deleteBatch(sql`
     delete from session where id in (
-      select id from session where expires_at < (now() at time zone 'utc') - interval '1 day' limit ${batchSize}
+      select s.id from session s
+      where s.expires_at < (now() at time zone 'utc') - interval '1 day'
+        and (
+          exists (
+            select 1 from session n
+            where n.user_id = s.user_id and n.id <> s.id
+              and (n.updated_at > s.updated_at or (n.updated_at = s.updated_at and n.id > s.id))
+          )
+          or exists (
+            select 1 from analytics_login_events l
+            where l.user_id = s.user_id and l.logged_in_at >= (s.updated_at at time zone 'utc')
+          )
+        )
+      limit ${batchSize}
     )`);
 }
 

@@ -256,7 +256,7 @@ All optional; unset = the default shown. Flags read `false`, `0`, `off` or `no` 
 | `SYSTEM_EVENT_THROTTLE_WINDOW_MS` | `60000` | One `api.error` / `client.error` row per (type, path, status) per window, with a suppressed count (`0` = off). Security events are never throttled. | `packages/db/src/system-events.ts` |
 | `FFMPEG_TIMEOUT_MS` | 30 min + 10 min/GiB, max 60 min | Hard ceiling for one ffmpeg run. | `apps/jobs/src/utils/ffmpeg.ts` |
 | `RETENTION_PURGES_ENABLED` | `true` | Master switch for the nightly (03:30 UTC) batched purges. `audit_event` is never purged. | `apps/jobs/src/workers/maintenance.ts` |
-| `RETENTION_SESSIONS_ENABLED` | `true` | Delete sessions expired for more than 1 day. | same |
+| `RETENTION_SESSIONS_ENABLED` | `true` | Delete sessions expired for more than 1 day, keeping each user's newest session unless a login event is at least as recent (so "last seen" never changes). | same |
 | `RETENTION_VERIFICATIONS_ENABLED` | `true` | Delete expired verification tokens. | same |
 | `RETENTION_NOTIFICATIONS_ENABLED` | `true` | Delete READ notifications older than 90 days (unread are kept forever). | same |
 | `RETENTION_DEAD_LETTER_ENABLED` | `true` | Delete `dead_letter_job` rows older than 90 days. | same |
