@@ -300,6 +300,70 @@ export async function getSubmissionsWithContextForLearners(learnerIds: string[])
   }));
 }
 
+/** A submission version WITHOUT the heavy columns (`files`, `comment`, `feedback`) — the status-only shape. */
+export type SubmissionStatusRow = Omit<SubmissionWithContext, 'files' | 'comment' | 'feedback'>;
+
+/**
+ * Lean twin of getSubmissionsWithContextForLearners for the dashboards / pipeline / caseload / course-content stats:
+ * same rows, same joins, same newest-first order, but NO `files` (jsonb), `comment` or `feedback` columns — those are
+ * only needed by the learner-detail view, which keeps the heavy variant. An EMPTY learner set yields an empty list
+ * (never an unscoped query). `courseId` optionally narrows to one course (a lesson belongs to exactly one course, so
+ * a per-course caller loses nothing by filtering in SQL).
+ */
+export async function getSubmissionStatusRowsForLearners(
+  learnerIds: string[],
+  opts: { courseId?: string } = {}
+): Promise<SubmissionStatusRow[]> {
+  if (learnerIds.length === 0) return [];
+  const rows = await db
+    .select({
+      id: schema.courseworkSubmission.id,
+      learnerId: schema.courseworkSubmission.learnerId,
+      courseId: schema.courseworkSubmission.courseId,
+      lessonId: schema.courseworkSubmission.lessonId,
+      assessmentKey: schema.courseworkSubmission.assessmentKey,
+      submissionType: schema.courseworkSubmission.submissionType,
+      version: schema.courseworkSubmission.version,
+      status: schema.courseworkSubmission.status,
+      submittedAt: schema.courseworkSubmission.submittedAt,
+      courseTitle: schema.course.title,
+      unitTitle: schema.lesson.title,
+      resultKind: schema.courseworkResult.kind,
+      result: schema.courseworkResult.result,
+      resultRecordedAt: schema.courseworkResult.recordedAt
+    })
+    .from(schema.courseworkSubmission)
+    .leftJoin(schema.course, eq(schema.course.id, schema.courseworkSubmission.courseId))
+    .leftJoin(schema.lesson, eq(schema.lesson.id, schema.courseworkSubmission.lessonId))
+    .leftJoin(schema.courseworkResult, eq(schema.courseworkResult.submissionId, schema.courseworkSubmission.id))
+    .where(
+      opts.courseId
+        ? and(
+            inArray(schema.courseworkSubmission.learnerId, learnerIds),
+            eq(schema.courseworkSubmission.courseId, opts.courseId)
+          )
+        : inArray(schema.courseworkSubmission.learnerId, learnerIds)
+    )
+    .orderBy(desc(schema.courseworkSubmission.submittedAt));
+
+  return rows.map((r) => ({
+    id: r.id,
+    learnerId: r.learnerId,
+    courseId: r.courseId,
+    lessonId: r.lessonId,
+    assessmentKey: r.assessmentKey ?? null,
+    submissionType: r.submissionType,
+    version: r.version,
+    status: r.status,
+    submittedAt: r.submittedAt as string,
+    courseTitle: r.courseTitle ?? 'Untitled course',
+    unitTitle: r.unitTitle ?? 'Untitled unit',
+    resultKind: r.resultKind ?? null,
+    result: r.result ?? null,
+    resultRecordedAt: (r.resultRecordedAt as string | null) ?? null
+  }));
+}
+
 // ── Marking: results, the passed-helper, and the upload-closed rule (PearlLMS Phase 3 Step 5) ─────
 // A result is the tutor's OFF-platform verdict recorded against ONE submission version. One result per
 // version (DB unique); history is never overwritten. Access is enforced at the service/guard layer —

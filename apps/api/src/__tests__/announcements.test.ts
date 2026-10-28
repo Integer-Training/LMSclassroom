@@ -214,18 +214,24 @@ describe('publishAnnouncement — Admin only', () => {
 });
 
 describe('list visibility — role-scoped', () => {
-  it('admin feed = all org broadcasts (manage)', async () => {
+  it('admin feed = unarchived org broadcasts, newest 20 by default', async () => {
     await listAnnouncements(admin);
-    expect(mForOrg).toHaveBeenCalledWith('o1');
+    expect(mForOrg).toHaveBeenCalledWith('o1', { includeArchived: false, limit: 20 });
+  });
+  it('admin manage list (includeArchived) is uncapped unless a limit is given', async () => {
+    await listAnnouncements(admin, { includeArchived: true });
+    expect(mForOrg).toHaveBeenLastCalledWith('o1', { includeArchived: true, limit: undefined });
+    await listAnnouncements(admin, { includeArchived: true, limit: 50 });
+    expect(mForOrg).toHaveBeenLastCalledWith('o1', { includeArchived: true, limit: 50 });
   });
   it('tutor feed = tutor-addressed only (never the org manage list)', async () => {
     await listAnnouncements(tutor);
-    expect(mForTutor).toHaveBeenCalledWith('o1', 'tut');
+    expect(mForTutor).toHaveBeenCalledWith('o1', 'tut', { limit: 20 });
     expect(mForOrg).not.toHaveBeenCalled();
   });
   it('learner feed = scoped learner feed', async () => {
     await listAnnouncements(learner);
-    expect(mForLearner).toHaveBeenCalledWith('o1', 'lrn');
+    expect(mForLearner).toHaveBeenCalledWith('o1', 'lrn', { limit: 20 });
     expect(mForOrg).not.toHaveBeenCalled();
   });
   it('course announcements: enrolled learner sees them; unenrolled learner 403; staff always', async () => {

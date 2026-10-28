@@ -1,6 +1,7 @@
 import * as schema from '@db/schema';
 
-import { and, db, desc, eq, gte, inArray, isNull, ne, sql, type DbOrTxClient } from '@db/drizzle';
+import { and, db, desc, eq, gte, inArray, isNull, ne, sql, type DbOrTxClient, type SQL } from '@db/drizzle';
+import { PASSING_RESULTS } from '@cio/utils/constants';
 
 // PearlLMS admin dashboard — org-wide aggregate reads. CRITICAL: these are scoped by the org member set
 // (organizationmember roleId) and the course→group.organizationId join, NOT by tutor_allocation — so they
@@ -10,6 +11,14 @@ import { and, db, desc, eq, gte, inArray, isNull, ne, sql, type DbOrTxClient } f
 const ROLE_STUDENT = 3;
 const ROLE_TUTOR = 2;
 const asInt = sql<number>`cast(count(*) as int)`;
+
+/** `<col> <> ALL(PASSING_RESULTS)` as a bound-parameter list — the SQL twin of !isPassingResult(), no hard-coded 'PASS'. */
+function notPassing(col: unknown): SQL {
+  return sql`${col} not in (${sql.join(
+    PASSING_RESULTS.map((r) => sql`${r}`),
+    sql`, `
+  )})`;
+}
 
 export interface OrgMemberRosterRow {
   learnerId: string;
@@ -474,8 +483,8 @@ export async function getLessonCoursePairs(
 
 // ── Referrals / failing report (PearlLMS — admin-only) ───────────────────────────────────────────
 // A "refer" = a coursework_result with kind='verdict' and a NON-passing result. Passing is config-driven
-// (PASSING_RESULTS = ['PASS'] in @cio/utils); the SQL uses `result <> 'PASS'` to mirror isPassingResult()
-// without importing config into the query layer — if a passing grade is ever added, update both. Each
+// (PASSING_RESULTS in @cio/utils); the SQL binds that same list as parameters (`result NOT IN ($passing)`), so a new
+// passing grade needs no query change. Each
 // resubmission is its own submission version with its own result row, so counting result rows counts
 // referral EVENTS across the whole resubmission history. All org-scoped via course→group.organizationId.
 // `recorded_by` is the GRADER (the tutor/admin who entered the verdict); it is null when that profile was
@@ -500,8 +509,8 @@ export async function getReferralTutorBreakdown(orgId: string, client: DbOrTxCli
     .select({
       tutorId: schema.courseworkResult.recordedBy,
       name: schema.profile.fullname,
-      learnersReferred: sql<number>`cast(count(distinct ${schema.courseworkSubmission.learnerId}) filter (where ${schema.courseworkResult.result} <> 'PASS') as int)`,
-      totalRefers: sql<number>`cast(count(*) filter (where ${schema.courseworkResult.result} <> 'PASS') as int)`,
+      learnersReferred: sql<number>`cast(count(distinct ${schema.courseworkSubmission.learnerId}) filter (where ${notPassing(schema.courseworkResult.result)}) as int)`,
+      totalRefers: sql<number>`cast(count(*) filter (where ${notPassing(schema.courseworkResult.result)}) as int)`,
       totalGraded: asInt
     })
     .from(schema.courseworkResult)
@@ -559,7 +568,7 @@ export async function getReferralLearnerBreakdown(
         eq(schema.group.organizationId, orgId),
         ne(schema.course.status, 'DELETED'),
         eq(schema.courseworkResult.kind, 'verdict'),
-        sql`${schema.courseworkResult.result} is not null and ${schema.courseworkResult.result} <> 'PASS'`
+        sql`${schema.courseworkResult.result} is not null and ${notPassing(schema.courseworkResult.result)}`
       )
     )
     .groupBy(schema.courseworkSubmission.learnerId, schema.profile.fullname);
@@ -580,7 +589,7 @@ export async function getLearnerOpenReferCounts(
   orgId: string,
   client: DbOrTxClient = db
 ): Promise<{ learnerId: string; openRefers: number }[]> {
-  const latest = await client
+  const latest = client
     .selectDistinctOn(
       [
         schema.courseworkSubmission.learnerId,
@@ -615,12 +624,16 @@ export async function getLearnerOpenReferCounts(
       schema.courseworkSubmission.lessonId,
       schema.courseworkSubmission.assessmentKey,
       desc(schema.courseworkSubmission.version)
-    );
-  const counts = new Map<string, number>();
-  for (const r of latest) {
-    if (r.result != null && r.result !== 'PASS') counts.set(r.learnerId, (counts.get(r.learnerId) ?? 0) + 1);
-  }
-  return Array.from(counts, ([learnerId, openRefers]) => ({ learnerId, openRefers }));
+    )
+    .as('latest_final_verdict');
+  // The DISTINCT ON rows are counted in SQL (one row per referred learner back, not one per assessment item).
+  const open = sql<number>`cast(count(*) filter (where ${notPassing(latest.result)}) as int)`;
+  const rows = await client
+    .select({ learnerId: latest.learnerId, openRefers: open })
+    .from(latest)
+    .groupBy(latest.learnerId)
+    .having(sql`count(*) filter (where ${notPassing(latest.result)}) > 0`);
+  return rows.map((r) => ({ learnerId: r.learnerId, openRefers: Number(r.openRefers) }));
 }
 
 export interface ReferralLastRow {
@@ -649,7 +662,7 @@ export async function getLearnerLastReferral(orgId: string, client: DbOrTxClient
         eq(schema.group.organizationId, orgId),
         ne(schema.course.status, 'DELETED'),
         eq(schema.courseworkResult.kind, 'verdict'),
-        sql`${schema.courseworkResult.result} is not null and ${schema.courseworkResult.result} <> 'PASS'`
+        sql`${schema.courseworkResult.result} is not null and ${notPassing(schema.courseworkResult.result)}`
       )
     )
     .orderBy(schema.courseworkSubmission.learnerId, desc(schema.courseworkResult.recordedAt));
@@ -721,4 +734,35 @@ export async function listUnallocatedEnrolledLearners(
       .limit(UNALLOCATED_LEARNERS_LIST_CAP)
   ]);
   return { total: Number(countRows[0]?.total ?? 0), learners };
+}
+
+/**
+ * RECORDED course completions (course_completion rows) per course, counting ONLY learners who are currently enrolled
+ * as STUDENTS in that course (groupmember roleId 3) — one grouped query for the whole org. Backs the overview's
+ * per-course "completed (recorded)" figure (decision #3). Distinct by learner, so it can never exceed the enrolled
+ * count; the caller still caps the percentage at 100.
+ */
+export async function getRecordedCompletionCountsByCourse(
+  orgId: string,
+  client: DbOrTxClient = db
+): Promise<{ courseId: string; completed: number }[]> {
+  const rows = await client
+    .select({
+      courseId: schema.courseCompletion.courseId,
+      completed: sql<number>`cast(count(distinct ${schema.courseCompletion.learnerId}) as int)`
+    })
+    .from(schema.courseCompletion)
+    .innerJoin(schema.course, eq(schema.course.id, schema.courseCompletion.courseId))
+    .innerJoin(schema.group, eq(schema.group.id, schema.course.groupId))
+    .innerJoin(
+      schema.groupmember,
+      and(
+        eq(schema.groupmember.groupId, schema.course.groupId),
+        eq(schema.groupmember.profileId, schema.courseCompletion.learnerId),
+        eq(schema.groupmember.roleId, ROLE_STUDENT)
+      )
+    )
+    .where(and(eq(schema.group.organizationId, orgId), ne(schema.course.status, 'DELETED')))
+    .groupBy(schema.courseCompletion.courseId);
+  return rows.map((r) => ({ courseId: r.courseId, completed: Number(r.completed) }));
 }

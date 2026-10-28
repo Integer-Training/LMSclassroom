@@ -8,6 +8,7 @@ import type { Actor } from '@cio/db/actor';
 
 vi.mock('@cio/db/queries/allocation', () => ({
   listAllocatedLearnerIdsForCourse: vi.fn(),
+  isTutorAllocatedToCourse: vi.fn(),
   isCourseTutor: vi.fn(),
   isTutorAllocatedToLearner: vi.fn()
 }));
@@ -20,7 +21,7 @@ vi.mock('@cio/db/queries/coursework', () => ({
   getLessonTitle: vi.fn(),
   getUnitContent: vi.fn(),
   getAssessmentItemsForLesson: vi.fn(),
-  getSubmissionsWithContextForLearners: vi.fn(),
+  getSubmissionStatusRowsForLearners: vi.fn(),
   getSubmissionByFileKey: vi.fn(),
   getSubmissionByFeedbackFileKey: vi.fn(),
   hasLearnerPassedUnit: vi.fn()
@@ -32,7 +33,7 @@ vi.mock('@cio/core/utils/zip', () => ({
   ZIP_MAX_TOTAL_BYTES: 250 * 1024 * 1024
 }));
 
-import { isCourseTutor, listAllocatedLearnerIdsForCourse } from '@cio/db/queries/allocation';
+import { isCourseTutor, isTutorAllocatedToCourse, listAllocatedLearnerIdsForCourse } from '@cio/db/queries/allocation';
 import { listEnrolledLearnersWithName } from '@cio/db/queries/reports';
 import {
   getAssessmentItemsForLesson,
@@ -41,12 +42,13 @@ import {
   getLessonTitle,
   getLatestSubmissionFilesForAssessment,
   getSubmissionsForAssessment,
-  getSubmissionsWithContextForLearners,
+  getSubmissionStatusRowsForLearners,
   getUnitContent
 } from '@cio/db/queries/coursework';
 import { createDocumentZipStream } from '@cio/core/utils/zip';
 import { visibleLearnerIdsForCourse } from '@api/middlewares/guards';
 import {
+  canAccessCourse,
   getAssessmentSubmissions,
   getTutorCourseContent,
   getTutorUnitContent,
@@ -56,6 +58,7 @@ import { buildAssessmentSubmissionsZip } from '@api/services/caseload/download-a
 
 const mAllocIds = vi.mocked(listAllocatedLearnerIdsForCourse);
 const mTeam = vi.mocked(isCourseTutor);
+const mAllocatedToCourse = vi.mocked(isTutorAllocatedToCourse);
 const mEnrolled = vi.mocked(listEnrolledLearnersWithName);
 
 const ORG = 'org-1';
@@ -88,6 +91,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mEnrolled.mockResolvedValue(ENROLLED.map((learnerId) => ({ learnerId, name: learnerId })) as never);
   mAllocIds.mockImplementation(async (tutorId: string) => ALLOC[tutorId] ?? []);
+  mAllocatedToCourse.mockImplementation(async (tutorId: string) => (ALLOC[tutorId] ?? []).length > 0);
   mTeam.mockResolvedValue(false);
   vi.mocked(getCourseOutline).mockResolvedValue({
     title: 'Course',
@@ -102,7 +106,7 @@ beforeEach(() => {
       }
     ]
   } as never);
-  vi.mocked(getSubmissionsWithContextForLearners).mockResolvedValue([]);
+  vi.mocked(getSubmissionStatusRowsForLearners).mockResolvedValue([]);
   vi.mocked(getCourseGridLearners).mockImplementation(
     async (_c: string, ids: string[]) => ids.map((learnerId) => ({ learnerId, name: learnerId })) as never
   );
@@ -150,7 +154,7 @@ describe('course-view roster scoping', () => {
     const content = await getTutorCourseContent(t, C);
     expect(content.participants).toBe(0);
     expect(content.units[0].materials).toHaveLength(1);
-    expect(vi.mocked(getSubmissionsWithContextForLearners)).toHaveBeenCalledWith([]);
+    expect(vi.mocked(getSubmissionStatusRowsForLearners)).toHaveBeenCalledWith([], { courseId: C });
 
     const grid = await getAssessmentSubmissions(t, C, 'U1', 'wb');
     expect(grid.rows).toEqual([]);
@@ -190,6 +194,89 @@ describe('course-view roster scoping', () => {
   it('allocated (non-team) tutor keeps access and sees only their learner', async () => {
     const content = await getTutorCourseContent(tutorB, C);
     expect(content.participants).toBe(1);
-    expect(vi.mocked(getSubmissionsWithContextForLearners)).toHaveBeenCalledWith(['L2']);
+    expect(vi.mocked(getSubmissionStatusRowsForLearners)).toHaveBeenCalledWith(['L2'], { courseId: C });
+  });
+});
+
+// canAccessCourse must give the SAME verdict as resolveRoster's access rule (visibleLearnerIdsForCourse non-empty, or
+// course team, or admin) for every actor shape — without loading the roster.
+describe('canAccessCourse mirrors resolveRoster exactly', () => {
+  const cases: [string, Actor, boolean, boolean, boolean][] = [
+    // [label, actor, allocated learner enrolled, on course team, expected]
+    ['admin', admin, false, false, true],
+    ['tutor allocated, not team', tutorA, true, false, true],
+    ['tutor team, no allocations', mk('tTeam', 'TUTOR'), false, true, true],
+    ['tutor allocated AND team', tutorB, true, true, true],
+    ['tutor neither', mk('tNone', 'TUTOR'), false, false, false]
+  ];
+  for (const [label, actor, allocated, team, expected] of cases) {
+    it(`${label} -> ${expected}`, async () => {
+      mAllocatedToCourse.mockResolvedValue(allocated);
+      mTeam.mockResolvedValue(team);
+      expect(await canAccessCourse(actor, C)).toBe(expected);
+      // The roster-based rule agrees: roster non-empty (allocated) || team || admin.
+      const roleOk = actor.authenticated && actor.role === 'ADMIN';
+      expect(roleOk || allocated || team).toBe(expected);
+    });
+  }
+  it('does not load the roster (no enrolled-learner / allocated-ids read)', async () => {
+    mAllocatedToCourse.mockResolvedValue(true);
+    await canAccessCourse(tutorA, C);
+    expect(mAllocIds).not.toHaveBeenCalled();
+    expect(mEnrolled).not.toHaveBeenCalled();
+  });
+  it('manager / learner -> 403, anonymous -> 401 (same errors as visibleLearnerIdsForCourse)', async () => {
+    expect(await code(canAccessCourse(mk('m', 'MANAGER'), C))).toBe(403);
+    expect(await code(canAccessCourse(mk('l', 'LEARNER'), C))).toBe(403);
+    expect(await code(canAccessCourse({ authenticated: false } as Actor, C))).toBe(401);
+  });
+  it('short-circuits: an allocated tutor never hits the team lookup', async () => {
+    mAllocatedToCourse.mockResolvedValue(true);
+    await canAccessCourse(tutorA, C);
+    expect(mTeam).not.toHaveBeenCalled();
+  });
+});
+
+describe('course content stats come from lean rows narrowed to the course', () => {
+  it('computes submitted / needsGrading / passed from rows without files, comment or feedback', async () => {
+    vi.mocked(getCourseOutline).mockResolvedValue({
+      title: 'Course',
+      units: [
+        {
+          lessonId: 'U1',
+          title: 'U',
+          unitType: null,
+          isOptional: false,
+          sectionTitle: null,
+          documents: [{ key: 'wb', name: 'Workbook', kind: 'workbook', downloadable: true, dueAt: null }]
+        }
+      ]
+    } as never);
+    const row = (id: string, learnerId: string, version: number, resultKind: string | null, result: string | null) => ({
+      id,
+      learnerId,
+      courseId: C,
+      lessonId: 'U1',
+      assessmentKey: 'wb',
+      submissionType: 'final',
+      version,
+      status: 'submitted',
+      submittedAt: `2026-10-0${version}T09:00:00Z`,
+      courseTitle: 'Course',
+      unitTitle: 'U',
+      resultKind,
+      result,
+      resultRecordedAt: null
+    });
+    // newest first, as the query returns them. L1 awaiting; L2 passed; L3 referred (neither needs grading).
+    vi.mocked(getSubmissionStatusRowsForLearners).mockResolvedValue([
+      row('s3', 'L3', 2, 'verdict', 'REFER'),
+      row('s2', 'L2', 1, 'verdict', 'PASS'),
+      row('s1', 'L1', 1, null, null)
+    ] as never);
+    const content = await getTutorCourseContent(admin, C);
+    const wb = content.units[0].assessments[0];
+    expect(wb).toMatchObject({ key: 'wb', submitted: 3, needsGrading: 1, passed: 1 });
+    expect(vi.mocked(getSubmissionStatusRowsForLearners)).toHaveBeenCalledWith(ENROLLED, { courseId: C });
   });
 });

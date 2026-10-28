@@ -25,7 +25,7 @@
   function exportCsv() {
     downloadCsv(
       'course-overview',
-      ['Course', 'Published', 'Enrolled', 'Active (30d)', 'Assessments', 'Completion %'],
+      ['Course', 'Published', 'Enrolled', 'Active (30d)', 'Assessments', 'Completed (recorded) %'],
       filtered.map((c) => [
         c.title,
         c.isPublished ? 'Yes' : 'No',
@@ -57,7 +57,7 @@
           <Table.Head class="text-right">Enrolled</Table.Head>
           <Table.Head class="text-right">Active (30d)</Table.Head>
           <Table.Head class="text-right">Assessments</Table.Head>
-          <Table.Head class="w-40">Completion</Table.Head>
+          <Table.Head class="w-40">Completed (recorded)</Table.Head>
         </Table.Row>
       </Table.Header>
       <Table.Body>

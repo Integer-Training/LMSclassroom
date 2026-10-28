@@ -11,7 +11,9 @@ import { listAllocatedLearnersForOrg, listLearnersForTutor, type AllocatedLearne
 import {
   getAssessmentItemsByLesson,
   getSubmissionsWithContextForLearners,
-  type SubmissionWithContext
+  getSubmissionStatusRowsForLearners,
+  type AssessmentItem,
+  type SubmissionStatusRow
 } from '@cio/db/queries/coursework';
 import {
   getCoursesForLearners,
@@ -61,11 +63,11 @@ export interface AwaitingItem {
 }
 
 /** The latest submission (by version) for each (learner, unit) key, plus that unit's version count. */
-function latestByUnit(subs: SubmissionWithContext[]): {
-  latest: Map<string, SubmissionWithContext>;
+function latestByUnit(subs: SubmissionStatusRow[]): {
+  latest: Map<string, SubmissionStatusRow>;
   counts: Map<string, number>;
 } {
-  const latest = new Map<string, SubmissionWithContext>();
+  const latest = new Map<string, SubmissionStatusRow>();
   const counts = new Map<string, number>();
   for (const s of subs) {
     const key = `${s.learnerId}::${s.lessonId}`;
@@ -97,7 +99,9 @@ export async function getTutorCaseload(
     actor.role === 'ADMIN' ? await listAllocatedLearnersForOrg(actor.orgId) : await listLearnersForTutor(actor.userId);
 
   const learnerIds = roster.map((l) => l.learnerId);
-  const subs = await getSubmissionsWithContextForLearners(learnerIds);
+  // Lean rows (no files / comment / feedback): the caseload list only needs per-unit state.
+  const subs = await getSubmissionStatusRowsForLearners(learnerIds);
+  const nameOf = new Map(roster.map((l) => [l.learnerId, l.name] as const));
 
   const { latest, counts } = latestByUnit(subs);
 
@@ -124,7 +128,7 @@ export async function getTutorCaseload(
       awaiting.push({
         submissionId: s.id,
         learnerId: s.learnerId,
-        learnerName: roster.find((l) => l.learnerId === s.learnerId)?.name ?? null,
+        learnerName: nameOf.get(s.learnerId) ?? null,
         courseId: s.courseId,
         courseTitle: s.courseTitle,
         lessonId: s.lessonId,
@@ -231,17 +235,39 @@ export async function getTutorPipeline(actor: Actor): Promise<TutorPipeline> {
 }
 
 /**
+ * Optional pre-loaded inputs / mode for computePipelineForRoster. Everything defaults to "load it yourself", so
+ * the tutor pipeline call (no options) is unchanged. The admin overview uses these to load the org's submissions,
+ * last-seen map and assessment items ONCE and partition them per tutor in memory.
+ */
+export interface PipelineOptions {
+  /** Counts only: skip the five item lists (returned empty) and the course/assignment scope enrichment
+   *  (stats.courses / stats.assignments stay 0, programmes empty). Every other stat is computed identically. */
+  countsOnly?: boolean;
+  /** Submission rows for EXACTLY this roster's learners (callers partition; the query is skipped). */
+  rows?: SubmissionStatusRow[];
+  /** lessonId → assessment items covering at least every lesson in `rows` (the query is skipped). */
+  itemsByLesson?: Map<string, AssessmentItem[]>;
+  /** Pre-loaded last-seen map / profile-status map (a missing learner reads as never-logged-in / ACTIVE). */
+  lastSeen?: Map<string, string | null>;
+  statusMap?: Map<string, string>;
+}
+
+/**
  * The marking pipeline + activity/outcome stats for an EXPLICIT learner roster. Extracted verbatim from
  * getTutorPipeline so the admin dashboard can run the identical computation over the ORG-WIDE learner set
  * (getOrgLearnerIds) or a single tutor's roster — independent of tutor_allocation. Counts-only callers can
  * pass a roster with name/email null.
  */
-export async function computePipelineForRoster(roster: AllocatedLearner[]): Promise<TutorPipeline> {
+export async function computePipelineForRoster(
+  roster: AllocatedLearner[],
+  options: PipelineOptions = {}
+): Promise<TutorPipeline> {
+  const countsOnly = options.countsOnly === true;
   const nameOf = new Map(roster.map((l) => [l.learnerId, l.name] as const));
-  const subs = await getSubmissionsWithContextForLearners(roster.map((l) => l.learnerId));
+  const subs = options.rows ?? (await getSubmissionStatusRowsForLearners(roster.map((l) => l.learnerId)));
 
-  const lessonIds = [...new Set(subs.map((s) => s.lessonId))];
-  const itemsByLesson = await getAssessmentItemsByLesson(lessonIds);
+  const itemsByLesson =
+    options.itemsByLesson ?? (await getAssessmentItemsByLesson([...new Set(subs.map((s) => s.lessonId))]));
   const metaOf = (lessonId: string, key: string | null): { name: string; dueAt: string | null } => {
     if (!key) return { name: 'Coursework', dueAt: null };
     const item = itemsByLesson.get(lessonId)?.find((i) => i.key === key);
@@ -249,7 +275,7 @@ export async function computePipelineForRoster(roster: AllocatedLearner[]): Prom
   };
 
   // Group every version per (learner, unit, assessment).
-  const groups = new Map<string, SubmissionWithContext[]>();
+  const groups = new Map<string, SubmissionStatusRow[]>();
   for (const s of subs) {
     const k = `${s.learnerId}::${s.lessonId}::${s.assessmentKey ?? ''}`;
     const arr = groups.get(k);
@@ -281,12 +307,15 @@ export async function computePipelineForRoster(roster: AllocatedLearner[]): Prom
   const awaitingDraftFeedback: PipelineItem[] = [];
   const overdue: PipelineItem[] = [];
   const dueSoon: PipelineItem[] = [];
+  // Distinct learners with work pending the tutor's action (across the action queues) — tracked directly so the
+  // counts-only mode needs no item lists.
+  const pending = new Set<string>();
 
   const slaMs = resolveMarkingSlaHours({ MARKING_SLA_HOURS: process.env.MARKING_SLA_HOURS }) * 3_600_000;
   const dueSoonMs = DUE_SOON_WINDOW_DAYS * 86_400_000;
   const now = Date.now();
 
-  const toItem = (s: SubmissionWithContext): PipelineItem => {
+  const toItem = (s: SubmissionStatusRow): PipelineItem => {
     const meta = metaOf(s.lessonId, s.assessmentKey);
     return {
       submissionId: s.id,
@@ -304,8 +333,8 @@ export async function computePipelineForRoster(roster: AllocatedLearner[]): Prom
       dueAt: meta.dueAt
     };
   };
-  const pickLatest = (list: SubmissionWithContext[]): SubmissionWithContext | null =>
-    list.reduce<SubmissionWithContext | null>((a, b) => (!a || b.version > a.version ? b : a), null);
+  const pickLatest = (list: SubmissionStatusRow[]): SubmissionStatusRow | null =>
+    list.reduce<SubmissionStatusRow | null>((a, b) => (!a || b.version > a.version ? b : a), null);
 
   for (const arr of groups.values()) {
     for (const s of arr) {
@@ -324,22 +353,23 @@ export async function computePipelineForRoster(roster: AllocatedLearner[]): Prom
     );
 
     if (latestFinal && latestFinal.resultKind == null && !assessmentPassed) {
-      const item = toItem(latestFinal);
+      pending.add(latestFinal.learnerId);
       if (priorRefer) {
-        resubmissions.push(item);
         stats.resubmissions++;
+        if (!countsOnly) resubmissions.push(toItem(latestFinal));
       } else {
-        awaitingMarking.push(item);
         stats.awaitingMarking++;
+        if (!countsOnly) awaitingMarking.push(toItem(latestFinal));
       }
       if (now - new Date(latestFinal.submittedAt).getTime() > slaMs) {
-        overdue.push(item);
         stats.overdue++;
+        if (!countsOnly) overdue.push(toItem(latestFinal));
       }
     }
     if (latestDraft && latestDraft.resultKind == null && !assessmentPassed) {
-      awaitingDraftFeedback.push(toItem(latestDraft));
+      pending.add(latestDraft.learnerId);
       stats.awaitingDraftFeedback++;
+      if (!countsOnly) awaitingDraftFeedback.push(toItem(latestDraft));
     }
 
     const latest = latestFinal ?? latestDraft;
@@ -348,8 +378,8 @@ export async function computePipelineForRoster(roster: AllocatedLearner[]): Prom
       if (dueAt && !assessmentPassed) {
         const due = new Date(dueAt).getTime();
         if (due >= now && due - now <= dueSoonMs) {
-          dueSoon.push(toItem(latest));
           stats.dueSoon++;
+          if (!countsOnly) dueSoon.push(toItem(latest));
         }
       }
     }
@@ -366,9 +396,9 @@ export async function computePipelineForRoster(roster: AllocatedLearner[]): Prom
   // ── Enrichment (Phase 9): learner activity, caseload scope, grading turnaround ──────────────────
   const learnerIds = roster.map((l) => l.learnerId);
   const [lastSeen, statusMap, programmes] = await Promise.all([
-    getLastSeenForUserIds(learnerIds),
-    getProfileStatusForIds(learnerIds),
-    getCoursesForLearners(learnerIds)
+    options.lastSeen ?? getLastSeenForUserIds(learnerIds),
+    options.statusMap ?? getProfileStatusForIds(learnerIds),
+    countsOnly ? Promise.resolve([] as RosterCourse[]) : getCoursesForLearners(learnerIds)
   ]);
 
   const THIRTY_DAYS_MS = 30 * 86_400_000;
@@ -383,10 +413,14 @@ export async function computePipelineForRoster(roster: AllocatedLearner[]): Prom
     else stats.activeLearners++;
   }
 
-  stats.courses = programmes.length;
-  const courseLessonIds = await getLessonIdsForCourses(programmes.map((p: RosterCourse) => p.courseId));
-  const assessmentsByLesson = await getAssessmentItemsByLesson(courseLessonIds);
-  for (const items of assessmentsByLesson.values()) stats.assignments += items.length;
+  if (!countsOnly) {
+    // stats.assignments stays its OWN lean read over ALL the programmes' lessons — NOT itemsByLesson above, which
+    // only covers lessons that already have submissions (reusing it would silently drop the count).
+    stats.courses = programmes.length;
+    const courseLessonIds = await getLessonIdsForCourses(programmes.map((p: RosterCourse) => p.courseId));
+    const assessmentsByLesson = await getAssessmentItemsByLesson(courseLessonIds);
+    for (const items of assessmentsByLesson.values()) stats.assignments += items.length;
+  }
 
   // Average grading turnaround (final submission → verdict), in days.
   let turnSum = 0;
@@ -402,11 +436,6 @@ export async function computePipelineForRoster(roster: AllocatedLearner[]): Prom
   }
   stats.avgTurnaroundDays = turnCount > 0 ? Math.round((turnSum / turnCount / 86_400_000) * 10) / 10 : null;
 
-  // Distinct learners with work pending the tutor's action (across the action queues).
-  const pending = new Set<string>();
-  for (const item of [...awaitingMarking, ...resubmissions, ...awaitingDraftFeedback, ...overdue]) {
-    pending.add(item.learnerId);
-  }
   stats.learnersWithPendingWork = pending.size;
 
   return { stats, awaitingMarking, resubmissions, awaitingDraftFeedback, overdue, dueSoon, programmes };

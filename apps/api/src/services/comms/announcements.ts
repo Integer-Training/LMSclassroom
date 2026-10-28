@@ -228,17 +228,34 @@ export async function publishAnnouncement(actor: Actor, input: PublishAnnounceme
   return toItem(row);
 }
 
-/** The actor's feed: admin → all org broadcasts (manage, with labels + archived); tutor → tutor-addressed;
- *  learner → all_learners + enrolled courses' + directly-targeted + their tutor's group. */
-export async function listAnnouncements(actor: Actor): Promise<AnnouncementItem[]> {
+/** Default page size of the announcements feed (the dashboards show the latest few; nobody reads 200). */
+export const ANNOUNCEMENT_FEED_DEFAULT_LIMIT = 20;
+
+export interface ListAnnouncementsOptions {
+  /** Admin manage list only: also return archived broadcasts. Ignored for tutors/learners (never see archived). */
+  includeArchived?: boolean;
+  /** Page size. Default ANNOUNCEMENT_FEED_DEFAULT_LIMIT; the admin manage list (includeArchived) is uncapped unless set. */
+  limit?: number;
+}
+
+/** The actor's feed: admin → org broadcasts (unarchived by default, with labels; `includeArchived` = the manage list);
+ *  tutor → tutor-addressed; learner → all_learners + enrolled courses' + directly-targeted + their tutor's group.
+ *  Newest first, capped at `limit` (default 20). */
+export async function listAnnouncements(
+  actor: Actor,
+  options: ListAnnouncementsOptions = {}
+): Promise<AnnouncementItem[]> {
   assertAuthed(actor);
   if (isRole(actor, 'ADMIN')) {
-    return toItemsWithLabels(await listAnnouncementsForOrg(actor.orgId));
+    const includeArchived = options.includeArchived === true;
+    const limit = options.limit ?? (includeArchived ? undefined : ANNOUNCEMENT_FEED_DEFAULT_LIMIT);
+    return toItemsWithLabels(await listAnnouncementsForOrg(actor.orgId, { includeArchived, limit }));
   }
+  const limit = options.limit ?? ANNOUNCEMENT_FEED_DEFAULT_LIMIT;
   if (isRole(actor, 'TUTOR')) {
-    return (await listAnnouncementsForTutor(actor.orgId, actor.userId)).map((r) => toItem(r));
+    return (await listAnnouncementsForTutor(actor.orgId, actor.userId, { limit })).map((r) => toItem(r));
   }
-  return (await listAnnouncementsForLearner(actor.orgId, actor.userId)).map((r) => toItem(r));
+  return (await listAnnouncementsForLearner(actor.orgId, actor.userId, { limit })).map((r) => toItem(r));
 }
 
 /** A course's live announcements — an enrolled learner (of a published course) or staff. */

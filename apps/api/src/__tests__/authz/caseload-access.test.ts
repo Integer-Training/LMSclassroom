@@ -16,6 +16,7 @@ vi.mock('@cio/db/queries/allocation', () => ({
 }));
 vi.mock('@cio/db/queries/coursework', () => ({
   getSubmissionsWithContextForLearners: vi.fn(),
+  getSubmissionStatusRowsForLearners: vi.fn(),
   getSubmissionByFileKey: vi.fn()
 }));
 vi.mock('@cio/db/queries/auth', () => ({ getProfileById: vi.fn() }));
@@ -25,7 +26,7 @@ import {
   listLearnersForTutor,
   isTutorAllocatedToLearner
 } from '@cio/db/queries/allocation';
-import { getSubmissionsWithContextForLearners } from '@cio/db/queries/coursework';
+import { getSubmissionsWithContextForLearners, getSubmissionStatusRowsForLearners } from '@cio/db/queries/coursework';
 import { getProfileById } from '@cio/db/queries/auth';
 import { getCaseloadLearnerDetail, getTutorCaseload } from '@api/services/caseload/caseload';
 
@@ -33,6 +34,8 @@ const mLearnersForTutor = vi.mocked(listLearnersForTutor);
 const mLearnersForOrg = vi.mocked(listAllocatedLearnersForOrg);
 const mAllocated = vi.mocked(isTutorAllocatedToLearner);
 const mSubs = vi.mocked(getSubmissionsWithContextForLearners);
+// The caseload LIST reads the lean status rows (no files/comment/feedback); the learner DETAIL keeps the heavy read.
+const mLeanSubs = vi.mocked(getSubmissionStatusRowsForLearners);
 const mProfile = vi.mocked(getProfileById);
 
 const ORG = 'org-1';
@@ -85,6 +88,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   // getSubmissionsWithContextForLearners echoes only the learner ids it is fed (never widens).
   mSubs.mockImplementation(async (ids: string[]) => ALL_SUBS.filter((s: any) => ids.includes(s.learnerId)) as never);
+  mLeanSubs.mockImplementation(
+    async (ids: string[]) => ALL_SUBS.filter((s: any) => ids.includes(s.learnerId)) as never
+  );
 });
 
 // L1: unit U1 has v1(old) + v2(new), both awaiting. L2: unit U2 v1 awaiting. L3: unit U3 v1 (A must never see).

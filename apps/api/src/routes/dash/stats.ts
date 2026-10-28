@@ -10,7 +10,7 @@ import {
 } from '@cio/utils/validation/dash';
 import { authMiddleware } from '@api/middlewares/auth';
 import { getCurrentUserLoginStreak, getOrganisationAnalytics, getStudentLoginActivity } from '@api/services/dash';
-import { getAdminOverview, getOnlineNow, type AdminOverview } from '@api/services/dash/admin-overview';
+import { getAdminOverview, getOnlineNow } from '@api/services/dash/admin-overview';
 import {
   getCompletionsReport,
   getLearnersReport,
@@ -20,6 +20,7 @@ import {
 import { getSystemEventsReport } from '@api/services/dash/system-events';
 import { getOrgComplianceOverview } from '@api/services/course/compliance';
 import { handleError } from '@api/utils/errors';
+import { cachedOrgReport } from '@api/utils/swr-cache';
 import { requireAdmin, requireManagerOrAdmin, requireSameOrg } from '@api/middlewares/guards';
 import { zValidator } from '@hono/zod-validator';
 import {
@@ -29,6 +30,9 @@ import {
   getPopularTypes,
   ingestEventBatch
 } from '@api/services/analytics';
+
+// The role guards on every cached route already refuse unauthenticated callers; this narrows the type for orgId.
+type AuthedActor = Extract<Actor, { authenticated: true }>;
 
 export const dashAnalyticsRouter = new Hono()
   .post('/track', zValidator('json', ZIngestBatch), async (c) => {
@@ -56,8 +60,12 @@ export const dashAnalyticsRouter = new Hono()
     async (c) => {
       try {
         const { orgId, siteName } = c.req.valid('query');
+        const actor = c.get('actor') as AuthedActor;
 
-        const result = await getOrganisationAnalytics(orgId, siteName);
+        // Role + same-org guards above already ran. Single-flight + SWR, keyed by the actor's org and the exact query.
+        const result = await cachedOrgReport(`stats:${orgId ?? ''}|${siteName ?? ''}`, actor.orgId, () =>
+          getOrganisationAnalytics(orgId, siteName)
+        );
 
         return c.json({ success: true, data: result }, 200);
       } catch (error) {
@@ -174,7 +182,10 @@ export const dashAnalyticsRouter = new Hono()
     async (c) => {
       try {
         const { orgId } = c.req.valid('query');
-        const result = await getOrgComplianceOverview(orgId);
+        const actor = c.get('actor') as AuthedActor;
+        const result = await cachedOrgReport(`compliance-overview:${orgId}`, actor.orgId, () =>
+          getOrgComplianceOverview(orgId)
+        );
 
         return c.json({ success: true, data: result }, 200);
       } catch (error) {
@@ -182,7 +193,7 @@ export const dashAnalyticsRouter = new Hono()
       }
     }
   )
-  // Admin analytics command-center bundle (Manager/Admin). Cached ~60s per org (heavy aggregate).
+  // Admin analytics command-center bundle (Manager/Admin). Single-flight + stale-while-revalidate per org (heavy aggregate).
   .get(
     '/admin-overview',
     authMiddleware,
@@ -191,11 +202,8 @@ export const dashAnalyticsRouter = new Hono()
     zValidator('query', ZDashComplianceOverview),
     async (c) => {
       try {
-        const { orgId } = c.req.valid('query');
-        const cached = readOverviewCache(orgId);
-        if (cached) return c.json({ success: true, data: cached }, 200);
-        const result = await getAdminOverview(c.get('actor') as Actor);
-        writeOverviewCache(orgId, result);
+        const actor = c.get('actor') as AuthedActor;
+        const result = await cachedOrgReport('admin-overview', actor.orgId, () => getAdminOverview(actor));
         return c.json({ success: true, data: result }, 200);
       } catch (error) {
         return handleError(c, error, 'Failed to load admin overview');
@@ -205,7 +213,11 @@ export const dashAnalyticsRouter = new Hono()
   // Learner progression report (Manager/Admin) — activity mix, progress distribution, at-risk list.
   .get('/reports/learners', authMiddleware, requireManagerOrAdmin, async (c) => {
     try {
-      return c.json({ success: true, data: await getLearnersReport(c.get('actor') as Actor) }, 200);
+      const actor = c.get('actor') as AuthedActor;
+      return c.json(
+        { success: true, data: await cachedOrgReport('reports-learners', actor.orgId, () => getLearnersReport(actor)) },
+        200
+      );
     } catch (error) {
       return handleError(c, error, 'Failed to load learners report');
     }
@@ -213,7 +225,14 @@ export const dashAnalyticsRouter = new Hono()
   // Completions & certificates report (Manager/Admin) — totals, trend, per-course completion + time.
   .get('/reports/completions', authMiddleware, requireManagerOrAdmin, async (c) => {
     try {
-      return c.json({ success: true, data: await getCompletionsReport(c.get('actor') as Actor) }, 200);
+      const actor = c.get('actor') as AuthedActor;
+      return c.json(
+        {
+          success: true,
+          data: await cachedOrgReport('reports-completions', actor.orgId, () => getCompletionsReport(actor))
+        },
+        200
+      );
     } catch (error) {
       return handleError(c, error, 'Failed to load completions report');
     }
@@ -221,7 +240,14 @@ export const dashAnalyticsRouter = new Hono()
   // Referrals / failing report (ADMIN ONLY) — per-tutor strictness + per-learner seriousness.
   .get('/reports/referrals', authMiddleware, requireAdmin, async (c) => {
     try {
-      return c.json({ success: true, data: await getReferralsReport(c.get('actor') as Actor) }, 200);
+      const actor = c.get('actor') as AuthedActor;
+      return c.json(
+        {
+          success: true,
+          data: await cachedOrgReport('reports-referrals', actor.orgId, () => getReferralsReport(actor))
+        },
+        200
+      );
     } catch (error) {
       return handleError(c, error, 'Failed to load referrals report');
     }
@@ -229,7 +255,14 @@ export const dashAnalyticsRouter = new Hono()
   // Tutor feedback report (ADMIN ONLY) — per-tutor average ratings + the individual learner entries.
   .get('/reports/tutor-feedback', authMiddleware, requireAdmin, async (c) => {
     try {
-      return c.json({ success: true, data: await getTutorFeedbackReport(c.get('actor') as Actor) }, 200);
+      const actor = c.get('actor') as AuthedActor;
+      return c.json(
+        {
+          success: true,
+          data: await cachedOrgReport('reports-tutor-feedback', actor.orgId, () => getTutorFeedbackReport(actor))
+        },
+        200
+      );
     } catch (error) {
       return handleError(c, error, 'Failed to load tutor feedback report');
     }
@@ -271,16 +304,3 @@ export const dashAnalyticsRouter = new Hono()
       }
     }
   );
-
-// Tiny in-memory TTL cache for the admin-overview bundle (single-node droplet). 60s is well within the
-// dashboard's usefulness window and keeps the heavy per-tutor/per-course aggregation off every refresh.
-const OVERVIEW_TTL_MS = 60_000;
-const overviewCache = new Map<string, { at: number; data: AdminOverview }>();
-function readOverviewCache(orgId: string): AdminOverview | null {
-  const hit = overviewCache.get(orgId);
-  if (hit && Date.now() - hit.at < OVERVIEW_TTL_MS) return hit.data;
-  return null;
-}
-function writeOverviewCache(orgId: string, data: AdminOverview): void {
-  overviewCache.set(orgId, { at: Date.now(), data });
-}

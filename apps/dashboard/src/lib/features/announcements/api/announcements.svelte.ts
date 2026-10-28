@@ -53,9 +53,11 @@ class AnnouncementsApi extends BaseApi {
   publishing = $state(false);
   busyId = $state<string | null>(null);
 
-  async loadFeed() {
+  /** The feed defaults to unarchived, newest 20. The admin manage page passes includeArchived to get its full list. */
+  async loadFeed(opts: { includeArchived?: boolean } = {}) {
     return this.execute<typeof classroomio.announcements.$get>({
-      requestFn: () => classroomio.announcements.$get(),
+      requestFn: () =>
+        classroomio.announcements.$get({ query: opts.includeArchived ? { includeArchived: 'true' as const } : {} }),
       logContext: 'loading announcements',
       onSuccess: (result) => {
         this.items = result.data as AnnouncementItem[];

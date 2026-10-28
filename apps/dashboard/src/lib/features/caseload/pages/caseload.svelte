@@ -20,10 +20,12 @@
   type QueueView = 'awaiting' | 'resubmissions' | 'drafts' | 'overdue' | 'dueSoon' | 'learners';
   let activeView = $state<QueueView | null>(null);
 
+  // The pipeline carries every tile/table on this page. The full per-learner caseload list is only needed by the
+  // "learners" drill-down, so it loads on first open (not on every dashboard visit). BroadcastBanner (rendered below)
+  // owns the announcements feed load — this page just reads the shared items.
+  let caseloadRequested = false;
   onMount(() => {
-    caseloadApi.loadCaseload();
     caseloadApi.loadPipeline();
-    announcementsApi.loadFeed();
   });
 
   const stats = $derived(caseloadApi.pipeline?.stats ?? null);
@@ -70,6 +72,10 @@
     const wasActive = activeView === view;
     activeView = wasActive ? null : view;
     if (wasActive) return; // toggled off — nothing to scroll to
+    if (view === 'learners' && !caseloadRequested) {
+      caseloadRequested = true;
+      caseloadApi.loadCaseload();
+    }
     await tick(); // wait for the drill-down to render
     const reduce = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     drilldownEl?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });

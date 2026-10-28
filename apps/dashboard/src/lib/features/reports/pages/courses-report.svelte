@@ -35,7 +35,7 @@
     if (!o) return;
     downloadCsv(
       `courses-${new Date().toISOString().slice(0, 10)}`,
-      ['Course', 'Status', 'Enrolled', 'Active 30d', 'Assessments', 'Avg completion %'],
+      ['Course', 'Status', 'Enrolled', 'Active 30d', 'Assessments', 'Avg completed (recorded) %'],
       courses.map((c) => [
         c.title,
         c.isPublished ? 'Published' : 'Draft',
@@ -67,7 +67,7 @@
           <ReportKpi label="Active courses" value={o.headline.activeCourses} />
           <ReportKpi label="Total courses" value={courses.length} />
           <ReportKpi label="Total enrolled" value={totalEnrolled} />
-          <ReportKpi label="Avg completion" value={`${avgCompletion}%`} />
+          <ReportKpi label="Avg completed (recorded)" value={`${avgCompletion}%`} />
         </div>
 
         <div class="bg-card mt-5 rounded-xl border p-4">
@@ -97,7 +97,7 @@
                   <Table.Head class="text-right">Enrolled</Table.Head>
                   <Table.Head class="text-right">Active 30d</Table.Head>
                   <Table.Head class="text-right">Assessments</Table.Head>
-                  <Table.Head class="text-right">Completion</Table.Head>
+                  <Table.Head class="text-right">Completed (recorded)</Table.Head>
                 </Table.Row>
               </Table.Header>
               <Table.Body>

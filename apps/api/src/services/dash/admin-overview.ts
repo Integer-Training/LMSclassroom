@@ -14,16 +14,17 @@ import {
   getOrgMessagingStats,
   getOrgStudyHoursMonthly,
   getPublishedCourseCount,
+  getRecordedCompletionCountsByCourse,
   getRegistrationFunnel,
   getSubmissionsOverTime,
   listOrgLearners,
   listUnallocatedEnrolledLearners
 } from '@cio/db/queries/dash';
-import { listLearnersForTutor } from '@cio/db/queries/allocation';
+import { listAllocatedLearnerIdsByTutors } from '@cio/db/queries/allocation';
 import { listOrgTutors } from '@cio/db/queries/comms';
 import { getLastSeenForUserIds } from '@cio/db/queries/analytics';
-import { getAssessmentItemsByLesson } from '@cio/db/queries/coursework';
-import { getCourseProgressReport } from '@cio/db/queries/reports';
+import { getAssessmentItemsByLesson, getSubmissionStatusRowsForLearners } from '@cio/db/queries/coursework';
+import { getProfileStatusForIds } from '@cio/db/queries/caseload';
 import { computePipelineForRoster } from '@api/services/caseload/caseload';
 import { ROLE } from '@cio/utils/constants';
 import { getCachedOnlineMembers } from '@api/services/dash/online-presence';
@@ -93,6 +94,7 @@ export interface CoursePerfRow {
   enrolled: number;
   active30d: number;
   assessments: number;
+  /** "Completed (recorded)": recorded course completions of currently-enrolled students ÷ enrolled, 0-100. */
   completionPercent: number;
 }
 
@@ -121,7 +123,15 @@ function pct(part: number, whole: number): number {
   return whole > 0 ? Math.round((part / whole) * 100) : 0;
 }
 
-/** The full admin dashboard bundle. Cached by the route (~60s). */
+/**
+ * The full admin dashboard bundle. Cached by the route (single-flight + stale-while-revalidate).
+ *
+ * Load shape (scalability H1): the org's submission rows are read ONCE (lean: no files/comment/feedback) together
+ * with ONE tutor_allocation read for every tutor, then the org-wide stats and each tutor's stats are computed by
+ * partitioning those rows in memory — it used to run one full submission load (+ roster, last-seen, courses) per tutor.
+ * A learner allocated to two tutors still counts for each of them but once org-wide, because the org figure is
+ * computed over the STUDENT org roster while each tutor figure is computed over that tutor's allocation set.
+ */
 export async function getAdminOverview(actor: Actor): Promise<AdminOverview> {
   assertManagerOrAdmin(actor);
   const orgId = actor.orgId;
@@ -131,9 +141,9 @@ export async function getAdminOverview(actor: Actor): Promise<AdminOverview> {
   const learners = await listOrgLearners(orgId);
   const learnerRoster = learners.map((l) => ({ learnerId: l.learnerId, name: l.name, email: l.email }));
   const learnerIds = learners.map((l) => l.learnerId);
+  const orgStatus = new Map(learners.map((l) => [l.learnerId, l.status ?? 'ACTIVE'] as const));
 
   const [
-    orgPipeline,
     roleCounts,
     activeCourses,
     enrollmentTrend,
@@ -149,9 +159,9 @@ export async function getAdminOverview(actor: Actor): Promise<AdminOverview> {
     lastSeen,
     completionStats,
     certStats,
-    unallocated
+    unallocated,
+    recordedCompletions
   ] = await Promise.all([
-    computePipelineForRoster(learnerRoster),
     getMemberRoleStatusCounts(orgId),
     getPublishedCourseCount(orgId),
     getEnrollmentTrend(orgId, year),
@@ -167,8 +177,43 @@ export async function getAdminOverview(actor: Actor): Promise<AdminOverview> {
     getLastSeenForUserIds(learnerIds),
     getCompletionStats(orgId),
     getCertificateStats(orgId),
-    listUnallocatedEnrolledLearners(orgId)
+    listUnallocatedEnrolledLearners(orgId),
+    getRecordedCompletionCountsByCourse(orgId)
   ]);
+
+  // ONE allocation read for every tutor (tutor_allocation only, no org filter — exactly each tutor's roster) and the
+  // lesson→course pairs. A tutor's roster may include a learner outside the org STUDENT roster; those few extra ids
+  // get their own last-seen/status read so the per-tutor numbers match the old per-tutor load exactly.
+  const [allocByTutor, lessonPairs] = await Promise.all([
+    listAllocatedLearnerIdsByTutors(tutors.map((t) => t.id)),
+    getLessonCoursePairs(coursesBase.map((c) => c.courseId))
+  ]);
+  const orgIdSet = new Set(learnerIds);
+  const extraIds = [...new Set([...allocByTutor.values()].flat())].filter((id) => !orgIdSet.has(id));
+
+  const [subsAll, extraLastSeen, extraStatus] = await Promise.all([
+    getSubmissionStatusRowsForLearners([...learnerIds, ...extraIds]),
+    extraIds.length ? getLastSeenForUserIds(extraIds) : Promise.resolve(new Map<string, string | null>()),
+    extraIds.length ? getProfileStatusForIds(extraIds) : Promise.resolve(new Map<string, string>())
+  ]);
+
+  // Assessment items for every lesson that has a submission AND every course lesson, in one read (the per-course
+  // assessment count below needs the latter; the due-soon / name lookups need the former).
+  const itemsByLesson = await getAssessmentItemsByLesson([
+    ...new Set([...subsAll.map((s) => s.lessonId), ...lessonPairs.map((p) => p.lessonId)])
+  ]);
+
+  const lastSeenAll = new Map<string, string | null>([...lastSeen, ...extraLastSeen]);
+  const statusAll = new Map<string, string>([...orgStatus, ...extraStatus]);
+
+  // Org-wide figure over the STUDENT roster (counts only — the overview shows no per-item lists).
+  const orgPipeline = await computePipelineForRoster(learnerRoster, {
+    countsOnly: true,
+    rows: subsAll.filter((s) => orgIdSet.has(s.learnerId)),
+    itemsByLesson,
+    lastSeen: lastSeenAll,
+    statusMap: statusAll
+  });
 
   // Org-wide active learners in the last 7 / 30 days (from the shared last-seen map).
   const nowMs = Date.now();
@@ -224,25 +269,21 @@ export async function getAdminOverview(actor: Actor): Promise<AdminOverview> {
   }
 
   // Per-course assessment counts (lesson→course pairs → assessment items per lesson, summed per course).
-  const lessonPairs = await getLessonCoursePairs(coursesBase.map((c) => c.courseId));
-  const itemsByLesson = await getAssessmentItemsByLesson(lessonPairs.map((p) => p.lessonId));
   const assessmentsByCourse = new Map<string, number>();
   for (const { lessonId, courseId } of lessonPairs) {
     const n = itemsByLesson.get(lessonId)?.length ?? 0;
     if (n) assessmentsByCourse.set(courseId, (assessmentsByCourse.get(courseId) ?? 0) + n);
   }
 
-  // Per-course completion% (pass-based) — only for published courses to bound the work.
+  // Per-course "completed (recorded)" % (decision #3): recorded course_completion rows for learners CURRENTLY
+  // enrolled as students ÷ enrolled students, capped at 100 — one grouped query, no per-course progress report.
+  // Published courses only (drafts stay 0, as before).
+  const recordedByCourse = new Map(recordedCompletions.map((r) => [r.courseId, r.completed]));
   const completionByCourse = new Map<string, number>();
-  await Promise.all(
-    coursesBase
-      .filter((c) => c.isPublished)
-      .map(async (c) => {
-        const report = await getCourseProgressReport(c.courseId);
-        const completed = report.rows.filter((r) => r.completed).length;
-        completionByCourse.set(c.courseId, pct(completed, report.rows.length));
-      })
-  );
+  for (const c of coursesBase) {
+    if (!c.isPublished) continue;
+    completionByCourse.set(c.courseId, Math.min(100, pct(recordedByCourse.get(c.courseId) ?? 0, c.enrolled)));
+  }
 
   const courses: CoursePerfRow[] = coursesBase.map((c) => ({
     courseId: c.courseId,
@@ -254,24 +295,34 @@ export async function getAdminOverview(actor: Actor): Promise<AdminOverview> {
     completionPercent: completionByCourse.get(c.courseId) ?? 0
   }));
 
-  // Per-tutor performance — run the same pipeline math over each tutor's allocated roster.
-  const tutorRows: TutorPerfRow[] = await Promise.all(
-    tutors.map(async (t) => {
-      const roster = await listLearnersForTutor(t.id);
-      const p = await computePipelineForRoster(roster);
-      const graded = p.stats.passCount + p.stats.referCount;
-      return {
-        tutorId: t.id,
-        name: t.name,
-        email: t.email,
-        learners: p.stats.learners,
-        awaitingMarking: p.stats.awaitingMarking,
-        inactiveLearners: p.stats.inactiveLearners,
-        avgTurnaroundDays: p.stats.avgTurnaroundDays,
-        passRate: graded > 0 ? pct(p.stats.passCount, graded) : null
-      };
-    })
-  );
+  // Per-tutor performance — the same pipeline math over each tutor's allocated roster, partitioned from the rows
+  // already loaded above (no per-tutor DB reads; allocation-only scoping is unchanged).
+  const tutorRows: TutorPerfRow[] = [];
+  for (const t of tutors) {
+    const rosterIds = allocByTutor.get(t.id) ?? [];
+    const rosterSet = new Set(rosterIds);
+    const p = await computePipelineForRoster(
+      rosterIds.map((learnerId) => ({ learnerId, name: null, email: null })),
+      {
+        countsOnly: true,
+        rows: rosterSet.size ? subsAll.filter((r) => rosterSet.has(r.learnerId)) : [],
+        itemsByLesson,
+        lastSeen: lastSeenAll,
+        statusMap: statusAll
+      }
+    );
+    const graded = p.stats.passCount + p.stats.referCount;
+    tutorRows.push({
+      tutorId: t.id,
+      name: t.name,
+      email: t.email,
+      learners: p.stats.learners,
+      awaitingMarking: p.stats.awaitingMarking,
+      inactiveLearners: p.stats.inactiveLearners,
+      avgTurnaroundDays: p.stats.avgTurnaroundDays,
+      passRate: graded > 0 ? pct(p.stats.passCount, graded) : null
+    });
+  }
   tutorRows.sort((a, b) => b.learners - a.learners);
 
   const graded = s.passCount + s.referCount;

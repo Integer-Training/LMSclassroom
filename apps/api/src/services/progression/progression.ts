@@ -20,6 +20,7 @@ import {
 import { getCourseProgressReport, getLatestMarkedResultsForCourse } from '@cio/db/queries/reports';
 import { getLastSeenForUserIds } from '@cio/db/queries/analytics';
 import { isAllocatedTutor } from '@api/middlewares/guards';
+import { mapLimit } from '@api/utils/map-limit';
 
 // Tutor Learner-Progression (PearlLMS Phase 9) — read-only view of allocated learners' progress across
 // courses, composed from the shared progress/coursework/time primitives. Roster is allocation-sourced
@@ -119,9 +120,10 @@ async function buildCourseCatalog(courseId: string): Promise<CourseCatalog> {
   return { workbook, casestudy };
 }
 
-/** Passing (learner,lesson,assessment) keys for a whole course as a Set — one batched read per course. */
-async function buildCoursePassSet(courseId: string): Promise<Set<string>> {
-  const rows = await getLatestMarkedResultsForCourse(courseId);
+type LatestMarkedResults = Awaited<ReturnType<typeof getLatestMarkedResultsForCourse>>;
+
+/** Passing (learner,lesson,assessment) keys for a whole course as a Set — built from the course's batched results. */
+function buildCoursePassSet(rows: LatestMarkedResults): Set<string> {
   const set = new Set<string>();
   for (const r of rows) {
     if (isPassingResult(r.result)) set.add(`${r.learnerId}::${r.lessonId}::${r.assessmentKey ?? ''}`);
@@ -237,22 +239,22 @@ async function buildProgressionForRoster(roster: AllocatedLearner[], courseId?: 
   const catalogs = new Map<string, CourseCatalog>();
   const passSets = new Map<string, Set<string>>();
   const progressByCourse = new Map<string, Map<string, { passed: number; total: number; index: number | null }>>();
-  await Promise.all(
-    targetCourseIds.map(async (cid) => {
-      const [catalog, passSet, report] = await Promise.all([
-        buildCourseCatalog(cid),
-        buildCoursePassSet(cid),
-        getCourseProgressReport(cid)
-      ]);
-      catalogs.set(cid, catalog);
-      passSets.set(cid, passSet);
-      const byLearner = new Map<string, { passed: number; total: number; index: number | null }>();
-      for (const r of report.rows) {
-        byLearner.set(r.learnerId, { passed: r.passed, total: r.total, index: r.currentPosition?.index ?? null });
-      }
-      progressByCourse.set(cid, byLearner);
-    })
-  );
+  // At most 4 courses in flight (each runs ~6 reads); the latest-results read runs ONCE per course and feeds both the
+  // pass set and the progress report (it used to run twice).
+  await mapLimit(targetCourseIds, 4, async (cid) => {
+    const results = await getLatestMarkedResultsForCourse(cid);
+    const [catalog, report] = await Promise.all([
+      buildCourseCatalog(cid),
+      getCourseProgressReport(cid, undefined, { results })
+    ]);
+    catalogs.set(cid, catalog);
+    passSets.set(cid, buildCoursePassSet(results));
+    const byLearner = new Map<string, { passed: number; total: number; index: number | null }>();
+    for (const r of report.rows) {
+      byLearner.set(r.learnerId, { passed: r.passed, total: r.total, index: r.currentPosition?.index ?? null });
+    }
+    progressByCourse.set(cid, byLearner);
+  });
 
   const rows: ProgressionRow[] = [];
   for (const p of pending) {
@@ -342,7 +344,7 @@ export async function getProgressionDetail(actor: Actor, learnerId: string): Pro
       computeLearnerCourseProgress(learnerId, cid),
       getOrderedUnitsForCourse(cid),
       buildCourseCatalog(cid),
-      buildCoursePassSet(cid)
+      getLatestMarkedResultsForCourse(cid).then(buildCoursePassSet)
     ]);
     const percent = progress.total > 0 ? Math.round((progress.passed / progress.total) * 100) : 0;
     const workbooks = countKind(catalog.workbook, learnerId, passSet);

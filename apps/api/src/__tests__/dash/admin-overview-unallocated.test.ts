@@ -18,16 +18,22 @@ vi.mock('@cio/db/queries/dash', () => ({
   getOrgMessagingStats: vi.fn(async () => ({ activeThreads: 0, messagesLast7d: 0 })),
   getOrgStudyHoursMonthly: vi.fn(async () => []),
   getPublishedCourseCount: vi.fn(async () => 0),
+  getRecordedCompletionCountsByCourse: vi.fn(async () => []),
   getRegistrationFunnel: vi.fn(async () => []),
   getSubmissionsOverTime: vi.fn(async () => []),
   listOrgLearners: vi.fn(async () => []),
   listUnallocatedEnrolledLearners: vi.fn()
 }));
-vi.mock('@cio/db/queries/allocation', () => ({ listLearnersForTutor: vi.fn(async () => []) }));
+vi.mock('@cio/db/queries/allocation', () => ({
+  listAllocatedLearnerIdsByTutors: vi.fn(async () => new Map())
+}));
+vi.mock('@cio/db/queries/caseload', () => ({ getProfileStatusForIds: vi.fn(async () => new Map()) }));
 vi.mock('@cio/db/queries/comms', () => ({ listOrgTutors: vi.fn(async () => []) }));
 vi.mock('@cio/db/queries/analytics', () => ({ getLastSeenForUserIds: vi.fn(async () => new Map()) }));
-vi.mock('@cio/db/queries/coursework', () => ({ getAssessmentItemsByLesson: vi.fn(async () => new Map()) }));
-vi.mock('@cio/db/queries/reports', () => ({ getCourseProgressReport: vi.fn(async () => ({ rows: [] })) }));
+vi.mock('@cio/db/queries/coursework', () => ({
+  getAssessmentItemsByLesson: vi.fn(async () => new Map()),
+  getSubmissionStatusRowsForLearners: vi.fn(async () => [])
+}));
 vi.mock('@api/services/caseload/caseload', () => ({
   computePipelineForRoster: vi.fn(async () => ({
     stats: {

@@ -311,19 +311,34 @@ type SubmissionWithDetails = Awaited<ReturnType<typeof getSubmissionsByCourseIdW
  * @param courseId Course ID
  * @param exerciseId Exercise ID (required)
  * @param submittedBy Optional group member ID filter
+ * @param submitterProfileIds Optional learner-profile allow-list applied in SQL (tutor view). EMPTY = no learners
+ *   visible -> [] (never an unfiltered read).
  */
 export async function listSubmissionsByExercise(
   courseId: string,
   exerciseId: string,
-  submittedBy?: string
+  submittedBy?: string,
+  submitterProfileIds?: string[]
 ): Promise<SubmissionWithDetails[]> {
   try {
-    const submissions = await getSubmissionsByCourseIdWithDetails(courseId, exerciseId, submittedBy);
-    const enriched = await Promise.all(
-      submissions.map(async (s) =>
-        s.answers?.length ? { ...s, answers: await enrichFileUploadAnswersArray(s.answers) } : s
-      )
+    const submissions = await getSubmissionsByCourseIdWithDetails(
+      courseId,
+      exerciseId,
+      submittedBy,
+      submitterProfileIds
     );
+    // ONE batched enrich (a single presign pass) over every answer, then re-slice per submission — it used to run
+    // one enrich call per submission.
+    const allAnswers = submissions.flatMap((s) => s.answers ?? []);
+    const enrichedAnswers = allAnswers.length ? await enrichFileUploadAnswersArray(allAnswers) : allAnswers;
+    let cursor = 0;
+    const enriched = submissions.map((s) => {
+      const n = s.answers?.length ?? 0;
+      if (!n) return s;
+      const answers = enrichedAnswers.slice(cursor, cursor + n);
+      cursor += n;
+      return { ...s, answers };
+    });
     enriched.sort((a, b) => new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime());
     return enriched;
   } catch (error) {
@@ -362,18 +377,18 @@ export async function listExerciseSubmissionsOverview(
       return { mySubmission, allSubmissions: [] };
     }
 
-    const allSubmissions = await listSubmissionsByExercise(courseId, exerciseId);
     if (actor.role === 'ADMIN') {
-      return { mySubmission, allSubmissions };
+      return { mySubmission, allSubmissions: await listSubmissionsByExercise(courseId, exerciseId) };
     }
 
-    const visibleLearners = new Set(await visibleLearnerIdsForCourse(actor, courseId));
+    // TUTOR: resolve the visible (allocated ∩ enrolled) learner set FIRST. An empty set returns [] immediately — no
+    // submissions query and never an empty IN list — otherwise the allow-list is applied in SQL.
+    const visibleLearners = await visibleLearnerIdsForCourse(actor, courseId);
+    if (visibleLearners.length === 0) return { mySubmission, allSubmissions: [] };
 
     return {
       mySubmission,
-      allSubmissions: allSubmissions.filter(
-        (submission) => !!submission.groupmember?.profileId && visibleLearners.has(submission.groupmember.profileId)
-      )
+      allSubmissions: await listSubmissionsByExercise(courseId, exerciseId, undefined, visibleLearners)
     };
   } catch (error) {
     if (error instanceof AppError) throw error;

@@ -115,8 +115,10 @@ export async function getLastSeenForUserIds(userIds: string[]): Promise<Map<stri
 
     return lastSeenByUserId;
   } catch (error) {
+    // Rethrow (was: return the all-null map). Swallowing here made a transient DB error look like "every learner
+    // has never logged in" on the dashboards / progression / management tables. A failed read now fails the request.
     console.error('getLastSeenForUserIds error:', error);
-    return lastSeenByUserId;
+    throw error;
   }
 }
 

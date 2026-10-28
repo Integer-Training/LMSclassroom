@@ -1,6 +1,6 @@
 import * as schema from '@db/schema';
 
-import { and, asc, count, db, eq, ilike, notExists, or, sql } from '@db/drizzle';
+import { and, asc, count, db, eq, ilike, inArray, notExists, or, sql } from '@db/drizzle';
 import { alias } from 'drizzle-orm/pg-core';
 
 // Tutor↔learner allocation (PearlLMS Phase 3). Provider-wide pairs; a tutor is "staff" only for the
@@ -323,6 +323,27 @@ export async function listLearnersForTutor(tutorId: string): Promise<AllocatedLe
     .leftJoin(schema.profile, eq(schema.profile.id, schema.tutorAllocation.learnerId))
     .where(eq(schema.tutorAllocation.tutorId, tutorId))) as AllocatedLearner[];
   return mergeLearners(allocated);
+}
+
+/**
+ * ONE query for many tutors' rosters: tutorId -> distinct allocated learner ids (tutor_allocation ONLY, exactly the
+ * learner set listLearnersForTutor(tutorId) returns, with no org filter — same as that function). Backs the admin
+ * overview's per-tutor stats, which used to call listLearnersForTutor once per tutor. An empty tutor list is an empty
+ * map (never an unscoped query); a tutor with no allocations is simply absent.
+ */
+export async function listAllocatedLearnerIdsByTutors(tutorIds: string[]): Promise<Map<string, string[]>> {
+  const byTutor = new Map<string, string[]>();
+  if (tutorIds.length === 0) return byTutor;
+  const rows = await db
+    .selectDistinct({ tutorId: schema.tutorAllocation.tutorId, learnerId: schema.tutorAllocation.learnerId })
+    .from(schema.tutorAllocation)
+    .where(inArray(schema.tutorAllocation.tutorId, tutorIds));
+  for (const r of rows) {
+    const list = byTutor.get(r.tutorId);
+    if (list) list.push(r.learnerId);
+    else byTutor.set(r.tutorId, [r.learnerId]);
+  }
+  return byTutor;
 }
 
 export interface AllocatedTutor {

@@ -42,7 +42,11 @@
 
   onMount(async () => {
     announcementsApi.reset();
-    await Promise.all([announcementsApi.loadCourses(), announcementsApi.loadTutors(), announcementsApi.loadFeed()]);
+    await Promise.all([
+      announcementsApi.loadCourses(),
+      announcementsApi.loadTutors(),
+      announcementsApi.loadFeed({ includeArchived: true })
+    ]);
   });
 
   function onLearnerSearchInput(value: string) {

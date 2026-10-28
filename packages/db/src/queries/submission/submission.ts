@@ -46,10 +46,19 @@ export async function hasSubmission(exerciseId: string, submittedBy: string): Pr
  * @param courseId Course ID
  * @param exerciseId Optional exercise ID filter
  * @param submittedBy Optional group member ID filter
+ * @param submitterProfileIds Optional learner-profile allow-list pushed into SQL (groupmember.profile_id IN …)
  * @returns Array of submissions with exercise, groupmember, profile, and answers
  */
-export async function getSubmissionsByCourseIdWithDetails(courseId: string, exerciseId?: string, submittedBy?: string) {
+export async function getSubmissionsByCourseIdWithDetails(
+  courseId: string,
+  exerciseId?: string,
+  submittedBy?: string,
+  submitterProfileIds?: string[]
+) {
   try {
+    // Optional learner allow-list (tutor view): EMPTY = no visible learners -> [] without querying, never unfiltered.
+    if (submitterProfileIds && submitterProfileIds.length === 0) return [];
+
     // Build conditions
     const conditions = [eq(schema.submission.courseId, courseId)];
 
@@ -59,6 +68,10 @@ export async function getSubmissionsByCourseIdWithDetails(courseId: string, exer
 
     if (submittedBy) {
       conditions.push(eq(schema.submission.submittedBy, submittedBy));
+    }
+
+    if (submitterProfileIds) {
+      conditions.push(inArray(schema.groupmember.profileId, submitterProfileIds));
     }
 
     // Get submissions with relations
@@ -83,9 +96,16 @@ export async function getSubmissionsByCourseIdWithDetails(courseId: string, exer
             .where(inArray(schema.questionAnswer.submissionId, submissionIds))
         : [];
 
-    // Group data by submission
+    // Group data by submission (one pass, Map lookup — was a filter() per submission).
+    const answersBySubmission = new Map<string, typeof questionAnswers>();
+    for (const qa of questionAnswers) {
+      if (!qa.submissionId) continue;
+      const list = answersBySubmission.get(qa.submissionId);
+      if (list) list.push(qa);
+      else answersBySubmission.set(qa.submissionId, [qa]);
+    }
     const result = submissions.map((row) => {
-      const submissionAnswers = questionAnswers.filter((qa) => qa.submissionId === row.submission.id);
+      const submissionAnswers = answersBySubmission.get(row.submission.id) ?? [];
 
       return {
         ...row.submission,

@@ -75,6 +75,12 @@ export async function hasRecentDuplicateAnnouncement(
   return !!row;
 }
 
+/** Paging / archive options for the feed reads (the learner/tutor feeds never include archived rows). */
+export interface AnnouncementFeedOptions {
+  includeArchived?: boolean;
+  limit?: number;
+}
+
 export async function getAnnouncementById(id: string, client: DbOrTxClient = db): Promise<AnnouncementRow | null> {
   const [row] = await client.select().from(schema.announcement).where(eq(schema.announcement.id, id)).limit(1);
   return (row as AnnouncementRow) ?? null;
@@ -90,6 +96,7 @@ export async function getAnnouncementById(id: string, client: DbOrTxClient = db)
 export async function listAnnouncementsForLearner(
   organizationId: string,
   learnerId: string,
+  options: AnnouncementFeedOptions = {},
   client: DbOrTxClient = db
 ): Promise<AnnouncementRow[]> {
   // Enrolled published course ids for this learner (groupmember role STUDENT → course; course.is_published).
@@ -113,7 +120,7 @@ export async function listAnnouncementsForLearner(
     .from(schema.tutorAllocation)
     .where(eq(schema.tutorAllocation.learnerId, learnerId));
 
-  const rows = await client
+  const query = client
     .select()
     .from(schema.announcement)
     .where(
@@ -130,6 +137,7 @@ export async function listAnnouncementsForLearner(
       )
     )
     .orderBy(desc(schema.announcement.publishedAt));
+  const rows = await (options.limit ? query.limit(options.limit) : query);
   return rows as AnnouncementRow[];
 }
 
@@ -140,9 +148,10 @@ export async function listAnnouncementsForLearner(
 export async function listAnnouncementsForTutor(
   organizationId: string,
   tutorId: string,
+  options: AnnouncementFeedOptions = {},
   client: DbOrTxClient = db
 ): Promise<AnnouncementRow[]> {
-  const rows = await client
+  const query = client
     .select()
     .from(schema.announcement)
     .where(
@@ -157,19 +166,31 @@ export async function listAnnouncementsForTutor(
       )
     )
     .orderBy(desc(schema.announcement.publishedAt));
+  const rows = await (options.limit ? query.limit(options.limit) : query);
   return rows as AnnouncementRow[];
 }
 
-/** Every non-deleted announcement in an org (admin manage list — archived rows INCLUDED, flagged), newest first. */
+/**
+ * Non-deleted announcements in an org, newest first. `includeArchived` (the admin manage list) also returns archived
+ * rows, flagged; otherwise only live (unarchived) ones. `limit` caps the page.
+ */
 export async function listAnnouncementsForOrg(
   organizationId: string,
+  options: AnnouncementFeedOptions = {},
   client: DbOrTxClient = db
 ): Promise<AnnouncementRow[]> {
-  const rows = await client
+  const query = client
     .select()
     .from(schema.announcement)
-    .where(and(eq(schema.announcement.organizationId, organizationId), isNull(schema.announcement.deletedAt)))
+    .where(
+      and(
+        eq(schema.announcement.organizationId, organizationId),
+        isNull(schema.announcement.deletedAt),
+        options.includeArchived ? undefined : isNull(schema.announcement.archivedAt)
+      )
+    )
     .orderBy(desc(schema.announcement.publishedAt));
+  const rows = await (options.limit ? query.limit(options.limit) : query);
   return rows as AnnouncementRow[];
 }
 

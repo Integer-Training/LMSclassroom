@@ -197,12 +197,15 @@ export function assembleReportRows(
  */
 export async function getCourseProgressReport(
   courseId: string,
-  client: DbOrTxClient = db
+  client: DbOrTxClient = db,
+  prefetched: { results?: Awaited<ReturnType<typeof getLatestMarkedResultsForCourse>> } = {}
 ): Promise<CourseProgressReport> {
+  // `prefetched.results` lets a caller that already ran getLatestMarkedResultsForCourse(courseId) for its own pass
+  // set (progression) hand it in, so the DISTINCT ON read runs once per course instead of twice.
   const [units, learners, results, completions] = await Promise.all([
     getOrderedUnitsForCourse(courseId, client),
     listEnrolledLearnersWithName(courseId, client),
-    getLatestMarkedResultsForCourse(courseId, client),
+    prefetched.results ?? getLatestMarkedResultsForCourse(courseId, client),
     getCompletionsForCourse(courseId, client)
   ]);
   const assessmentKeysByLesson = await getAssessmentKeysByLesson(

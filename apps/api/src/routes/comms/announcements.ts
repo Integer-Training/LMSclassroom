@@ -29,12 +29,21 @@ const ZPublish = z.object({
 const ZCourseParam = z.object({ courseId: z.string().uuid() });
 const ZIdParam = z.object({ id: z.string().uuid() });
 const ZArchive = z.object({ archived: z.boolean() });
+// Feed paging: default = unarchived, newest 20. The admin manage page sends includeArchived=true for its full list.
+const ZFeedQuery = z.object({
+  includeArchived: z.enum(['true', 'false']).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional()
+});
 
 export const announcementsRouter = new Hono()
   // The actor's feed (admin → all org [manage]; tutor → tutor-addressed; learner → scoped).
-  .get('/', requireActor(), async (c) => {
+  .get('/', requireActor(), zValidator('query', ZFeedQuery), async (c) => {
     try {
-      const data = await listAnnouncements(c.get('actor') as Actor);
+      const { includeArchived, limit } = c.req.valid('query');
+      const data = await listAnnouncements(c.get('actor') as Actor, {
+        includeArchived: includeArchived === 'true',
+        limit
+      });
       return c.json({ success: true, data }, 200);
     } catch (error) {
       return handleError(c, error, 'Failed to load announcements');

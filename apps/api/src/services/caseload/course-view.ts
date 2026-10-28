@@ -1,7 +1,7 @@
 import type { Actor } from '@cio/db/actor';
 import { AppError, ErrorCodes } from '@api/utils/errors';
 import { isPassingResult } from '@cio/utils/constants';
-import { isCourseTutor } from '@cio/db/queries/allocation';
+import { isCourseTutor, isTutorAllocatedToCourse } from '@cio/db/queries/allocation';
 import { visibleLearnerIdsForCourse } from '@api/middlewares/guards/ownership';
 import { generateDocumentDownloadPresignedUrls } from '@cio/core/utils/s3';
 import {
@@ -12,13 +12,13 @@ import {
   getLessonTitle,
   getUnitContent,
   getAssessmentItemsForLesson,
-  getSubmissionsWithContextForLearners,
+  getSubmissionStatusRowsForLearners,
   type UnitContent,
   type CourseOutline,
   type GridLearner,
   type GridSubmission,
   type CourseworkFile,
-  type SubmissionWithContext
+  type SubmissionStatusRow
 } from '@cio/db/queries/coursework';
 
 // PearlLMS — the TUTOR course-view + submissions-grid services. Self-contained access control: a TUTOR may
@@ -40,6 +40,27 @@ async function resolveRoster(actor: Actor, courseId: string): Promise<{ ids: str
     }
   }
   return { ids, isAdmin: actor.authenticated && actor.role === 'ADMIN' };
+}
+
+/**
+ * Can this actor OPEN the course (content, units, materials)? Mirrors resolveRoster's access rule EXACTLY, without
+ * loading the roster: ADMIN yes; TUTOR yes only if at least one allocated learner is enrolled (STUDENT) in the course
+ * (the existence form of "visibleLearnerIdsForCourse is non-empty") OR they are on the course team (isCourseTutor);
+ * a tutor with neither gets false. Anyone else throws like visibleLearnerIdsForCourse does (401 unauthenticated,
+ * 403 Manager/Learner). Nothing is cached — it reads allocation + team membership fresh on every call.
+ */
+export async function canAccessCourse(actor: Actor, courseId: string): Promise<boolean> {
+  if (!actor.authenticated) throw new AppError('Unauthorized', ErrorCodes.UNAUTHORIZED, 401);
+  if (actor.role === 'ADMIN') return true;
+  if (actor.role !== 'TUTOR') throw new AppError('You do not have access to this course', ErrorCodes.FORBIDDEN, 403);
+  return (await isTutorAllocatedToCourse(actor.userId, courseId)) || (await isCourseTutor(actor.userId, courseId));
+}
+
+/** canAccessCourse as a gate, with resolveRoster's exact 403 for a tutor with no allocated learner and no team seat. */
+async function assertCanAccessCourse(actor: Actor, courseId: string): Promise<void> {
+  if (!(await canAccessCourse(actor, courseId))) {
+    throw new AppError('You are not assigned to this course', ErrorCodes.FORBIDDEN, 403);
+  }
 }
 
 /** Per-assessment state from a learner's submissions for it (newest first). Mirrors the learner
@@ -100,14 +121,15 @@ export interface TutorCourseContent {
 
 export async function getTutorCourseContent(actor: Actor, courseId: string): Promise<TutorCourseContent> {
   const { ids: roster } = await resolveRoster(actor, courseId);
+  // Lean rows (no files/comment/feedback) narrowed to THIS course in SQL — the stats below only need per-assessment state.
   const [outline, allSubs] = await Promise.all([
     getCourseOutline(courseId),
-    getSubmissionsWithContextForLearners(roster)
+    getSubmissionStatusRowsForLearners(roster, { courseId })
   ]);
   if (!outline) throw new AppError('Course not found', ErrorCodes.NOT_FOUND, 404);
 
   // Group the roster's submissions by (lesson, assessment) → per-learner list (newest first, already sorted).
-  const byAssessment = new Map<string, Map<string, SubmissionWithContext[]>>();
+  const byAssessment = new Map<string, Map<string, SubmissionStatusRow[]>>();
   for (const s of allSubs) {
     const aKey = `${s.lessonId}::${s.assessmentKey ?? ''}`;
     let learners = byAssessment.get(aKey);
@@ -117,7 +139,7 @@ export async function getTutorCourseContent(actor: Actor, courseId: string): Pro
     else learners.set(s.learnerId, [s]);
   }
 
-  const stateOfContext = (subs: SubmissionWithContext[]): RowState => computeState(subs.map(toGridLike)).state;
+  const stateOfContext = (subs: SubmissionStatusRow[]): RowState => computeState(subs.map(toGridLike)).state;
 
   const units: TutorOutlineUnit[] = outline.units.map((u) => {
     const materials: OutlineMaterial[] = [];
@@ -128,7 +150,7 @@ export async function getTutorCourseContent(actor: Actor, courseId: string): Pro
         materials.push({ key: d.key, name: d.name, downloadable: d.downloadable });
         continue;
       }
-      const learners = byAssessment.get(`${u.lessonId}::${d.key}`) ?? new Map<string, SubmissionWithContext[]>();
+      const learners = byAssessment.get(`${u.lessonId}::${d.key}`) ?? new Map<string, SubmissionStatusRow[]>();
       let submitted = 0;
       let needsGrading = 0;
       let passed = 0;
@@ -165,20 +187,20 @@ export async function getTutorCourseContent(actor: Actor, courseId: string): Pro
   return { courseId, title: outline.title, participants: roster.length, units };
 }
 
-/** Adapt a SubmissionWithContext to the minimal GridSubmission shape computeState needs. */
-function toGridLike(s: SubmissionWithContext): GridSubmission {
+/** Adapt a lean submission row to the minimal GridSubmission shape computeState needs (it reads none of files/feedback). */
+function toGridLike(s: SubmissionStatusRow): GridSubmission {
   return {
     submissionId: s.id,
     learnerId: s.learnerId,
     submissionType: s.submissionType,
     version: s.version,
-    files: s.files,
+    files: [],
     comment: null,
     status: s.status,
     submittedAt: s.submittedAt,
     resultKind: s.resultKind,
     result: s.result,
-    feedback: s.feedback,
+    feedback: null,
     feedbackFiles: [],
     recordedAt: s.resultRecordedAt,
     recordedById: null,
@@ -191,7 +213,7 @@ function toGridLike(s: SubmissionWithContext): GridSubmission {
 /** The full content of ONE unit for the tutor read-only view. Access-gated (resolveRoster); the
  *  unit must belong to the course in the path (else 404). Read-only — no submit, no edit. */
 export async function getTutorUnitContent(actor: Actor, courseId: string, lessonId: string): Promise<UnitContent> {
-  await resolveRoster(actor, courseId); // access gate (403 if neither team nor allocated / not admin)
+  await assertCanAccessCourse(actor, courseId); // access gate (403 if neither team nor allocated / not admin) — no roster load
   const content = await getUnitContent(lessonId);
   if (!content || content.courseId !== courseId) {
     throw new AppError('Unit not found in this course', ErrorCodes.NOT_FOUND, 404);
@@ -210,7 +232,7 @@ export async function signCourseMaterialsForTutor(
   courseId: string,
   keys: string[]
 ): Promise<Record<string, string>> {
-  await resolveRoster(actor, courseId); // access gate
+  await assertCanAccessCourse(actor, courseId); // access gate — no roster load
   const outline = await getCourseOutline(courseId);
   if (!outline) throw new AppError('Course not found', ErrorCodes.NOT_FOUND, 404);
   const valid = new Set<string>();

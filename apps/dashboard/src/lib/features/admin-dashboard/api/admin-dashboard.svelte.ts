@@ -65,6 +65,7 @@ export interface AdminCourseRow {
   enrolled: number;
   active30d: number;
   assessments: number;
+  /** "Completed (recorded)": recorded course completions of currently-enrolled students ÷ enrolled (0-100). */
   completionPercent: number;
 }
 
