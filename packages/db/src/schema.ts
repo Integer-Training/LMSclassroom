@@ -4245,8 +4245,10 @@ export const notification = pgTable(
     }).onDelete('cascade'),
     index('idx_notification_user').on(table.userId),
     index('idx_notification_user_unread').on(table.userId, table.readAt),
-    // Phase B: the bell list (newest first per user).
-    index('idx_notification_user_created').on(table.userId, table.createdAt.desc())
+    // Phase B: the bell list (newest first per user). Ascending on purpose: Postgres scans it
+    // backwards for `ORDER BY created_at DESC` (NULLS FIRST), whereas drizzle's .desc() would emit
+    // DESC NULLS LAST, which the planner cannot use to satisfy that sort.
+    index('idx_notification_user_created').on(table.userId, table.createdAt)
   ]
 );
 

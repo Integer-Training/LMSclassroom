@@ -9,7 +9,7 @@ CREATE INDEX IF NOT EXISTS "idx_session_expires_at" ON "session" USING btree ("e
 CREATE INDEX IF NOT EXISTS "idx_account_user_id" ON "account" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_verification_identifier" ON "verification" USING btree ("identifier");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_verification_expires_at" ON "verification" USING btree ("expires_at");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_notification_user_created" ON "notification" USING btree ("user_id","created_at" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_notification_user_created" ON "notification" USING btree ("user_id","created_at");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_coursework_submission_files_gin" ON "coursework_submission" USING gin ("files" jsonb_path_ops);--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_coursework_result_feedback_files_gin" ON "coursework_result" USING gin ("feedback_files" jsonb_path_ops);--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_course_section_course_id" ON "course_section" USING btree ("course_id");--> statement-breakpoint
