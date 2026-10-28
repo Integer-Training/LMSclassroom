@@ -34,13 +34,13 @@ import { attendanceRouter } from '@api/routes/course/attendance';
 import { courseAiTutorRouter } from '@api/routes/course/ai-tutor';
 import { authMiddleware } from '@api/middlewares/auth';
 import { authOrAutomationKeyMiddleware } from '@api/middlewares/auth-or-automation-key';
+import { withVisibleCourseMembers } from '@api/services/course/member-visibility';
 import { cloneCourse } from '@api/services/course/clone';
 import { sanitizeHtml } from '@cio/core/utils/sanitize-html';
 import { complianceRouter } from '@api/routes/course/compliance';
 import { contentRouter } from '@api/routes/course/content';
 import { courseMemberMiddleware } from '@api/middlewares/course-member';
 import { courseTeamMemberOrAutomationKeyMiddleware } from '@api/middlewares/course-team-member-or-automation-key';
-import { courseTeamMemberMiddleware } from '@api/middlewares/course-team-member';
 import { createRateLimiter } from '@api/middlewares/rate-limiter';
 import { enrollInCourse } from '@api/services/course/invite';
 import { exerciseRouter } from '@api/routes/course/exercise';
@@ -59,7 +59,7 @@ import type { Actor } from '@cio/db/actor';
 import { markRouter } from '@api/routes/course/mark';
 import { membersRouter } from '@api/routes/course/people';
 import { newsfeedRouter } from '@api/routes/course/newsfeed';
-import { requireAdmin } from '@api/middlewares/guards';
+import { requireAdmin, requireCourseInOrg } from '@api/middlewares/guards';
 import { canReadLearnerProgress } from '@api/middlewares/guards/ownership';
 import { getCourseOrgId } from '@cio/db/queries/reports';
 import { orgMemberMiddleware } from '@api/middlewares/org-member';
@@ -121,7 +121,8 @@ export const courseRouter = new Hono()
   .get('/slug/:slug', zValidator('param', ZCourseGetBySlugParam), async (c) => {
     try {
       const { slug } = c.req.valid('param');
-      const course = await getCourse(undefined, slug);
+      // Public/anonymous: roster limited to staff (no learner names/emails).
+      const course = await withVisibleCourseMembers(await getCourse(undefined, slug), undefined);
 
       return c.json(
         {
@@ -264,7 +265,13 @@ export const courseRouter = new Hono()
         const { courseId } = c.req.valid('param');
         const { slug } = c.req.valid('query');
         const user = c.get('user')!;
-        const course = await getCourse(slug ? undefined : courseId, slug, user.id);
+        const found = await getCourse(slug ? undefined : courseId, slug, user.id);
+        // The middleware authorised the PATH course; a ?slug= must resolve to that same course (no slug override).
+        if (found.id !== courseId) {
+          throw new AppError('Course not found', ErrorCodes.COURSE_NOT_FOUND, 404);
+        }
+
+        const course = await withVisibleCourseMembers(found, c.get('actor') as Actor | undefined);
 
         return c.json(
           {
@@ -503,7 +510,8 @@ export const courseRouter = new Hono()
   .get(
     '/:courseId/analytics',
     authMiddleware,
-    courseTeamMemberMiddleware,
+    requireAdmin,
+    requireCourseInOrg(),
     zValidator('param', ZCourseProgressParam),
     async (c) => {
       try {

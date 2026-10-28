@@ -5,7 +5,8 @@ import type { Actor } from '@cio/db/actor';
 import { isRole, isSelf, sameOrg } from '@cio/utils/auth';
 import { getSubmissionById } from '@cio/db/queries/submission';
 import { isCourseGroupMember } from '@cio/db/queries/group';
-import { isTutorAllocatedToLearner } from '@cio/db/queries/allocation';
+import { isTutorAllocatedToLearner, listAllocatedLearnerIdsForCourse } from '@cio/db/queries/allocation';
+import { listEnrolledLearnersWithName } from '@cio/db/queries/reports';
 import {
   getSubmissionByFeedbackFileKey,
   getSubmissionByFileKey,
@@ -95,6 +96,25 @@ export function requireMarkingAccess(getLearnerId?: (c: Context) => string | nul
 export async function isAllocatedTutor(actor: Actor, learnerId: string | null | undefined): Promise<boolean> {
   if (!actor.authenticated || actor.role !== 'TUTOR' || !learnerId) return false;
   return isTutorAllocatedToLearner(actor.userId, learnerId);
+}
+
+/**
+ * THE learner-visibility rule for a course (owner-approved): a TUTOR sees ONLY learners allocated to them
+ * (`tutor_allocation`) — on every screen. Being on a course's team (groupmember TUTOR row) grants that
+ * course's MATERIALS/UNITS only, never learner data. So for a course:
+ *  - ADMIN: every enrolled learner.
+ *  - TUTOR: allocated ∩ enrolled (may be empty — a course-team tutor with no allocations sees no learners).
+ *  - anyone else (Manager/Learner/anonymous): 403.
+ * Returns learner ids; callers feed these straight into their roster-scoped queries.
+ */
+export async function visibleLearnerIdsForCourse(actor: Actor, courseId: string): Promise<string[]> {
+  if (!actor.authenticated) throw new AppError('Unauthorized', ErrorCodes.UNAUTHORIZED, 401);
+  if (actor.role === 'ADMIN') {
+    const enrolled = await listEnrolledLearnersWithName(courseId);
+    return enrolled.map((l) => l.learnerId);
+  }
+  if (actor.role === 'TUTOR') return listAllocatedLearnerIdsForCourse(actor.userId, courseId);
+  throw new AppError('You do not have access to this course', ErrorCodes.FORBIDDEN, 403);
 }
 
 /**

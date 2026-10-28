@@ -1,4 +1,6 @@
 import { AppError, ErrorCodes } from '@api/utils/errors';
+import type { Actor } from '@cio/db/actor';
+import { isAllocatedTutor } from '@api/middlewares/guards';
 import {
   createCourseCertificateIssue,
   createCourseCompletionNotificationEvent,
@@ -17,7 +19,6 @@ import {
 import { db } from '@cio/db/drizzle';
 import { getCourseById } from '@cio/db/queries/course';
 
-import { ROLE } from '@cio/utils/constants';
 import type {
   TCourseComplianceExtend,
   TCourseComplianceReset,
@@ -29,7 +30,6 @@ import {
   getStudentSubmissionsForExercise
 } from '@cio/db/queries/course/certification-exercise';
 import { getProfileByGroupMemberId } from '@cio/db/queries/course/people';
-import { getUserCourseRole } from '@cio/db/queries/group/group';
 import { evaluateCourseCertification } from './completion';
 
 type ComplianceStatus =
@@ -104,20 +104,25 @@ async function getComplianceCourseOrThrow(courseId: string) {
   return course;
 }
 
-async function assertCourseComplianceHistoryAccess(
-  courseId: string,
+// Self, ADMIN, or the TUTOR allocated to that learner. Course-team tutors without an allocation are refused.
+export async function assertCourseComplianceHistoryAccess(
   currentProfileId: string,
-  targetProfileId: string
+  targetProfileId: string,
+  actor: Actor
 ) {
   if (currentProfileId === targetProfileId) {
     return;
   }
 
-  const roleId = await getUserCourseRole(courseId, currentProfileId);
-
-  if (roleId !== ROLE.ADMIN && roleId !== ROLE.TUTOR) {
-    throw new AppError('You do not have permission to view this learner', ErrorCodes.VALIDATION_ERROR, 403);
+  if (actor.authenticated && actor.role === 'ADMIN') {
+    return;
   }
+
+  if (await isAllocatedTutor(actor, targetProfileId)) {
+    return;
+  }
+
+  throw new AppError('You do not have permission to view this learner', ErrorCodes.FORBIDDEN, 403);
 }
 
 async function getTargetStudentMembers(courseId: string, profileIds?: string[]) {
@@ -386,9 +391,14 @@ export async function getCourseComplianceOverview(courseId: string) {
   };
 }
 
-export async function getLearnerComplianceHistory(courseId: string, currentProfileId: string, targetProfileId: string) {
+export async function getLearnerComplianceHistory(
+  courseId: string,
+  currentProfileId: string,
+  targetProfileId: string,
+  actor: Actor
+) {
   await getComplianceCourseOrThrow(courseId);
-  await assertCourseComplianceHistoryAccess(courseId, currentProfileId, targetProfileId);
+  await assertCourseComplianceHistoryAccess(currentProfileId, targetProfileId, actor);
 
   const history = await getCourseComplianceHistoryRows(courseId, targetProfileId);
 

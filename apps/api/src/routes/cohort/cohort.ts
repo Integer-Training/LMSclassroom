@@ -54,8 +54,8 @@ import {
 
 import { Hono } from '@api/utils/hono';
 import { authMiddleware } from '@api/middlewares/auth';
-import { requireAdmin, requireSameOrg } from '@api/middlewares/guards';
-import { orgTeamMemberMiddleware } from '@api/middlewares/org-team-member';
+import { filterCohortMembersForViewer } from '@api/services/course/member-visibility';
+import { requireAdmin, requireCohortInOrg, requireSameOrg } from '@api/middlewares/guards';
 import { cohortMemberMiddleware } from '@api/middlewares/cohort-member';
 import { cohortTeamMemberMiddleware } from '@api/middlewares/cohort-team-member';
 import { cohortNewsfeedCommentAuthorOrTeamMiddleware } from '@api/middlewares/cohort-newsfeed-comment-author-or-team';
@@ -193,7 +193,8 @@ export const cohortRouter = new Hono()
   .get('/:cohortId/members', authMiddleware, cohortMemberMiddleware, zValidator('param', ZCohortParam), async (c) => {
     try {
       const { cohortId } = c.req.valid('param');
-      const members = await listCohortMembers(cohortId);
+      // Cohort members + admins reach this; the list is filtered per viewer (learner-visibility rule).
+      const members = await filterCohortMembersForViewer(await listCohortMembers(cohortId), c.get('actor'));
       return c.json({ success: true, data: members }, 200);
     } catch (error) {
       return handleError(c, error, 'Failed to list cohort members');
@@ -207,7 +208,8 @@ export const cohortRouter = new Hono()
   .post(
     '/:cohortId/members',
     authMiddleware,
-    cohortTeamMemberMiddleware,
+    requireAdmin,
+    requireCohortInOrg(),
     zValidator('param', ZCohortParam),
     zValidator('json', ZAddCohortMembers),
     async (c) => {
@@ -229,7 +231,8 @@ export const cohortRouter = new Hono()
   .put(
     '/:cohortId/members/:memberId',
     authMiddleware,
-    cohortTeamMemberMiddleware,
+    requireAdmin,
+    requireCohortInOrg(),
     zValidator('param', ZMemberParam),
     zValidator('json', ZUpdateCohortMember),
     async (c) => {
@@ -251,7 +254,8 @@ export const cohortRouter = new Hono()
   .delete(
     '/:cohortId/members/:memberId',
     authMiddleware,
-    cohortTeamMemberMiddleware,
+    requireAdmin,
+    requireCohortInOrg(),
     zValidator('param', ZMemberParam),
     async (c) => {
       try {
@@ -569,7 +573,7 @@ export const cohortRouter = new Hono()
    * Cross-cohort goal roll-up for the org owner. One entry per active goal
    * with per-status learner counts, scoped to the org via header + query.
    */
-  .get('/goals/overview', authMiddleware, orgTeamMemberMiddleware, zValidator('query', ZOrgQuery), async (c) => {
+  .get('/goals/overview', authMiddleware, requireAdmin, requireSameOrg(), zValidator('query', ZOrgQuery), async (c) => {
     try {
       const { organizationId } = c.req.valid('query');
       const overview = await getOrgGoalsOverview(organizationId);
@@ -582,15 +586,22 @@ export const cohortRouter = new Hono()
   /**
    * GET /cohort/:cohortId/goals
    */
-  .get('/:cohortId/goals', authMiddleware, cohortMemberMiddleware, zValidator('param', ZCohortParam), async (c) => {
-    try {
-      const { cohortId } = c.req.valid('param');
-      const goals = await listGoals(cohortId);
-      return c.json({ success: true, data: goals }, 200);
-    } catch (error) {
-      return handleError(c, error, 'Failed to list cohort goals');
+  .get(
+    '/:cohortId/goals',
+    authMiddleware,
+    requireAdmin,
+    requireCohortInOrg(),
+    zValidator('param', ZCohortParam),
+    async (c) => {
+      try {
+        const { cohortId } = c.req.valid('param');
+        const goals = await listGoals(cohortId);
+        return c.json({ success: true, data: goals }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to list cohort goals');
+      }
     }
-  })
+  )
 
   /**
    * POST /cohort/:cohortId/goals
@@ -598,7 +609,8 @@ export const cohortRouter = new Hono()
   .post(
     '/:cohortId/goals',
     authMiddleware,
-    cohortTeamMemberMiddleware,
+    requireAdmin,
+    requireCohortInOrg(),
     zValidator('param', ZCohortParam),
     zValidator('json', ZCreateCohortGoal),
     async (c) => {
@@ -620,7 +632,8 @@ export const cohortRouter = new Hono()
   .get(
     '/:cohortId/goals/:goalId',
     authMiddleware,
-    cohortMemberMiddleware,
+    requireAdmin,
+    requireCohortInOrg(),
     zValidator('param', ZGoalParam),
     async (c) => {
       try {
@@ -639,7 +652,8 @@ export const cohortRouter = new Hono()
   .put(
     '/:cohortId/goals/:goalId',
     authMiddleware,
-    cohortTeamMemberMiddleware,
+    requireAdmin,
+    requireCohortInOrg(),
     zValidator('param', ZGoalParam),
     zValidator('json', ZUpdateCohortGoal),
     async (c) => {
@@ -661,7 +675,8 @@ export const cohortRouter = new Hono()
   .delete(
     '/:cohortId/goals/:goalId',
     authMiddleware,
-    cohortTeamMemberMiddleware,
+    requireAdmin,
+    requireCohortInOrg(),
     zValidator('param', ZGoalParam),
     async (c) => {
       try {
@@ -680,7 +695,8 @@ export const cohortRouter = new Hono()
   .post(
     '/:cohortId/goals/:goalId/archive',
     authMiddleware,
-    cohortTeamMemberMiddleware,
+    requireAdmin,
+    requireCohortInOrg(),
     zValidator('param', ZGoalParam),
     async (c) => {
       try {
@@ -700,7 +716,8 @@ export const cohortRouter = new Hono()
   .post(
     '/:cohortId/goals/:goalId/evaluate',
     authMiddleware,
-    cohortTeamMemberMiddleware,
+    requireAdmin,
+    requireCohortInOrg(),
     zValidator('param', ZGoalParam),
     async (c) => {
       try {
@@ -720,7 +737,8 @@ export const cohortRouter = new Hono()
   .post(
     '/:cohortId/goals/evaluate-all',
     authMiddleware,
-    cohortTeamMemberMiddleware,
+    requireAdmin,
+    requireCohortInOrg(),
     zValidator('param', ZCohortParam),
     async (c) => {
       try {

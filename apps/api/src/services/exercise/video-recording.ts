@@ -4,7 +4,10 @@ import { generateVideoDownloadPresignedUrls, generateVideoUploadPresignedUrl } f
 import { createAsset, getAssetById, updateAsset } from '@cio/db/queries/assets';
 import { getExerciseWithRelationsOptimized } from '@cio/db/queries/exercise';
 import { getQuestionAnswersBySubmissionId, getSubmissionById } from '@cio/db/queries/submission';
-import { getGroupMemberIdByCourseAndProfile, isCourseTeamMemberOrOrgAdmin } from '@cio/db/queries/group';
+import { getGroupMemberIdByCourseAndProfile } from '@cio/db/queries/group';
+import type { Actor } from '@cio/db/actor';
+import { isAllocatedTutor } from '@api/middlewares/guards';
+import { getProfileByGroupMemberId } from '@cio/db/queries/course/people';
 import { getCourseOrganizationId as getCourseOrganizationIdFromDb } from '@cio/db/queries/tag';
 import { randomUUID } from 'node:crypto';
 import type { VideoRecordingAnswerData } from '@cio/question-types';
@@ -180,19 +183,28 @@ export async function getVideoRecordingPlaybackUrl(
   exerciseId: string,
   submissionId: string,
   questionId: number,
-  profileId: string
+  profileId: string,
+  actor: Actor
 ) {
-  const [submission, groupMemberId, isReviewer] = await Promise.all([
+  const [submission, groupMemberId] = await Promise.all([
     getSubmissionById(submissionId),
-    getGroupMemberIdByCourseAndProfile(courseId, profileId),
-    isCourseTeamMemberOrOrgAdmin(courseId, profileId)
+    getGroupMemberIdByCourseAndProfile(courseId, profileId)
   ]);
 
   if (!submission || submission.courseId !== courseId || submission.exerciseId !== exerciseId) {
     throw new AppError('Submission not found', ErrorCodes.NOT_FOUND, 404);
   }
 
-  if (!isReviewer && (!groupMemberId || submission.submittedBy !== groupMemberId)) {
+  // Reviewer = ADMIN, or the TUTOR allocated to the submitting learner. A course-team tutor without an
+  // allocation gets materials only, never learner data.
+  const isOwner = !!groupMemberId && submission.submittedBy === groupMemberId;
+  let isReviewer = actor.authenticated && actor.role === 'ADMIN';
+  if (!isReviewer && !isOwner && submission.submittedBy) {
+    const learner = await getProfileByGroupMemberId(submission.submittedBy);
+    isReviewer = await isAllocatedTutor(actor, learner?.id);
+  }
+
+  if (!isReviewer && !isOwner) {
     throw new AppError('Unauthorized', ErrorCodes.UNAUTHORIZED, 403);
   }
 

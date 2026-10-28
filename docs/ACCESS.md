@@ -618,3 +618,32 @@ document is stored, uploaded or attached anywhere** (D2, diff-swept). Informatio
 Audited `id_verification.recorded` with `{learnerId, status, method}` — **never the note text** and never any
 document. Recording surfaces: the allocated tutor's caseload learner-detail view; the learner-facing status
 line renders on id-check units in the lesson view.
+
+## 8. Tutor = allocated learners only, on every surface (2026-10-28)
+
+**Owner rule:** a Tutor sees ONLY learners allocated to them (`tutor_allocation`) — on every screen, API,
+email and download. Being on a course's team (groupmember TUTOR row, the course→tutor assignment) grants that
+course's **materials/units only**, never learner data. Learners see staff + themselves (no classmates). Admins
+are unchanged. Newsfeed / lesson comments stay course-wide social (owner decision).
+
+Central predicate: `visibleLearnerIdsForCourse(actor, courseId)` (`guards/ownership.ts`) — Admin = all enrolled,
+Tutor = allocated ∩ enrolled (may be empty), anyone else 403. Learner-level checks keep using `isAllocatedTutor`.
+
+| Surface | Before | Now |
+|---|---|---|
+| Tutor course page / submissions grid / download-all ZIP (`/caseload/courses/:id/**`) | course-team tutor saw every enrolled learner | allocated ∩ enrolled; course-team tutor with no allocations → materials + empty roster |
+| `GET /course/:id` (+ `/slug/:slug`) `group.members` + `attendance` | full roster to any member / anonymous | Admin all; Tutor staff + allocated; Learner staff + self; anonymous none. `?slug` must resolve to the path course |
+| Analytics, compliance overview + reset/extend/waive, invites, exercise/lesson notify-all | course team | `requireAdmin` + `requireCourseInOrg` |
+| Compliance learner history | any course member | self / Admin / allocated Tutor |
+| Legacy exercise submissions overview + video playback | course team saw all | Admin all; Tutor allocated; Learner own |
+| Attendance POST | any staff, any student | Admin, or allocated Tutor; student + lesson must belong to the path course |
+| Agent usage + tutor-usage leaderboards/summary | any org member (incl. learners) | org Admin |
+| Cohort members / goals | cohort team | members list filtered per viewer; goals + member edits Admin-only |
+| Quiz-submission + learner-joined emails | every course-team tutor | course Admins + the learner's allocated tutors (`createLearner` now allocates before enrolling so the tutor is notified) |
+| Admin overview | — | "Unallocated learners" warning (active, org-role learner, enrolled, no allocation; capped list of 25) |
+
+Edge cases: reallocation → the old tutor loses all access immediately (results keep `recordedBy`); allocation is
+per learner, not per course (a learner on two courses is visible to their tutor on both — known limit);
+co-tutors (2 allocations) both see the learner. **Open (single-org prod, logged for hardening):** several
+pre-existing Admin routes (`/caseload/courses/*`, `/course/:id/members`, `/mark`, `/submission/*`) are not
+bound to the course's org — only matters once a second organization exists.

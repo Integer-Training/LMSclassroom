@@ -177,6 +177,34 @@ export async function getCourseTeachers(options: {
   return result;
 }
 
+/**
+ * Course-team members whose ORG role is ADMIN (one query). Recipients for learner-work notifications: admins
+ * oversee every learner, whereas a course-team TUTOR is only told about learners allocated to them.
+ */
+export async function getCourseAdminTeachers(courseId: string): Promise<Array<TeacherProfile>> {
+  return db
+    .select({
+      id: schema.profile.id,
+      email: schema.profile.email,
+      fullname: schema.profile.fullname,
+      username: schema.profile.username,
+      avatarUrl: schema.profile.avatarUrl
+    })
+    .from(schema.groupmember)
+    .innerJoin(schema.profile, eq(schema.groupmember.profileId, schema.profile.id))
+    .innerJoin(schema.course, eq(schema.course.groupId, schema.groupmember.groupId))
+    .innerJoin(schema.group, eq(schema.group.id, schema.course.groupId))
+    .innerJoin(
+      schema.organizationmember,
+      and(
+        eq(schema.organizationmember.organizationId, schema.group.organizationId),
+        eq(schema.organizationmember.profileId, schema.groupmember.profileId),
+        eq(schema.organizationmember.roleId, ROLE.ADMIN)
+      )
+    )
+    .where(and(eq(schema.course.id, courseId), eq(schema.groupmember.roleId, ROLE.ADMIN)));
+}
+
 // ── Course → tutor assignment (PearlLMS) ─────────────────────────────────────────────────────────
 // A tutor "teaches" a course = a course-team TUTOR groupmember row (roleId 2) in that course's group.
 // Admin assigns/unassigns via the tutor-management surface (and the course People tab). This grants the

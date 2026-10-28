@@ -35,9 +35,12 @@ import {
   requiresManualGrading
 } from '@cio/question-types';
 import { getCourseById, getCourseWithOrgData } from '@cio/db/queries/course';
-import { getCourseTeachers, getProfileByGroupMemberId } from '@cio/db/queries/course/people';
+import { getCourseAdminTeachers, getProfileByGroupMemberId } from '@cio/db/queries/course/people';
 import { getExerciseById, getExerciseWithRelationsOptimized } from '@cio/db/queries/exercise';
-import { getGroupMemberIdByCourseAndProfile, isCourseTeamMemberOrOrgAdmin } from '@cio/db/queries/group';
+import { getGroupMemberIdByCourseAndProfile } from '@cio/db/queries/group';
+import type { Actor } from '@cio/db/actor';
+import { visibleLearnerIdsForCourse } from '@api/middlewares/guards';
+import { listTutorsForLearner } from '@cio/db/queries/allocation';
 
 import { QUESTION_TYPE_ID_TO_KEY } from '@cio/question-types';
 
@@ -340,29 +343,41 @@ export type ExerciseSubmissionsOverview = {
 /**
  * Returns submission overview for an exercise based on user role.
  * - Students: mySubmission = their submission(s), allSubmissions = []
- * - Instructors: mySubmission = [], allSubmissions = all submissions in exercise
+ * - Admin: allSubmissions = every submission in the exercise
+ * - Tutor: allSubmissions = only submissions by learners allocated to them
  */
 export async function listExerciseSubmissionsOverview(
   courseId: string,
   exerciseId: string,
-  profileId: string
+  profileId: string,
+  actor: Actor
 ): Promise<ExerciseSubmissionsOverview> {
   try {
-    const [groupMemberId, isInstructor] = await Promise.all([
-      getGroupMemberIdByCourseAndProfile(courseId, profileId),
-      isCourseTeamMemberOrOrgAdmin(courseId, profileId)
-    ]);
-
+    const groupMemberId = await getGroupMemberIdByCourseAndProfile(courseId, profileId);
     const mySubmission = groupMemberId ? await listSubmissionsByExercise(courseId, exerciseId, groupMemberId) : [];
 
-    if (!isInstructor) {
+    // Learner-visibility rule: ADMIN sees every learner's submissions, a TUTOR only their allocated learners'
+    // (course-team membership alone grants nothing), a learner just their own.
+    if (!actor.authenticated || (actor.role !== 'ADMIN' && actor.role !== 'TUTOR')) {
       return { mySubmission, allSubmissions: [] };
     }
 
     const allSubmissions = await listSubmissionsByExercise(courseId, exerciseId);
+    if (actor.role === 'ADMIN') {
+      return { mySubmission, allSubmissions };
+    }
 
-    return { mySubmission, allSubmissions };
+    const visibleLearners = new Set(await visibleLearnerIdsForCourse(actor, courseId));
+
+    return {
+      mySubmission,
+      allSubmissions: allSubmissions.filter(
+        (submission) => !!submission.groupmember?.profileId && visibleLearners.has(submission.groupmember.profileId)
+      )
+    };
   } catch (error) {
+    if (error instanceof AppError) throw error;
+
     throw new AppError(
       error instanceof Error ? error.message : 'Failed to list exercise submissions overview',
       ErrorCodes.INTERNAL_ERROR,
@@ -1032,12 +1047,21 @@ async function sendExerciseSubmissionUpdateEmail(courseId: string, exerciseId: s
     return;
   }
 
-  // Get tutors (ADMIN or TUTOR role) from the course's group
-  const tutorsResult = await getCourseTeachers({ courseId });
+  // Recipients (learner-visibility rule): the course's ADMINs + the tutors ALLOCATED to this learner. A
+  // course-team tutor without an allocation is not told about a learner's work (same as notifyCourseworkSubmitted).
+  const [admins, allocatedTutors] = await Promise.all([
+    getCourseAdminTeachers(courseId),
+    listTutorsForLearner(student.id)
+  ]);
 
-  if (tutorsResult.length === 0) {
-    return;
-  }
+  const toEmails = (people: Array<{ email: string | null }>) => [
+    ...new Set(people.map((person) => person.email).filter((email): email is string => Boolean(email)))
+  ];
+  const adminEmails = toEmails(admins);
+  // An admin who is also allocated would otherwise be mailed twice.
+  const tutorEmails = toEmails(allocatedTutors).filter((email) => !adminEmails.includes(email));
+
+  if (adminEmails.length === 0 && tutorEmails.length === 0) return;
 
   // Get organization name and URL info
   const orgResult = await getCourseWithOrgData(courseId);
@@ -1049,34 +1073,49 @@ async function sendExerciseSubmissionUpdateEmail(courseId: string, exerciseId: s
     customDomain: orgResult?.orgCustomDomain,
     isCustomDomainVerified: orgResult?.orgIsCustomDomainVerified
   });
-  const exerciseLink = `${baseUrl}/courses/${courseId}/exercises/${exerciseId}`;
-  const submissionLink = `${baseUrl}/courses/${courseId}/submissions`;
-
   const studentName = student.fullname || student.username || 'A student';
+  const branding = buildEmailBranding({
+    name: orgResult?.orgName,
+    avatarUrl: orgResult?.orgAvatarUrl,
+    theme: orgResult?.orgTheme
+  });
 
-  const tutorEmails = tutorsResult.map((tutor) => tutor.email).filter((email): email is string => Boolean(email));
-  if (tutorEmails.length === 0) return;
-
-  try {
-    await enqueueTransactionalEmail('submissionReceived', {
+  // Admins get the course-admin screens; tutors can't open those (403), so they get their caseload grid.
+  const audiences = [
+    {
+      key: 'admin',
+      to: adminEmails,
+      exerciseLink: `${baseUrl}/courses/${courseId}/exercises/${exerciseId}`,
+      submissionLink: `${baseUrl}/courses/${courseId}/submissions`
+    },
+    {
+      key: 'tutor',
       to: tutorEmails,
-      fields: {
-        orgName,
-        studentName,
-        exerciseTitle: exercise.title,
-        exerciseLink,
-        submissionLink,
-        branding: buildEmailBranding({
-          name: orgResult?.orgName,
-          avatarUrl: orgResult?.orgAvatarUrl,
-          theme: orgResult?.orgTheme
-        })
-      },
-      from: buildEmailFromName(`${orgName} (via Integer Training LMS)`),
-      idempotencyKey: `exercise-submitted:${courseId}:${exerciseId}:${submittedBy}`,
-      preference: { organizationId: orgResult?.orgId }
-    });
-  } catch (error) {
-    console.error('Failed to enqueue submission received email:', error);
+      exerciseLink: `${baseUrl}/caseload/courses/${courseId}/submissions`,
+      submissionLink: `${baseUrl}/caseload/courses/${courseId}/submissions`
+    }
+  ];
+
+  for (const audience of audiences) {
+    if (audience.to.length === 0) continue;
+
+    try {
+      await enqueueTransactionalEmail('submissionReceived', {
+        to: audience.to,
+        fields: {
+          orgName,
+          studentName,
+          exerciseTitle: exercise.title,
+          exerciseLink: audience.exerciseLink,
+          submissionLink: audience.submissionLink,
+          branding
+        },
+        from: buildEmailFromName(`${orgName} (via Integer Training LMS)`),
+        idempotencyKey: `exercise-submitted:${courseId}:${exerciseId}:${submittedBy}:${audience.key}`,
+        preference: { organizationId: orgResult?.orgId }
+      });
+    } catch (error) {
+      console.error('Failed to enqueue submission received email:', error);
+    }
   }
 }

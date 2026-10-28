@@ -39,6 +39,8 @@ import { courseTeamMemberMiddleware } from '@api/middlewares/course-team-member'
 import { courseTeamMemberOrAutomationKeyMiddleware } from '@api/middlewares/course-team-member-or-automation-key';
 import { authOrAutomationKeyMiddleware } from '@api/middlewares/auth-or-automation-key';
 import { courseMemberMiddleware } from '@api/middlewares/course-member';
+import { requireAdmin, requireCourseInOrg } from '@api/middlewares/guards';
+import type { Actor } from '@cio/db/actor';
 import { courseMemberOrAutomationKeyMiddleware } from '@api/middlewares/course-member-or-automation-key';
 
 // PearlLMS Phase-10 HP/SW-10 (confirms D5) — exercise AUTHORING writes (create / from-template / update / delete)
@@ -81,20 +83,20 @@ export const exerciseRouter = new Hono()
       }
     }
   )
-  .get('/:exerciseId/submissions', authMiddleware, courseMemberMiddleware, async (c) => {
+  .get('/:exerciseId/submissions', authMiddleware, courseMemberMiddleware, requireCourseInOrg(), async (c) => {
     try {
       const courseId = c.req.param('courseId')!;
       const exerciseId = c.req.param('exerciseId')!;
       const user = c.get('user')!;
 
-      const data = await listExerciseSubmissionsOverview(courseId, exerciseId, user.id);
+      const data = await listExerciseSubmissionsOverview(courseId, exerciseId, user.id, c.get('actor') as Actor);
 
       return c.json({ success: true, data }, 200);
     } catch (error) {
       return handleError(c, error, 'Failed to fetch exercise submissions overview');
     }
   })
-  .post('/:exerciseId/notify', authMiddleware, courseTeamMemberMiddleware, async (c) => {
+  .post('/:exerciseId/notify', authMiddleware, requireAdmin, requireCourseInOrg(), async (c) => {
     try {
       const courseId = c.req.param('courseId')!;
       const exerciseId = c.req.param('exerciseId')!;
@@ -105,7 +107,7 @@ export const exerciseRouter = new Hono()
       return handleError(c, error, 'Failed to notify students');
     }
   })
-  .get('/:exerciseId/notify/:jobId', authMiddleware, courseTeamMemberMiddleware, async (c) => {
+  .get('/:exerciseId/notify/:jobId', authMiddleware, requireAdmin, requireCourseInOrg(), async (c) => {
     try {
       const jobId = c.req.param('jobId')!;
       const pollCount = Number.parseInt(c.req.query('pollCount') ?? '0', 10) || 0;
@@ -372,6 +374,7 @@ export const exerciseRouter = new Hono()
     '/:exerciseId/submission/:submissionId/question/:questionId/video-recording/playback',
     authMiddleware,
     courseMemberMiddleware,
+    requireCourseInOrg(),
     zValidator('param', ZExerciseVideoRecordingPlaybackParam),
     async (c) => {
       try {
@@ -379,7 +382,14 @@ export const exerciseRouter = new Hono()
         const courseId = c.req.param('courseId')!;
         const { exerciseId, submissionId, questionId } = c.req.valid('param');
 
-        const playback = await getVideoRecordingPlaybackUrl(courseId, exerciseId, submissionId, questionId, user.id);
+        const playback = await getVideoRecordingPlaybackUrl(
+          courseId,
+          exerciseId,
+          submissionId,
+          questionId,
+          user.id,
+          c.get('actor') as Actor
+        );
 
         return c.json({ success: true, data: playback }, 200);
       } catch (error) {

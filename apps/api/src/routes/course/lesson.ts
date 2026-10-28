@@ -39,8 +39,7 @@ import { Hono } from '@api/utils/hono';
 import { ZLessonDownloadContent } from '@cio/utils/validation/course';
 import { authMiddleware } from '@api/middlewares/auth';
 import { courseMemberMiddleware } from '@api/middlewares/course-member';
-import { courseTeamMemberMiddleware } from '@api/middlewares/course-team-member';
-import { requireAdmin, requireCourseContentRead } from '@api/middlewares/guards';
+import { requireAdmin, requireCourseContentRead, requireCourseInOrg } from '@api/middlewares/guards';
 import { notifyCourseSessionUpdateService } from '@api/services/course/notify-session';
 import { generateLessonPdf } from '@api/utils/lesson';
 import { getGroupMemberIdByCourseAndProfile } from '@cio/db/queries/group';
@@ -150,7 +149,8 @@ export const lessonRouter = new Hono()
   .post(
     '/:lessonId/notify-session-update',
     authMiddleware,
-    courseTeamMemberMiddleware,
+    requireAdmin,
+    requireCourseInOrg(),
     zValidator('param', ZLessonGetParam),
     async (c) => {
       try {

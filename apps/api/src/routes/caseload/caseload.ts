@@ -127,7 +127,7 @@ export const caseloadRouter = new Hono()
     }
   )
   // Tutor read-only course content — outline of units, materials + assessments with per-workbook stats.
-  // requireStaff at the door; the service allows only an ADMIN or a tutor allocated to the course.
+  // requireStaff at the door; the service allows an ADMIN, a course-team tutor, or a tutor with an allocated learner on the course.
   .get('/courses/:courseId/content', requireStaff, zValidator('param', ZCourseIdParam), async (c) => {
     try {
       const actor = c.get('actor') as Actor;
@@ -138,32 +138,43 @@ export const caseloadRouter = new Hono()
       return handleError(c, error, 'Failed to load course content');
     }
   })
-  // One unit's full content (read-only) for the tutor unit-by-unit view. Allocation-gated.
-  .get('/courses/:courseId/lessons/:lessonId/unit', requireStaff, zValidator('param', ZCourseLessonParam), async (c) => {
-    try {
-      const actor = c.get('actor') as Actor;
-      const { courseId, lessonId } = c.req.valid('param');
-      const data = await getTutorUnitContent(actor, courseId, lessonId);
-      return c.json({ success: true, data }, 200);
-    } catch (error) {
-      return handleError(c, error, 'Failed to load unit');
+  // One unit's full content (read-only) for the tutor unit-by-unit view. Course-team/allocated tutor or admin.
+  .get(
+    '/courses/:courseId/lessons/:lessonId/unit',
+    requireStaff,
+    zValidator('param', ZCourseLessonParam),
+    async (c) => {
+      try {
+        const actor = c.get('actor') as Actor;
+        const { courseId, lessonId } = c.req.valid('param');
+        const data = await getTutorUnitContent(actor, courseId, lessonId);
+        return c.json({ success: true, data }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to load unit');
+      }
     }
-  })
-  // Sign downloads for a course's MATERIALS (resources + assessment briefs) for an allocated tutor. Each key
+  )
+  // Sign downloads for a course's MATERIALS (resources + assessment briefs) for a course-team/allocated tutor. Each key
   // must be a real document on one of the course's units (service-enforced).
-  .post('/courses/:courseId/materials/download', requireStaff, zValidator('param', ZCourseIdParam), zValidator('json', ZCourseworkDownload), async (c) => {
-    try {
-      const actor = c.get('actor') as Actor;
-      const { courseId } = c.req.valid('param');
-      const { keys } = c.req.valid('json');
-      const urls = await signCourseMaterialsForTutor(actor, courseId, keys);
-      return c.json({ success: true, urls }, 200);
-    } catch (error) {
-      return handleError(c, error, 'Failed to sign material downloads');
+  .post(
+    '/courses/:courseId/materials/download',
+    requireStaff,
+    zValidator('param', ZCourseIdParam),
+    zValidator('json', ZCourseworkDownload),
+    async (c) => {
+      try {
+        const actor = c.get('actor') as Actor;
+        const { courseId } = c.req.valid('param');
+        const { keys } = c.req.valid('json');
+        const urls = await signCourseMaterialsForTutor(actor, courseId, keys);
+        return c.json({ success: true, urls }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to sign material downloads');
+      }
     }
-  })
+  )
   // The submissions grid for one assessment (workbook) on a unit — every roster learner's submission +
-  // grading summary. requireStaff at the door; service scopes to allocated∩enrolled (tutor) / all (admin).
+  // grading summary. requireStaff at the door; service scopes to allocated∩enrolled (tutor; empty for a team-only tutor) / all (admin).
   .get(
     '/courses/:courseId/lessons/:lessonId/submissions',
     requireStaff,

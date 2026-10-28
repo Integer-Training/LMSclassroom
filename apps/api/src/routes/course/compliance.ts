@@ -16,37 +16,46 @@ import {
 import { Hono } from '@api/utils/hono';
 import { authMiddleware } from '@api/middlewares/auth';
 import { courseMemberMiddleware } from '@api/middlewares/course-member';
-import { courseTeamMemberMiddleware } from '@api/middlewares/course-team-member';
+import { requireAdmin, requireCourseInOrg } from '@api/middlewares/guards';
+import type { Actor } from '@cio/db/actor';
 import { handleError } from '@api/utils/errors';
 import { zValidator } from '@hono/zod-validator';
 
 export const complianceRouter = new Hono()
-  .get('/', authMiddleware, courseTeamMemberMiddleware, zValidator('param', ZCourseComplianceParam), async (c) => {
-    try {
-      const { courseId } = c.req.valid('param');
-      const data = await getCourseComplianceOverview(courseId);
+  .get(
+    '/',
+    authMiddleware,
+    requireAdmin,
+    requireCourseInOrg(),
+    zValidator('param', ZCourseComplianceParam),
+    async (c) => {
+      try {
+        const { courseId } = c.req.valid('param');
+        const data = await getCourseComplianceOverview(courseId);
 
-      return c.json(
-        {
-          success: true,
-          data
-        },
-        200
-      );
-    } catch (error) {
-      return handleError(c, error, 'Failed to fetch course compliance overview');
+        return c.json(
+          {
+            success: true,
+            data
+          },
+          200
+        );
+      } catch (error) {
+        return handleError(c, error, 'Failed to fetch course compliance overview');
+      }
     }
-  })
+  )
   .get(
     '/learners/:profileId',
     authMiddleware,
     courseMemberMiddleware,
+    requireCourseInOrg(),
     zValidator('param', ZCourseComplianceLearnerParam),
     async (c) => {
       try {
         const { courseId, profileId } = c.req.valid('param');
         const user = c.get('user')!;
-        const data = await getLearnerComplianceHistory(courseId, user.id, profileId);
+        const data = await getLearnerComplianceHistory(courseId, user.id, profileId, c.get('actor') as Actor);
 
         return c.json(
           {
@@ -63,7 +72,8 @@ export const complianceRouter = new Hono()
   .post(
     '/reset',
     authMiddleware,
-    courseTeamMemberMiddleware,
+    requireAdmin,
+    requireCourseInOrg(),
     zValidator('param', ZCourseComplianceParam),
     zValidator('json', ZCourseComplianceReset),
     async (c) => {
@@ -87,7 +97,8 @@ export const complianceRouter = new Hono()
   .post(
     '/extend',
     authMiddleware,
-    courseTeamMemberMiddleware,
+    requireAdmin,
+    requireCourseInOrg(),
     zValidator('param', ZCourseComplianceParam),
     zValidator('json', ZCourseComplianceExtend),
     async (c) => {
@@ -111,7 +122,8 @@ export const complianceRouter = new Hono()
   .post(
     '/waive',
     authMiddleware,
-    courseTeamMemberMiddleware,
+    requireAdmin,
+    requireCourseInOrg(),
     zValidator('param', ZCourseComplianceParam),
     zValidator('json', ZCourseComplianceWaive),
     async (c) => {

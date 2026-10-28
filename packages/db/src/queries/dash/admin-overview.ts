@@ -666,3 +666,59 @@ function fillMonths(rows: MonthCount[]): MonthCount[] {
   const map = new Map(rows.map((r) => [r.month, r.count]));
   return Array.from({ length: 12 }, (_, i) => ({ month: i + 1, count: map.get(i + 1) ?? 0 }));
 }
+
+export interface UnallocatedLearnerRow {
+  learnerId: string;
+  name: string | null;
+  email: string | null;
+}
+
+/** Max orphan learners returned by name; the total is always exact. */
+export const UNALLOCATED_LEARNERS_LIST_CAP = 25;
+
+/**
+ * Learners ENROLLED (STUDENT) on any non-deleted course of THIS org who have NO tutor_allocation row IN THIS
+ * org — the orphans no tutor can see (a tutor only sees allocated learners). Enrolment is scoped via
+ * course→group.organizationId and the allocation check via tutor_allocation.organizationId, so another
+ * org's allocation never hides a learner here. Independent of course-team membership, so an orphan on a
+ * course with no team tutor is still listed. Only ACTIVE profiles whose ORG role is learner (roleId 3) count. Returns the exact total plus the first
+ * UNALLOCATED_LEARNERS_LIST_CAP learners by name.
+ */
+export async function listUnallocatedEnrolledLearners(
+  orgId: string,
+  client: DbOrTxClient = db
+): Promise<{ total: number; learners: UnallocatedLearnerRow[] }> {
+  const scope = and(
+    eq(schema.group.organizationId, orgId),
+    ne(schema.course.status, 'DELETED'),
+    // Real, active learners only: not deactivated, and an ORG learner (an admin/tutor enrolled as a student isn't an orphan).
+    eq(schema.profile.status, 'ACTIVE'),
+    sql`exists (select 1 from ${schema.organizationmember} where ${schema.organizationmember.profileId} = ${schema.profile.id} and ${schema.organizationmember.organizationId} = ${orgId} and ${schema.organizationmember.roleId} = ${ROLE_STUDENT})`,
+    sql`not exists (select 1 from ${schema.tutorAllocation} where ${schema.tutorAllocation.learnerId} = ${schema.profile.id} and ${schema.tutorAllocation.organizationId} = ${orgId})`
+  );
+  const [countRows, learners] = await Promise.all([
+    client
+      .select({ total: sql<number>`cast(count(distinct ${schema.profile.id}) as int)` })
+      .from(schema.course)
+      .innerJoin(schema.group, eq(schema.group.id, schema.course.groupId))
+      .innerJoin(
+        schema.groupmember,
+        and(eq(schema.groupmember.groupId, schema.group.id), eq(schema.groupmember.roleId, ROLE_STUDENT))
+      )
+      .innerJoin(schema.profile, eq(schema.profile.id, schema.groupmember.profileId))
+      .where(scope),
+    client
+      .selectDistinct({ learnerId: schema.profile.id, name: schema.profile.fullname, email: schema.profile.email })
+      .from(schema.course)
+      .innerJoin(schema.group, eq(schema.group.id, schema.course.groupId))
+      .innerJoin(
+        schema.groupmember,
+        and(eq(schema.groupmember.groupId, schema.group.id), eq(schema.groupmember.roleId, ROLE_STUDENT))
+      )
+      .innerJoin(schema.profile, eq(schema.profile.id, schema.groupmember.profileId))
+      .where(scope)
+      .orderBy(schema.profile.fullname, schema.profile.id)
+      .limit(UNALLOCATED_LEARNERS_LIST_CAP)
+  ]);
+  return { total: Number(countRows[0]?.total ?? 0), learners };
+}

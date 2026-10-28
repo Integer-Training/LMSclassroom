@@ -2,9 +2,10 @@
   import { onMount } from 'svelte';
   import * as Page from '@cio/ui/base/page';
   import { Skeleton } from '@cio/ui/base/skeleton';
-  import { currentOrg } from '$lib/utils/store/org';
+  import { currentOrg, isOrgAdmin } from '$lib/utils/store/org';
   import { adminDashboardApi } from '$features/admin-dashboard/api/admin-dashboard.svelte';
   import HeadlineTiles from '$features/admin-dashboard/components/headline-tiles.svelte';
+  import UnallocatedLearnersWarning from '$features/admin-dashboard/components/unallocated-learners-warning.svelte';
   import AlertCards from '$features/admin-dashboard/components/alert-cards.svelte';
   import ChartsGrid from '$features/admin-dashboard/components/charts-grid.svelte';
   import OnlineUsersPanel from '$features/admin-dashboard/components/online-users-panel.svelte';
@@ -75,6 +76,8 @@
         </div>
       {:else}
         <div class="space-y-6">
+          <UnallocatedLearnersWarning unallocated={overview.unallocatedLearners} canOpenLearner={!!$isOrgAdmin} />
+
           <HeadlineTiles headline={overview.headline} />
 
           <AlertCards headline={overview.headline} />

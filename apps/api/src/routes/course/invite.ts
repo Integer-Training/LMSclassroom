@@ -13,7 +13,7 @@ import {
 
 import { Hono } from '@api/utils/hono';
 import { authMiddleware } from '@api/middlewares/auth';
-import { courseTeamMemberMiddleware } from '@api/middlewares/course-team-member';
+import { requireAdmin, requireCourseInOrg } from '@api/middlewares/guards';
 import { handleError } from '@api/utils/errors';
 import { zValidator } from '@hono/zod-validator';
 
@@ -22,7 +22,7 @@ export const invitesRouter = new Hono()
    * GET /course/:courseId/invites
    * Lists secure invites for a course (team/admin only)
    */
-  .get('/', authMiddleware, courseTeamMemberMiddleware, zValidator('param', ZCourseInviteParam), async (c) => {
+  .get('/', authMiddleware, requireAdmin, requireCourseInOrg(), zValidator('param', ZCourseInviteParam), async (c) => {
     try {
       const { courseId } = c.req.valid('param');
       const invites = await listStudentInvites(courseId);
@@ -45,7 +45,8 @@ export const invitesRouter = new Hono()
   .post(
     '/',
     authMiddleware,
-    courseTeamMemberMiddleware,
+    requireAdmin,
+    requireCourseInOrg(),
     zValidator('param', ZCourseInviteParam),
     zValidator('json', ZCreateCourseInvite),
     async (c) => {
@@ -75,7 +76,8 @@ export const invitesRouter = new Hono()
   .post(
     '/:inviteId/revoke',
     authMiddleware,
-    courseTeamMemberMiddleware,
+    requireAdmin,
+    requireCourseInOrg(),
     zValidator('param', ZCourseInviteRevokeParam),
     async (c) => {
       try {
@@ -102,7 +104,8 @@ export const invitesRouter = new Hono()
   .get(
     '/:inviteId/audit',
     authMiddleware,
-    courseTeamMemberMiddleware,
+    requireAdmin,
+    requireCourseInOrg(),
     zValidator('param', ZCourseInviteAuditParam),
     async (c) => {
       try {

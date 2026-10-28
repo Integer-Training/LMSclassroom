@@ -5,7 +5,6 @@ import {
   deleteCourseMember,
   getCourseMember,
   getCourseMembers,
-  getCourseTeachers,
   updateCourseMember
 } from '@cio/db/queries/course/people';
 import { resetStudentCourseProgress } from '@cio/db/queries/course/reset-progress';
@@ -15,6 +14,7 @@ import type { TGroupmember } from '@cio/db/types';
 import { getDashboardBaseUrl } from '@cio/core/config/dashboard-url';
 import { getCourseWithOrgData } from '@cio/db/queries/course';
 import { getProfileById } from '@cio/db/queries/auth';
+import { getStudentJoinedRecipientEmails } from './join-recipients';
 import { buildEmailFromName, buildEmailBranding } from '@cio/email';
 import { enqueueTransactionalEmail } from '@api/services/jobs';
 import { ensureComplianceEnrollmentRecordsForProfiles } from './compliance';
@@ -118,10 +118,8 @@ export async function addMember(
             }
           }
 
-          const teachersResult = await getCourseTeachers({ courseId });
-
-          if (teachersResult.length > 0 && studentEmail && studentName) {
-            const teacherEmails = teachersResult.map((t) => t.email).filter((email): email is string => email !== null);
+          if (studentEmail && studentName) {
+            const teacherEmails = await getStudentJoinedRecipientEmails(courseId, data.profileId);
 
             if (teacherEmails.length > 0) {
               try {

@@ -17,7 +17,8 @@ import {
   getPublishedCourseCount,
   getRegistrationFunnel,
   getSubmissionsOverTime,
-  listOrgLearners
+  listOrgLearners,
+  listUnallocatedEnrolledLearners
 } from '@cio/db/queries/dash';
 import { listLearnersForTutor } from '@cio/db/queries/allocation';
 import { listOrgTutors } from '@cio/db/queries/comms';
@@ -110,6 +111,8 @@ export interface AdminOverview {
   };
   tutors: TutorPerfRow[];
   courses: CoursePerfRow[];
+  /** Enrolled learners with NO tutor allocation — invisible to every tutor, so admin must act. */
+  unallocatedLearners: { count: number; learners: { learnerId: string; name: string | null; email: string | null }[] };
 }
 
 function round1(n: number): number {
@@ -146,7 +149,8 @@ export async function getAdminOverview(actor: Actor): Promise<AdminOverview> {
     courseEnrolments,
     lastSeen,
     completionStats,
-    certStats
+    certStats,
+    unallocated
   ] = await Promise.all([
     computePipelineForRoster(learnerRoster),
     getMemberRoleStatusCounts(orgId),
@@ -163,7 +167,8 @@ export async function getAdminOverview(actor: Actor): Promise<AdminOverview> {
     getCourseEnrolledLearnerIds(orgId),
     getLastSeenForUserIds(learnerIds),
     getCompletionStats(orgId),
-    getCertificateStats(orgId)
+    getCertificateStats(orgId),
+    listUnallocatedEnrolledLearners(orgId)
   ]);
 
   // Org-wide active learners in the last 7 / 30 days (from the shared last-seen map).
@@ -322,7 +327,8 @@ export async function getAdminOverview(actor: Actor): Promise<AdminOverview> {
       idVerification
     },
     tutors: tutorRows,
-    courses
+    courses,
+    unallocatedLearners: { count: unallocated.total, learners: unallocated.learners }
   };
 }
 

@@ -11,8 +11,6 @@
   import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
   import { currentOrgPath, isOrgAdmin } from '$lib/utils/store/org';
-  import { profile } from '$lib/utils/store/user';
-  import { ROLE } from '@cio/utils/constants';
   import GoalsSection from '$features/cohort/components/goals/goals-section.svelte';
 
   let { data } = $props();
@@ -32,10 +30,8 @@
     }
   });
 
-  const currentMemberRole = $derived(cohortApi.members.find((m) => m.profileId === $profile.id)?.roleId ?? null);
-  const canManageGoals = $derived(
-    Boolean($isOrgAdmin) || currentMemberRole === ROLE.ADMIN || currentMemberRole === ROLE.TUTOR
-  );
+  // The goals endpoints are org-admin-only at the API (learner-visibility rule), so the section is admin-only too.
+  const canManageGoals = $derived(Boolean($isOrgAdmin));
 
   const statusOptions = [
     { value: 'ACTIVE', label: $t('cohorts.status.active') || 'Active' },
@@ -133,9 +129,11 @@
 
           <Separator />
 
-          <GoalsSection {cohortId} canManage={canManageGoals} />
+          {#if canManageGoals}
+            <GoalsSection {cohortId} canManage={canManageGoals} />
 
-          <Separator />
+            <Separator />
+          {/if}
 
           <section>
             <h2 class="mb-1 text-sm font-semibold text-red-600">

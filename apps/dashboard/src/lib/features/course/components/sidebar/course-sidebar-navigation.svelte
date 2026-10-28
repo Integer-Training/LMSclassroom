@@ -32,7 +32,7 @@
   import { NAV_IDS } from './constants';
   import { complianceApi, courseApi } from '$features/course/api';
   import { t } from '$lib/utils/functions/translations';
-  import { currentOrg, isFreePlan, isStudentLimitReached, currentOrgPath } from '$lib/utils/store/org';
+  import { currentOrg, isFreePlan, isOrgAdmin, isStudentLimitReached, currentOrgPath } from '$lib/utils/store/org';
   import { isStudentExperience } from '$lib/utils/store/app';
   import { getNavItemRoute, getLessonsRoute } from '$features/course/utils/functions';
   import { useSidebar } from '@cio/ui/base/sidebar';
@@ -117,7 +117,8 @@
         url: getNavItemRoute(id, 'analytics'),
         isActive: (path || page.url.pathname) === getNavItemRoute(id, 'analytics'),
         show() {
-          return !isStudent;
+          // Admin-only at the API (learner-visibility rule); a tutor would just hit a 403.
+          return $isOrgAdmin;
         },
         icon: getNavIcon(NAV_IDS.ANALYTICS)
       },
@@ -162,7 +163,8 @@
         url: getNavItemRoute(id, 'compliance'),
         isActive: (path || page.url.pathname) === getNavItemRoute(id, 'compliance'),
         show() {
-          return courseApi.course?.type === 'COMPLIANCE';
+          // Admins get the overview; a learner keeps their own compliance view; tutors have neither.
+          return courseApi.course?.type === 'COMPLIANCE' && ($isOrgAdmin || isStudent);
         },
         icon: getNavIcon(NAV_IDS.COMPLIANCE)
       },

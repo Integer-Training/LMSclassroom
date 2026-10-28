@@ -24,10 +24,12 @@ export {
   requireCourseContentRead,
   assertCourseMaterialDownloadAccess,
   isAllocatedTutor,
+  visibleLearnerIdsForCourse,
   canReadCoursework,
   requireCourseworkSubmit,
   assertCourseworkDownloadAccess,
   isUnitUnlocked
 } from './ownership';
 
+export { requireCourseInOrg, requireCohortInOrg } from './org-binding';
 export { publicRoute } from './public';

@@ -1,8 +1,8 @@
 import type { Actor } from '@cio/db/actor';
 import { AppError, ErrorCodes } from '@api/utils/errors';
 import { isPassingResult } from '@cio/utils/constants';
-import { isCourseTutor, listAllocatedLearnerIdsForCourse } from '@cio/db/queries/allocation';
-import { listEnrolledLearnersWithName } from '@cio/db/queries/reports';
+import { isCourseTutor } from '@cio/db/queries/allocation';
+import { visibleLearnerIdsForCourse } from '@api/middlewares/guards/ownership';
 import { generateDocumentDownloadPresignedUrls } from '@cio/core/utils/s3';
 import {
   getCourseOutline,
@@ -21,32 +21,24 @@ import {
 } from '@cio/db/queries/coursework';
 
 // PearlLMS — the TUTOR course-view + submissions-grid services. Self-contained access control: a TUTOR may
-// see a course only when they have allocated learners enrolled in it (isTutorAllocatedToCourse), and only
-// their OWN allocated learners' submissions ("Separate groups: <tutor>"); an ADMIN sees all enrolled.
+// open a course when they are on its team (materials/units) or have allocated learners enrolled in it, but
+// they only ever see their OWN allocated learners' data ("Separate groups: <tutor>"); an ADMIN sees all.
 // Manager/Learner are refused. Read-only — grading stays on the existing recordResult path.
 
 type RowState = 'not_submitted' | 'draft' | 'draft_feedback' | 'awaiting_marking' | 'referred' | 'passed';
 
-/** Resolve the caller's roster for a course (allocated∩enrolled for a tutor, all-enrolled for admin) and
- *  enforce access. Empty tutor roster = not allocated to this course = 403. */
+/** Resolve the caller's roster for a course and enforce access. The roster is ALWAYS learner data, so it
+ *  follows the central rule (visibleLearnerIdsForCourse): admin = all enrolled, tutor = allocated∩enrolled.
+ *  Course ACCESS is wider: a tutor may open the course if they are on its team (materials/units) OR have an
+ *  allocated learner on it. A course-team tutor with no allocations gets the content with an EMPTY roster. */
 async function resolveRoster(actor: Actor, courseId: string): Promise<{ ids: string[]; isAdmin: boolean }> {
-  if (!actor.authenticated) throw new AppError('Unauthorized', ErrorCodes.UNAUTHORIZED, 401);
-  if (actor.role === 'ADMIN') {
-    const enrolled = await listEnrolledLearnersWithName(courseId);
-    return { ids: enrolled.map((l) => l.learnerId), isAdmin: true };
-  }
-  if (actor.role === 'TUTOR') {
-    // A course-team TUTOR (course→tutor assignment) sees EVERY enrolled learner of that course (Moodle
-    // course-teacher). Otherwise a tutor sees only their allocated∩enrolled learners for the course.
-    if (await isCourseTutor(actor.userId, courseId)) {
-      const enrolled = await listEnrolledLearnersWithName(courseId);
-      return { ids: enrolled.map((l) => l.learnerId), isAdmin: false };
+  const ids = await visibleLearnerIdsForCourse(actor, courseId); // 401/403 for non-staff
+  if (actor.authenticated && actor.role === 'TUTOR' && ids.length === 0) {
+    if (!(await isCourseTutor(actor.userId, courseId))) {
+      throw new AppError('You are not assigned to this course', ErrorCodes.FORBIDDEN, 403);
     }
-    const ids = await listAllocatedLearnerIdsForCourse(actor.userId, courseId);
-    if (ids.length === 0) throw new AppError('You are not assigned to this course', ErrorCodes.FORBIDDEN, 403);
-    return { ids, isAdmin: false };
   }
-  throw new AppError('You do not have access to this course', ErrorCodes.FORBIDDEN, 403);
+  return { ids, isAdmin: actor.authenticated && actor.role === 'ADMIN' };
 }
 
 /** Per-assessment state from a learner's submissions for it (newest first). Mirrors the learner
@@ -195,10 +187,10 @@ function toGridLike(s: SubmissionWithContext): GridSubmission {
 
 // ── Tutor per-unit content (read-only) + material downloads ──────────────────────────────────────────
 
-/** The full content of ONE unit for the tutor read-only view. Allocation-gated (resolveRoster); the
+/** The full content of ONE unit for the tutor read-only view. Access-gated (resolveRoster); the
  *  unit must belong to the course in the path (else 404). Read-only — no submit, no edit. */
 export async function getTutorUnitContent(actor: Actor, courseId: string, lessonId: string): Promise<UnitContent> {
-  await resolveRoster(actor, courseId); // access gate (403 if not allocated / not admin)
+  await resolveRoster(actor, courseId); // access gate (403 if neither team nor allocated / not admin)
   const content = await getUnitContent(lessonId);
   if (!content || content.courseId !== courseId) {
     throw new AppError('Unit not found in this course', ErrorCodes.NOT_FOUND, 404);
@@ -207,8 +199,8 @@ export async function getTutorUnitContent(actor: Actor, courseId: string, lesson
 }
 
 /**
- * Sign download URLs for a tutor viewing a course's MATERIALS (resources + assessment briefs). Allocation-
- * gated, and every requested key must be a real document key on one of THIS course's units (so a tutor can
+ * Sign download URLs for a tutor viewing a course's MATERIALS (resources + assessment briefs). Access-
+ * gated (course team or allocated), and every requested key must be a real document key on one of THIS course's units (so a tutor can
  * never sign an arbitrary object). Coursework submission files are NOT here — those go through the
  * per-submission coursework download guard.
  */

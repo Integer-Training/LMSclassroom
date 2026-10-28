@@ -204,7 +204,7 @@ const agentCoreRouter = new Hono()
       return handleError(c, error, 'Failed to fetch purchased summary');
     }
   })
-  .get('/usage/leaderboard', authMiddleware, orgMemberMiddleware, async (c) => {
+  .get('/usage/leaderboard', authMiddleware, orgAdminMiddleware, async (c) => {
     try {
       const orgId = c.req.header('cio-org-id')!;
       const data = await getTeamLeaderboard(orgId);
@@ -227,7 +227,7 @@ const agentCoreRouter = new Hono()
   .get(
     '/tutor-usage/leaderboard',
     authMiddleware,
-    orgMemberMiddleware,
+    orgAdminMiddleware,
     zValidator('query', ZTutorUsageQuery),
     async (c) => {
       try {
@@ -244,7 +244,7 @@ const agentCoreRouter = new Hono()
   .get(
     '/tutor-usage/summary',
     authMiddleware,
-    orgMemberMiddleware,
+    orgAdminMiddleware,
     zValidator(
       'query',
       ZTutorUsagePeriod.optional()

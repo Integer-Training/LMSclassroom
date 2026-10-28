@@ -74,6 +74,7 @@ export interface AdminOverview {
   charts: AdminCharts;
   tutors: AdminTutorRow[];
   courses: AdminCourseRow[];
+  unallocatedLearners: { count: number; learners: { learnerId: string; name: string | null; email: string | null }[] };
 }
 
 export interface OnlineNowUser {

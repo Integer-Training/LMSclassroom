@@ -16,10 +16,7 @@
   import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
   import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
   import { RESULT_LABELS, isPassingResult } from '@cio/utils/constants';
-  import {
-    caseloadApi,
-    type SubmissionsGridRow
-  } from '$features/caseload/api/caseload.svelte';
+  import { caseloadApi, type SubmissionsGridRow } from '$features/caseload/api/caseload.svelte';
   import GradingDrawer from '$features/caseload/components/grading-drawer.svelte';
 
   // Moodle-style tutor submissions grid (PearlLMS — courses-assigned phase). One dense, scrollable
@@ -188,7 +185,7 @@
 {:else if grid.summary.participants === 0}
   <Empty
     title="No learners"
-    description="No learners assigned to you on this course."
+    description="No learners are allocated to you on this course."
     icon={UsersRoundIcon}
     variant="page"
   />
@@ -311,7 +308,11 @@
               <Table.Cell class="tabular-nums">{formatDate(grid.summary.dueAt)}</Table.Cell>
               <Table.Cell>
                 {#if row.grade}
-                  <span class={isPassingResult(row.grade) ? 'ui:text-emerald-600 ui:dark:text-emerald-400 font-medium' : 'ui:text-red-600 ui:dark:text-red-400 font-medium'}>
+                  <span
+                    class={isPassingResult(row.grade)
+                      ? 'ui:text-emerald-600 ui:dark:text-emerald-400 font-medium'
+                      : 'ui:text-red-600 ui:dark:text-red-400 font-medium'}
+                  >
                     {gradeLabel(row.grade)}
                   </span>
                 {:else}
@@ -372,7 +373,11 @@
               </Table.Cell>
               <Table.Cell>
                 {#if row.grade}
-                  <span class={isPassingResult(row.grade) ? 'ui:text-emerald-600 ui:dark:text-emerald-400 font-medium' : 'ui:text-red-600 ui:dark:text-red-400 font-medium'}>
+                  <span
+                    class={isPassingResult(row.grade)
+                      ? 'ui:text-emerald-600 ui:dark:text-emerald-400 font-medium'
+                      : 'ui:text-red-600 ui:dark:text-red-400 font-medium'}
+                  >
                     {gradeLabel(row.grade)}
                   </span>
                 {:else}
@@ -381,9 +386,7 @@
               </Table.Cell>
               <Table.Cell>
                 <div class="flex items-center gap-1.5">
-                  <Button size="sm" variant="outline" disabled={!target} onclick={() => openGrade(row)}>
-                    Grade
-                  </Button>
+                  <Button size="sm" variant="outline" disabled={!target} onclick={() => openGrade(row)}>Grade</Button>
                   {#if row.versionCount > 0}
                     <Button size="sm" variant="ghost" onclick={() => toggleRow(row.learner.learnerId)}>
                       History ({row.versionCount})
@@ -401,14 +404,20 @@
                   {:else}
                     <div class="space-y-2">
                       {#each row.versions as v (v.submissionId)}
-                        <div class="bg-background flex flex-col gap-2 rounded-md border p-2.5 text-sm md:flex-row md:items-start md:justify-between">
+                        <div
+                          class="bg-background flex flex-col gap-2 rounded-md border p-2.5 text-sm md:flex-row md:items-start md:justify-between"
+                        >
                           <div class="space-y-1">
                             <div class="flex flex-wrap items-center gap-2">
                               <Badge variant="outline">v{v.version}</Badge>
                               <Badge variant="secondary" class="capitalize">{v.submissionType}</Badge>
                               <span class="text-muted-foreground tabular-nums">{formatDateTime(v.submittedAt)}</span>
                               {#if v.result}
-                                <span class={isPassingResult(v.result) ? 'ui:text-emerald-600 ui:dark:text-emerald-400 font-medium' : 'ui:text-red-600 ui:dark:text-red-400 font-medium'}>
+                                <span
+                                  class={isPassingResult(v.result)
+                                    ? 'ui:text-emerald-600 ui:dark:text-emerald-400 font-medium'
+                                    : 'ui:text-red-600 ui:dark:text-red-400 font-medium'}
+                                >
                                   {gradeLabel(v.result)}
                                 </span>
                               {/if}

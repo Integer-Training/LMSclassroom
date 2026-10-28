@@ -343,9 +343,11 @@ export async function createLearner(actor: Actor, input: CreateLearnerInput): Pr
 
   const { userId, temporaryPassword } = await createOrgUser(orgId, actor, { name, email, roleId: ROLE.STUDENT });
 
+  // Allocate BEFORE enrolling: addCourseMember fires the "learner joined" email to admins + the learner's
+  // allocated tutors, so the allocation must already exist for the tutor to be notified.
+  await createTutorAllocation(orgId, actor, { tutorId: input.tutorId, learnerId: userId });
   await addCourseMember(input.courseId, { profileId: userId, roleId: ROLE.STUDENT, email });
   await ensureComplianceEnrollmentRecordsForProfiles([input.courseId], [userId]);
-  await createTutorAllocation(orgId, actor, { tutorId: input.tutorId, learnerId: userId });
 
   return { userId, name, temporaryPassword };
 }

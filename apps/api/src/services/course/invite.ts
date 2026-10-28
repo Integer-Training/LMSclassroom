@@ -27,7 +27,7 @@ import type { TCreateCourseInvite } from '@cio/utils/validation/course/invite';
 import type { TNewCourseInviteAudit } from '@db/types';
 import crypto from 'node:crypto';
 import { getDashboardBaseUrl } from '@cio/core/config/dashboard-url';
-import { getCourseTeachers } from '@cio/db/queries/course/people';
+import { getStudentJoinedRecipientEmails } from '@api/services/course/join-recipients';
 import { getProfileById } from '@cio/db/queries/auth';
 import { buildEmailFromName, buildEmailBranding, type EmailBranding } from '@cio/email';
 import { enqueueTransactionalEmail } from '@api/services/jobs';
@@ -388,17 +388,11 @@ async function sendStudentJoinEmails(input: {
   }
 
   try {
-    const teachers = await getCourseTeachers({ courseId: input.courseId });
-    if (teachers.length === 0) {
-      return;
-    }
+    const teacherEmails = await getStudentJoinedRecipientEmails(input.courseId, input.studentId);
+    if (teacherEmails.length === 0) return;
 
     const studentProfile = await getProfileById(input.studentId);
     const studentName = studentProfile?.fullname || input.studentEmail;
-
-    const teacherEmails = teachers.map((teacher) => teacher.email).filter((email): email is string => !!email);
-
-    if (teacherEmails.length === 0) return;
 
     await enqueueTransactionalEmail('teacherStudentJoined', {
       to: teacherEmails,
