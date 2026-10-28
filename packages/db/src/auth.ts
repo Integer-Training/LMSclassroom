@@ -14,7 +14,7 @@ import { db } from '@db/drizzle';
 import { eq } from 'drizzle-orm';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { config as emailAndPassword } from './auth/email-password';
-import { getUserOrgRolesMap } from './queries/organization/organization';
+import { getUserMembershipRows } from './request-memo';
 import { loginLink } from './auth/plugins/login-link';
 import { oAuthProxy } from 'better-auth/plugins/oauth-proxy';
 import { resolveTrustedBrowserOrigin } from './utils';
@@ -145,9 +145,12 @@ const baseAuth: ReturnType<typeof betterAuth> = betterAuth({
     // cap on top of a longer max would need a custom max-session plugin (recorded as an optional follow-up).
     expiresIn: 60 * 60 * 24 * 7, // 7 days
     updateAge: 60 * 60 * 24, // 1 day (session expiry refreshed at most once/day on activity)
+    // PearlLMS scalability Phase C (owner decision 14) — 5 minutes. Only the core user/session rows are cached in
+    // the cookie; orgRoles/status (customSession) are read fresh on every get-session, and the API re-resolves the
+    // Actor per request, so this bounds how long a revoked/deleted session can keep passing the cookie check.
     cookieCache: {
       enabled: true,
-      maxAge: 60 * 60 // 1 hour
+      maxAge: 5 * 60 // 5 minutes
     }
   },
   // PearlLMS Phase 10 — system_event_log capture (best-effort; hooks never throw and never alter the response).
@@ -273,27 +276,25 @@ const baseAuth: ReturnType<typeof betterAuth> = betterAuth({
     ...buildStrangerAccountPlugins(),
     ...buildOAuthProxyPlugin(),
     loginLink(),
-    // Attaches the user's org memberships ({ [orgId]: roleId }) to the session
-    // so org-scoped middlewares can authorize without a per-request DB query.
-    // Refreshes when the session cookie cache expires (see session.cookieCache.maxAge).
+    // Attaches the user's org memberships ({ [orgId]: roleId }) and account status to the session so the
+    // dashboard can build its Actor from the one get-session response.
+    // NOTE: this runs on EVERY get-session call (the cookie cache only caches the core user/session, not this
+    // extra data), so orgRoles/status are always read fresh. It reads through the per-request identity memo
+    // (one membership+status query, shared with resolveActor for the same request; never cached across requests).
     customSession(async ({ user, session }) => {
       let orgRoles: Record<string, number> = {};
-      // Account status (PearlLMS Phase 1) — carried on the session so the dashboard's
-      // getActor can deny a deactivated user without a DB hop. The API resolver
-      // (resolveActor) re-reads status fresh, so it is the authoritative enforcement point.
+      // Account status (PearlLMS Phase 1) — carried on the session so the dashboard's getActor can deny a
+      // deactivated user without a DB hop. The API resolver (resolveActor) re-reads status fresh, so it is the
+      // authoritative enforcement point.
       let status: string = 'ACTIVE';
-      try {
-        if (user?.id) {
-          orgRoles = await getUserOrgRolesMap(user.id);
-          const [row] = await db
-            .select({ status: schema.profile.status })
-            .from(schema.profile)
-            .where(eq(schema.profile.id, user.id))
-            .limit(1);
-          if (row?.status) status = row.status;
+      if (user?.id) {
+        // A DB error is RETHROWN (fail closed): returning empty roles + ACTIVE would hand an error back as if it
+        // were a valid "no roles" session. Only a genuinely missing profile row keeps the ACTIVE default.
+        const rows = await getUserMembershipRows(user.id);
+        for (const row of rows) {
+          if (row.orgId !== null && row.roleId !== null) orgRoles[row.orgId] = Number(row.roleId);
         }
-      } catch (error) {
-        console.error('customSession: failed to load orgRoles/status', error);
+        if (rows[0]?.status) status = rows[0].status;
       }
       return { user, session, orgRoles, status };
     })

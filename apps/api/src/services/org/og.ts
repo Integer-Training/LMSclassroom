@@ -7,6 +7,7 @@ import { getActiveOrganizationPlan, getOrganizationBySiteName } from '@cio/db/qu
 import { extractOrgTagline, renderOrgSiteOg } from '@api/utils/org-site-og';
 import { isOrgOnFreePlan } from '@cio/utils/plans';
 import { env } from '@cio/core/config/env';
+import { TtlCache, parseTtlMs } from '@cio/utils/cache';
 import { getCachedOrgSiteOgBuffer, getOrgSiteOgPublicUrl, persistOrgSiteOgImage } from '@api/services/org/og-cache';
 
 const DEFAULT_OG_IMAGE = 'https://brand.cdn.clsrio.com/og/classroomio-opengraph.jpg';
@@ -34,7 +35,32 @@ function buildOrgSiteOgEtag(payload: {
   return createHash('sha256').update(JSON.stringify(payload)).digest('hex').slice(0, 16);
 }
 
-export async function generateOrgSiteOgImage(siteName: string): Promise<{ buffer: Buffer; etag: string }> {
+// In-memory render cache per siteName: link-preview scrapers hit this route constantly and each miss cost two DB
+// reads, an S3 HEAD+GET and potentially a paid Cloudflare render. Concurrent requests for the same siteName share ONE
+// in-flight render (single-flight). 5 min by default; ORG_CACHE_TTL_MS=0 (shared kill switch) or ORG_OG_CACHE_TTL_MS=0
+// disables the memory cache (single-flight still applies). Errors/404s are never cached.
+const ogRenderCache = new TtlCache<{ buffer: Buffer; etag: string }>({ maxEntries: 50 });
+
+function ogMemoryTtlMs(): number {
+  if (parseTtlMs(process.env.ORG_CACHE_TTL_MS, 1) === 0) return 0;
+
+  return parseTtlMs(process.env.ORG_OG_CACHE_TTL_MS, 5 * 60 * 1000);
+}
+
+/** Drop the in-memory OG renders (tests / operational use). */
+export function clearOrgSiteOgMemoryCache(): void {
+  ogRenderCache.clear();
+}
+
+export function generateOrgSiteOgImage(siteName: string): Promise<{ buffer: Buffer; etag: string }> {
+  return ogRenderCache.getOrLoad(
+    siteName,
+    () => renderOrgSiteOgImage(siteName),
+    () => ogMemoryTtlMs()
+  );
+}
+
+async function renderOrgSiteOgImage(siteName: string): Promise<{ buffer: Buffer; etag: string }> {
   const organization = await getOrganizationBySiteName(siteName);
   if (!organization) {
     throw new AppError('Organization not found', ErrorCodes.ORGANIZATION_NOT_FOUND, 404);

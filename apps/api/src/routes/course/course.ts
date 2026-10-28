@@ -62,6 +62,7 @@ import { newsfeedRouter } from '@api/routes/course/newsfeed';
 import { requireAdmin, requireCourseInOrg } from '@api/middlewares/guards';
 import { canReadLearnerProgress } from '@api/middlewares/guards/ownership';
 import { getCourseOrgId } from '@cio/db/queries/reports';
+import { evictCourseOrgCache } from '@api/middlewares/guards/org-binding';
 import { orgMemberMiddleware } from '@api/middlewares/org-member';
 import { paymentRequestRouter } from '@api/routes/course/payment-request';
 import { presignRouter } from '@api/routes/course/presign';
@@ -426,6 +427,7 @@ export const courseRouter = new Hono()
     try {
       const { courseId } = c.req.valid('param');
       const result = await deleteCourse(courseId);
+      evictCourseOrgCache(courseId);
 
       return c.json(
         {

@@ -77,6 +77,10 @@
       "types": "./dist/org-site/og-public-url.d.ts",
       "default": "./dist/org-site/og-public-url.js"
     },
+    "./cache": {
+      "types": "./dist/cache/index.d.ts",
+      "default": "./dist/cache/index.js"
+    },
     "./notifications": {
       "types": "./dist/notifications/index.d.ts",
       "default": "./dist/notifications/index.js"

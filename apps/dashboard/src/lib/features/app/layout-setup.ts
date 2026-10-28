@@ -6,12 +6,19 @@ import { PUBLIC_IS_SELFHOSTED } from '$env/static/public';
 import { blockedSubdomain } from '$lib/utils/constants/app';
 import { env } from '$env/dynamic/private';
 import { getApiKeyHeaders } from '$lib/utils/services/api/server';
+import { parseTtlMs } from '@cio/utils/cache';
+import { DEFAULT_ORG_LOOKUP_TTL_MS, cachedOrgLookup, orgLookupKey } from './org-lookup-cache';
 
 export interface OrgSiteInfo {
   isOrgSite: boolean;
   org: AccountOrg | null;
   subdomain: string;
   orgSiteName: string;
+}
+
+// 60s TTL; ORG_CACHE_TTL_MS=0 disables the org lookup cache.
+function orgLookupTtlMs(): number {
+  return parseTtlMs(env.ORG_CACHE_TTL_MS, DEFAULT_ORG_LOOKUP_TTL_MS);
 }
 
 export async function getOrgSiteInfo(url: URL, cookies: Cookies): Promise<OrgSiteInfo> {
@@ -25,7 +32,11 @@ export async function getOrgSiteInfo(url: URL, cookies: Cookies): Promise<OrgSit
   // Self-hosted: single org, single domain
   if (PUBLIC_IS_SELFHOSTED === 'true') {
     const apiKeyHeaders = getApiKeyHeaders();
-    const firstOrg = await getFirstOrg(apiKeyHeaders);
+    const firstOrg = await cachedOrgLookup(
+      orgLookupKey('self-hosted'),
+      () => getFirstOrg(apiKeyHeaders),
+      orgLookupTtlMs()
+    );
     if (firstOrg) {
       response.org = firstOrg as AccountOrg;
       response.isOrgSite = true;
@@ -53,7 +64,11 @@ export async function getOrgSiteInfo(url: URL, cookies: Cookies): Promise<OrgSit
   // Custom domain
   if (isURLCustomDomain(url)) {
     const apiKeyHeaders = getApiKeyHeaders();
-    const orgs = await getOrgsByCustomDomain(url.hostname, true, apiKeyHeaders);
+    const orgs = await cachedOrgLookup(
+      orgLookupKey('domain', '', url.hostname),
+      () => getOrgsByCustomDomain(url.hostname, true, apiKeyHeaders),
+      orgLookupTtlMs()
+    );
 
     if (!orgs || orgs.length === 0) {
       return response;
@@ -81,7 +96,12 @@ export async function getOrgSiteInfo(url: URL, cookies: Cookies): Promise<OrgSit
 
     if (response.orgSiteName) {
       const apiKeyHeaders = getApiKeyHeaders();
-      const org = await getOrgBySiteName(response.orgSiteName, apiKeyHeaders);
+      const siteName = response.orgSiteName;
+      const org = await cachedOrgLookup(
+        orgLookupKey('site', siteName, url.hostname),
+        () => getOrgBySiteName(siteName, apiKeyHeaders),
+        orgLookupTtlMs()
+      );
       response.org = org ?? null;
     }
 

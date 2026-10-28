@@ -7,7 +7,7 @@ import type { Role } from '@cio/utils/constants';
 // These are the SvelteKit-side adapters over the SAME pure predicates the API uses
 // (@cio/utils/auth) — the decision logic is not forked, only the control flow is: anonymous ->
 // redirect to login, wrong role/owner -> 403. Call them from +layout.server.ts / +page.server.ts
-// loads. `locals.actor` is populated per request in getSessionData() via getActor().
+// loads. `locals.actor` is populated per request in getSessionState() via getActor().
 //
 // The API (Step 4) remains the authoritative enforcement boundary; these guards stop the admin
 // shell/nav from rendering for the wrong role and keep each role on a permitted screen.

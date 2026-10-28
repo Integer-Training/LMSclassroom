@@ -54,6 +54,12 @@ export async function persistOrgSiteOgImage(siteName: string, buffer: Buffer, et
   const config = getStorageConfig();
   const publicUrl = getOrgSiteOgPublicUrl(siteName);
   if (!publicUrl) {
+    // Without a public media base URL the render is never persisted, so every cold request re-runs the paid
+    // Cloudflare render. Say so loudly instead of silently returning null.
+    console.warn(
+      `[org-og] OBJECT_STORAGE_MEDIA_PUBLIC_BASE_URL is not set: OG image for "${siteName}" was rendered but not persisted. Set it so renders are stored and reused.`
+    );
+
     return null;
   }
 

@@ -17,7 +17,7 @@ import { AppError, ErrorCodes, handleError } from '@api/utils/errors';
 import { accountRouter } from '@api/routes/account';
 import { agentRouter } from '@api/routes/agent';
 import { auth } from '@cio/db/auth';
-import { resolveActor, ANONYMOUS_ACTOR } from '@cio/db/actor';
+import { identityMiddleware } from '@api/middlewares/identity';
 import { communityRouter } from '@api/routes/community';
 import { courseRouter } from '@api/routes/course';
 import { dashAnalyticsRouter } from '@api/routes/dash';
@@ -114,50 +114,8 @@ export const app = new Hono()
 
     return sessionCors(c, next);
   })
-  .use('*', async (c, next) => {
-    if (isPublicCorsPath(c.req.path)) {
-      c.set('user', null);
-      c.set('session', null);
-      c.set('orgRoles', {});
-      c.set('actor', ANONYMOUS_ACTOR);
-
-      return next();
-    }
-
-    let session: Awaited<ReturnType<typeof auth.api.getSession>> | null = null;
-
-    try {
-      session = await auth.api.getSession({ headers: c.req.raw.headers });
-    } catch (error) {
-      console.error('auth.api.getSession error:', error);
-    }
-
-    if (!session) {
-      c.set('user', null);
-      c.set('session', null);
-      c.set('orgRoles', {});
-      c.set('actor', ANONYMOUS_ACTOR);
-      await next();
-
-      return;
-    }
-
-    c.set('user', session.user);
-    c.set('session', session.session);
-    c.set('orgRoles', (session as { orgRoles?: Record<string, number> }).orgRoles ?? {});
-    // Single authorization identity — resolved FRESH (role + status) from the DB so
-    // role changes and deactivations take effect on the next request. Route guards
-    // consult c.get('actor') (Steps 4–5).
-    c.set('actor', await resolveActor(session.user.id, c.req.header('cio-org-id') ?? null));
-
-    Sentry.setUser({
-      id: session.user.id,
-      ...(session.user.email && { email: session.user.email }),
-      ...(session.user.name && { username: session.user.name })
-    });
-
-    await next();
-  })
+  // Session + Actor, one identity read per request (see middlewares/identity.ts).
+  .use('*', identityMiddleware())
   .use('*', rateLimiter)
 
   // Routes

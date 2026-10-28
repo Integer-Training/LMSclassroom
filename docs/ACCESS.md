@@ -110,11 +110,12 @@ appears in logs, audit metadata, non-admin responses, or non-admin client bundle
   sets `c.get('user')`, `c.get('session')`, and `c.get('orgRoles')` = `{ [orgId]: roleId }`.
   `orgRoles` comes from Better Auth `customSession` (`packages/db/src/auth.ts:140-150`) →
   `getUserOrgRolesMap` (`packages/db/src/queries/organization/organization.ts:509-529`).
-  **It is cookie-cached (1h `cookieCache`, 30-day session) — authorization reads the cached
-  map, not a per-request DB row.** A role change therefore lags up to 1h unless the client
-  forces `disableCookieCache` (the dashboard does this on membership change, `init.svelte.ts:242,485`).
-- **Dashboard** (`apps/dashboard/src/hooks.server.ts:47-51`): `getSessionData(cookies)` → `locals`;
-  the gate only checks `locals.user` truthiness.
+  _Updated (scalability Phase C): `customSession` runs on every get-session, so `orgRoles`/`status` are read fresh
+  per request (ONE membership+status query, shared with `resolveActor` through a per-request AsyncLocalStorage memo —
+  never cached across requests). The cookie cache (now 5 min) only covers the core user/session rows._
+  _Originally audited as: cookie-cached (1h), a role change lagging up to 1h._
+- **Dashboard** (`apps/dashboard/src/hooks.server.ts`): `getSessionState(cookies)` → tri-state
+  `session | none | error` (4s timeout); `session` → `locals`, `error` → a 503 retry page (never a /login redirect).
 
 **Where roles live (8 places; only 2 authoritative):**
 1. `role` table (`schema.ts:1999`) — rows 1/2/3.

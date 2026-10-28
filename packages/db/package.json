@@ -21,6 +21,10 @@
       "types": "./dist/actor.d.ts",
       "default": "./dist/actor.js"
     },
+    "./request-memo": {
+      "types": "./dist/request-memo.d.ts",
+      "default": "./dist/request-memo.js"
+    },
     "./audit": {
       "types": "./dist/audit.d.ts",
       "default": "./dist/audit.js"

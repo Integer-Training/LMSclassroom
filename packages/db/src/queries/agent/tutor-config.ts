@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 
 import * as schema from '@db/schema';
 import { db } from '@db/drizzle';
+import { invalidateOrgCache } from '../organization/org-cache';
 
 /**
  * AI tutor configuration queries.
@@ -49,6 +50,7 @@ export async function updateOrgAiTutorSettings(
       .set({ aiTutorSettings: next })
       .where(eq(schema.organization.id, orgId))
       .returning({ aiTutorSettings: schema.organization.aiTutorSettings });
+    invalidateOrgCache();
 
     return updated?.aiTutorSettings ?? null;
   } catch (error) {

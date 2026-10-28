@@ -226,3 +226,14 @@ The baseline controls and where each is enforced (so a future maintainer edits t
 | **Error hygiene** | api (`middlewares/correlation-id.ts`, `utils/errors.ts`, `app.ts` onError) + dashboard `hooks.server.ts` handleError | Client gets a generic message + `correlationId` (echoed in `x-correlation-id`); full detail stays in the server log keyed by the same id. |
 
 **CSP click-through checklist (owner, browser + console open — the SA-1b tightening evidence).** Load a production build; with DevTools console open, exercise: login → dashboard → a course → a lesson with **rich text + an uploaded file + a video** (HLS and an external embed if used) → coursework upload → PDF/docx preview → admin authoring (create/edit a lesson) → org settings. Watch for **`Content-Security-Policy-Report-Only` violation** lines (the strict canary). If the ONLY report-only violations are `script-src`/`eval` from PDF.js, `unsafe-eval` can later be moved behind a worker-scoped exception; if there are **zero** report-only violations, remove `unsafe-eval` from the enforced `script-src` too. Any **enforced** (not report-only) CSP error means a real break — capture the directive + URL and it becomes a register entry.
+
+## 13. Per-request lookup caches (scalability Phase C) — kill switches
+
+None of these cache authorization. Roles, status and allocation are always read fresh (one query per request).
+
+| Var | Read by | Purpose | Default |
+|---|---|---|---|
+| `ORG_CACHE_TTL_MS` | API + dashboard | Shared kill switch / TTL for the in-process org caches: first-org reads (API, 30s), the dashboard root-layout org lookup (60s), the OG CDN HEAD memo and OG render cache. `0` disables them all. Empty/missing org answers are cached ~2s at most. | _unset (30s API / 60s dashboard)_ |
+| `COURSE_ORG_CACHE_TTL_MS` | API | courseId -> orgId binding cache for `requireCourseInOrg` (evicted on course delete). `0` disables. | _unset (10 min)_ |
+| `ORG_OG_CACHE_TTL_MS` | API | In-memory OG image render cache per siteName. `0` disables. | _unset (5 min)_ |
+| `SSR_SESSION_MEMO_TTL_MS` | dashboard | OPTIONAL cross-request memo of the SSR get-session result (clamped to 5s; `none`/`error` at most 1s). **Off by default** — it would let a deactivation/role change lag by that long on SSR pages (the API still re-checks every call). Concurrent identical lookups are always coalesced. | _unset (off)_ |

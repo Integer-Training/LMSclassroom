@@ -35,6 +35,9 @@ import { ROLE } from '@cio/utils/constants';
 
 type AppSetupParams = AppOrgParams;
 
+/** The slice of the session setupApp reads: works for the full get-session payload and the trimmed SSR locals. */
+type SessionLike = Pick<App.Locals, 'user'> & { orgRoles?: Record<string, number> };
+
 function tenantSyncKey(params: AppSetupParams): string | null {
   if (!params.orgSiteName) {
     return null;
@@ -52,7 +55,7 @@ function tenantSyncKey(params: AppSetupParams): string | null {
 */
 class AppInitApi extends BaseApi {
   data = $state<AccountResponse>(null);
-  session = $state<App.Locals | null>(null);
+  session = $state<SessionLike | null>(null);
   pendingOrgInvite = $state<PendingOrgInvite | null>(null);
   showPendingInviteModal = $state(false);
   private syncedTenantKey: string | null = null;
@@ -61,7 +64,7 @@ class AppInitApi extends BaseApi {
     return this.isLoading;
   }
 
-  async setupApp(locals: App.Locals, params: AppSetupParams): Promise<boolean | undefined> {
+  async setupApp(locals: SessionLike, params: AppSetupParams): Promise<boolean | undefined> {
     if (this.isLoading || this.isInitializedAndReady) {
       return;
     }
@@ -81,7 +84,10 @@ class AppInitApi extends BaseApi {
 
       this.session = locals;
 
-      const needsTenantMembership = params.isOrgSite && params.orgId && !this.isMemberOfOrg(locals, params.orgId);
+      // Auto-join only when the membership lookup SUCCEEDED and came back without this org. If the session carries no
+      // orgRoles at all the lookup result is unknown (not "empty"), so never treat that as "not a member".
+      const needsTenantMembership =
+        params.isOrgSite && params.orgId && this.hasMembershipInfo(locals) && !this.isMemberOfOrg(locals, params.orgId);
 
       if (needsTenantMembership && params.orgId) {
         const orgId = params.orgId;
@@ -96,6 +102,12 @@ class AppInitApi extends BaseApi {
 
         if (pendingInvite) {
           this.showPendingOrgInvite(pendingInvite);
+          this.applyAccountData(accountData, params);
+          return;
+        }
+
+        // undefined = the invite check itself failed. Do not auto-join as a learner on top of an unknown invite.
+        if (pendingInvite === undefined) {
           this.applyAccountData(accountData, params);
           return;
         }
@@ -129,7 +141,11 @@ class AppInitApi extends BaseApi {
    * Better Auth's `customSession` attaches an `orgRoles` map ({ orgId: roleId })
    * that RBAC middlewares also use, so a present key means the user is a member.
    */
-  private isMemberOfOrg(locals: App.Locals, orgId: string): boolean {
+  private hasMembershipInfo(locals: SessionLike): boolean {
+    return !!locals.orgRoles && typeof locals.orgRoles === 'object';
+  }
+
+  private isMemberOfOrg(locals: SessionLike, orgId: string): boolean {
     const orgRoles = (locals as { orgRoles?: Record<string, number> }).orgRoles;
 
     return !!orgRoles && orgId in orgRoles;
@@ -182,34 +198,38 @@ class AppInitApi extends BaseApi {
    */
   private async ensureTenantMembership(
     orgId: string,
-    options?: { knownPendingInvite?: PendingOrgInvite | null }
+    options?: { knownPendingInvite?: PendingOrgInvite | null | undefined }
   ): Promise<boolean> {
     const pendingInvite =
-      options && 'knownPendingInvite' in options
-        ? (options.knownPendingInvite ?? null)
-        : await this.fetchPendingOrgInvite(orgId);
+      options && 'knownPendingInvite' in options ? options.knownPendingInvite : await this.fetchPendingOrgInvite(orgId);
 
     if (pendingInvite) {
       this.showPendingOrgInvite(pendingInvite);
       return false;
     }
 
+    // undefined = the invite check failed; only auto-join when it succeeded and found no invite.
+    if (pendingInvite === undefined) {
+      return false;
+    }
+
     return this.autoJoinOnTenantSite(orgId);
   }
 
-  private async fetchPendingOrgInvite(orgId: string): Promise<PendingOrgInvite | null> {
+  /** The pending invite, `null` when the lookup succeeded and there is none, `undefined` when the lookup failed. */
+  private async fetchPendingOrgInvite(orgId: string): Promise<PendingOrgInvite | null | undefined> {
     try {
       const response = await classroomio.invite.organization.pending.$get({}, { headers: { 'cio-org-id': orgId } });
       const result = await response.json();
 
-      if (result.success && result.data) {
-        return result.data;
+      if (result.success) {
+        return result.data ?? null;
       }
     } catch (error) {
       console.warn('pending org invite check failed', error);
     }
 
-    return null;
+    return undefined;
   }
 
   private async autoJoinOnTenantSite(orgId: string): Promise<boolean> {

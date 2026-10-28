@@ -1,4 +1,5 @@
-import { getSessionData } from '$lib/utils/services/auth/session';
+import { forgetSession, getSessionState, type SessionState } from '$lib/utils/services/auth/session';
+import { sessionUnavailableResponse } from '$lib/utils/session-unavailable';
 import { getHasCioCookies } from '$lib/utils/functions/cookies';
 import { applyCspExtensions } from '$lib/utils/csp';
 import { applySecurityHeaders } from '$lib/utils/security-headers';
@@ -98,15 +99,21 @@ export const handle: Handle = async (args) => {
   const { event } = args;
 
   if (shouldForwardToApi(event.url.pathname)) {
+    // Sign-in / sign-out change what these cookies mean: drop any memoised session for them (SSR_SESSION_MEMO_TTL_MS).
+    if (isSessionBoundaryPath(event.url.pathname)) {
+      forgetSession(event.cookies);
+    }
+
     return proxyRequestToApi(event.request);
   }
 
   // PearlLMS Phase-10 HP/LOG-1 — removed debug logs that printed every cookie name=value (the session token is a
   // SECRET) and the page path. Never log raw cookies.
-  const sessionData = await getSessionData(event.cookies);
+  // Tri-state (Phase C3): 'error' (API unreachable / timed out / 5xx) is NOT "logged out".
+  const sessionState = await getSessionState(event.cookies);
 
-  if (sessionData) {
-    event.locals = sessionData;
+  if (sessionState.status === 'session') {
+    event.locals = sessionState.locals;
   }
 
   if (!event.url.pathname.includes('/api')) {
@@ -116,9 +123,9 @@ export const handle: Handle = async (args) => {
   let response: Response;
 
   if (event.url.pathname.includes('/api')) {
-    response = await handleAPIRoutes(args);
+    response = await handleAPIRoutes(args, sessionState);
   } else {
-    response = await handlePagesRoutes(args);
+    response = await handlePagesRoutes(args, sessionState);
   }
 
   // Prevent Cloudflare/CDN from caching HTML pages — stale HTML references old
@@ -134,12 +141,24 @@ export const handle: Handle = async (args) => {
   return applySecurityHeaders(applyCspExtensions(response), isSecure);
 };
 
-const handlePagesRoutes: Handle = async ({ event, resolve }) => {
+function isSessionBoundaryPath(pathname: string): boolean {
+  return pathname.startsWith('/api/auth/sign-out') || pathname.startsWith('/api/auth/sign-in');
+}
+
+type StatefulHandle = (input: Parameters<Handle>[0], sessionState: SessionState) => ReturnType<Handle>;
+
+const handlePagesRoutes: StatefulHandle = async ({ event, resolve }, sessionState) => {
   const { pathname } = event.url;
   const hasCioCookie = getHasCioCookies(event.cookies);
 
   if (isPublicRoute(pathname)) {
     return resolve(event);
+  }
+
+  // The session check itself failed: show a retry page. Never redirect to /login (the login page calls get-session
+  // too, so that would loop) and never report a session_invalid_bounce for a transport error.
+  if (sessionState.status === 'error') {
+    return sessionUnavailableResponse('page');
   }
 
   // Session cookie present but the session did not resolve => stale/invalid session (logged best-effort).
@@ -165,11 +184,15 @@ const handlePagesRoutes: Handle = async ({ event, resolve }) => {
   return resolve(event);
 };
 
-const handleAPIRoutes: Handle = async ({ event, resolve }) => {
+const handleAPIRoutes: StatefulHandle = async ({ event, resolve }, sessionState) => {
   const { pathname } = event.url;
 
   if (isPublicApiRoute(pathname)) {
     return resolve(event);
+  }
+
+  if (sessionState.status === 'error') {
+    return sessionUnavailableResponse('api');
   }
 
   if (!event.locals.user) {

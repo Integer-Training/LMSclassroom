@@ -5,8 +5,9 @@ import { ROLE } from '@cio/utils/constants';
 
 /**
  * Middleware to check if the authenticated user is a team member (ADMIN or TUTOR) of the organization.
- * Reads the role from the Better Auth session (populated by the customSession plugin),
- * so no per-request DB query is performed.
+ * Reads the role from the Better Auth session (populated by the customSession plugin). The session's orgRoles are
+ * read fresh from the DB on every request (one membership query per request, shared with resolveActor; never cached
+ * across requests), so a role change or deactivation applies on the next request. The cookie cache does NOT cover them.
  *
  * Requires authMiddleware to be applied first.
  * Expects orgId in the 'cio-org-id' header.

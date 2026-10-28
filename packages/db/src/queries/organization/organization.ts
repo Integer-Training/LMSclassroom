@@ -29,6 +29,7 @@ import {
 import { PLAN } from '@cio/utils/plans';
 import { ROLE } from '@cio/utils/constants';
 import { db, type DbOrTxClient } from '@db/drizzle';
+import { cachedOrgRead, invalidateOrgCache } from './org-cache';
 import type { TAudienceSortBy, TAudienceSortOrder } from '@cio/utils/validation/organization';
 
 export function getOrgIdBySiteName(siteName: string) {
@@ -125,6 +126,7 @@ export const getOrganizationByProfileId = async (profileId: string): Promise<Org
 
 export const createOrganization = async (data: TNewOrganization, dbClient: DbOrTxClient = db) => {
   const [organization] = await dbClient.insert(schema.organization).values(data).returning();
+  invalidateOrgCache();
 
   return organization;
 };
@@ -280,6 +282,7 @@ export const getOrganizationById = async (id: string): Promise<TOrganization | n
 
 export const deleteOrganizationById = async (id: string) => {
   await db.delete(schema.organization).where(eq(schema.organization.id, id));
+  invalidateOrgCache();
 };
 
 /**
@@ -938,17 +941,22 @@ export const getFreePlanOrganizationsOverStudentLimit = async (
  * Gets the first (and typically only) organization - used for self-hosted single-org mode
  * @returns First organization by createdAt, or null if none exist
  */
-export const getFirstOrganization = async (): Promise<TOrganization | null> => {
-  const [organization] = await db.select().from(schema.organization).orderBy(schema.organization.createdAt).limit(1);
+export const getFirstOrganization = async (): Promise<TOrganization | null> =>
+  cachedOrgRead('first', async () => {
+    const [organization] = await db.select().from(schema.organization).orderBy(schema.organization.createdAt).limit(1);
 
-  return organization || null;
-};
+    return organization || null;
+  });
 
 /**
  * Gets the first organization with plans - for self-hosted single-org mode
  * @returns First organization with plans (by createdAt), or null if none exist
  */
 export const getFirstOrganizationWithPlans = async (): Promise<
+  (TOrganization & { plans: Array<OrganizationPlan> }) | null
+> => cachedOrgRead('first-with-plans', loadFirstOrganizationWithPlans);
+
+const loadFirstOrganizationWithPlans = async (): Promise<
   (TOrganization & { plans: Array<OrganizationPlan> }) | null
 > => {
   // Get the first organization ID (by createdAt) - avoid limit(1) on joined result
@@ -1085,6 +1093,7 @@ export const createOrganizationPlan = async (
   dbClient: DbOrTxClient = db
 ): Promise<TOrganizationPlan> => {
   const [plan] = await dbClient.insert(schema.organizationPlan).values(data).returning();
+  invalidateOrgCache();
   return plan;
 };
 
@@ -1103,6 +1112,7 @@ export const updateOrganizationPlan = async (
     .set({ payload, updatedAt: sql`timezone('utc'::text, now())` })
     .where(eq(schema.organizationPlan.subscriptionId, subscriptionId))
     .returning();
+  invalidateOrgCache();
   return plan;
 };
 
@@ -1126,6 +1136,7 @@ export const cancelOrganizationPlan = async (
     })
     .where(eq(schema.organizationPlan.subscriptionId, subscriptionId))
     .returning();
+  invalidateOrgCache();
 
   return plan;
 };
@@ -1175,6 +1186,7 @@ export const updateOrganization = async (id: string, data: Partial<TOrganization
     .set(setData)
     .where(eq(schema.organization.id, id))
     .returning();
+  invalidateOrgCache();
 
   return organization;
 };

@@ -19,6 +19,7 @@ import {
   publishCourseImportDraftToExistingCourseService
 } from '@api/services/course-import/course-import';
 import { getCourseOrganizationId } from '@cio/db/queries/tag';
+import { evictCourseOrgCache } from '@api/middlewares/guards/org-binding';
 import { getOrganizationCourses } from '@api/services/organization';
 import { listCourseMembers } from '@api/services/course/people';
 import { AppError, ErrorCodes } from '@api/utils/errors';
@@ -88,7 +89,10 @@ export async function updatePublicApiCourseService(
 export async function deletePublicApiCourseService(orgId: string, params: TPublicApiCourseParam) {
   await assertCourseBelongsToOrganization(orgId, params.courseId);
 
-  return deleteCourseService(params.courseId);
+  const result = await deleteCourseService(params.courseId);
+  evictCourseOrgCache(params.courseId);
+
+  return result;
 }
 
 export async function updatePublicApiCourseStructureService(

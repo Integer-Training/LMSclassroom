@@ -4,6 +4,7 @@ import type { TNewOrganization, TOrganization } from '@db/types';
 import { and, count, eq, inArray, isNull, or } from 'drizzle-orm';
 
 import { db, type DbOrTxClient } from '@db/drizzle';
+import { invalidateOrgCache } from '../organization/org-cache';
 
 export async function getAccountPrimary(orgId: string, dbClient: DbOrTxClient = db): Promise<TOrganization | null> {
   try {
@@ -112,6 +113,8 @@ export async function createSecondaryWorkspace(input: CreateSecondaryWorkspaceIn
         verified: true
       });
 
+      invalidateOrgCache();
+
       return created as TOrganization;
     });
   } catch (error) {
@@ -142,6 +145,7 @@ export async function deleteSecondaryWorkspace(orgId: string): Promise<{ deleted
     }
 
     await db.delete(schema.organization).where(eq(schema.organization.id, orgId));
+    invalidateOrgCache();
     return { deleted: true };
   } catch (error) {
     console.error('deleteSecondaryWorkspace error:', error);
@@ -157,6 +161,8 @@ export async function setSecondariesReadOnlyUntil(primaryOrgId: string, until: D
       .where(eq(schema.organization.parentOrganizationId, primaryOrgId))
       .returning({ id: schema.organization.id });
 
+    invalidateOrgCache();
+
     return result.length;
   } catch (error) {
     console.error('setSecondariesReadOnlyUntil error:', error);
@@ -171,6 +177,8 @@ export async function clearSecondariesReadOnly(primaryOrgId: string): Promise<nu
       .set({ readOnlyUntil: null })
       .where(eq(schema.organization.parentOrganizationId, primaryOrgId))
       .returning({ id: schema.organization.id });
+
+    invalidateOrgCache();
 
     return result.length;
   } catch (error) {

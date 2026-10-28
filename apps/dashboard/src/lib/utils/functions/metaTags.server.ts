@@ -90,7 +90,17 @@ function resolveOrgSiteMeta(orgSiteInfo: OrgSiteInfo): {
   };
 }
 
-export async function getBaseMetaTags(url: URL, orgSiteInfo: OrgSiteInfo): Promise<MetaTagsProps> {
+/**
+ * `untrack` is the SvelteKit load-event helper. url.pathname is a tracked dependency, so reading it directly would
+ * make the root server load re-run on EVERY client navigation. Canonical / og:url stay server-rendered for crawlers
+ * (the first request), but client navigations no longer re-run this load.
+ */
+export async function getBaseMetaTags(
+  url: URL,
+  orgSiteInfo: OrgSiteInfo,
+  untrack: <T>(fn: () => T) => T = (fn) => fn()
+): Promise<MetaTagsProps> {
+  const pageUrl = untrack(() => new URL(url.pathname, url.origin).href);
   const orgMeta = resolveOrgSiteMeta(orgSiteInfo);
 
   const title =
@@ -138,10 +148,10 @@ export async function getBaseMetaTags(url: URL, orgSiteInfo: OrgSiteInfo): Promi
   return Object.freeze({
     title,
     description,
-    canonical: new URL(url.pathname, url.origin).href,
+    canonical: pageUrl,
     openGraph: {
       type: 'website',
-      url: new URL(url.pathname, url.origin).href,
+      url: pageUrl,
       locale: 'en_US',
       title,
       description,

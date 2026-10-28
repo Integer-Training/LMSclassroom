@@ -75,6 +75,7 @@ import {
   withVisibleCourseMembers
 } from '@api/services/course/member-visibility';
 import { getCourseOrgId } from '@cio/db/queries/reports';
+import { clearCourseOrgCache } from '@api/middlewares/guards/org-binding';
 import { getLessonById } from '@cio/db/queries/lesson';
 import { getGroupMemberIdByCourseAndProfile } from '@cio/db/queries/group';
 import { getProfileByGroupMemberId } from '@cio/db/queries/course/people';
@@ -110,6 +111,8 @@ const call = (method: string, path: string, actor: string, body?: unknown) =>
   });
 
 beforeEach(() => {
+  // The courseId->orgId binding is cached in-process (Phase C5); each case sets its own mock org.
+  clearCourseOrgCache();
   vi.mocked(getCourseOrgId).mockResolvedValue(ORG as never);
   vi.mocked(getLessonById).mockResolvedValue({ id: 'l-1', courseId: 'c-1' } as never);
 });

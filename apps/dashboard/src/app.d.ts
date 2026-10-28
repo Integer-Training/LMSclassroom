@@ -17,7 +17,7 @@ declare global {
       profile: TProfile | null;
       organizations: AccountOrganization[];
       fromSessions?: boolean;
-      // Single resolved authorization identity (role + status) — set in getSessionData
+      // Single resolved authorization identity (role + status) — set in getSessionState
       // via getActor(). Deny-by-default: check actor.authenticated.
       actor?: Actor;
       orgRoles?: Record<string, number>;

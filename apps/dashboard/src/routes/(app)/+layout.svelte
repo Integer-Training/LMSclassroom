@@ -18,7 +18,7 @@
       orgSiteName: string;
       org: import('$features/app/types').AccountOrg | null;
       skipAuth: boolean;
-      locals: App.Locals;
+      locals: import('$lib/utils/services/auth/public-locals').PublicLocals;
     };
   }
 
@@ -43,6 +43,12 @@
 
   $effect(() => {
     if ($session.isPending || $session.isRefetching || !!$session.data) {
+      return;
+    }
+
+    // The session check itself failed (network blip / API 5xx): that is NOT "signed out". Stay put and let the next
+    // refetch recover; the server guards and the API still reject a genuinely invalid session.
+    if ($session.error) {
       return;
     }
 
