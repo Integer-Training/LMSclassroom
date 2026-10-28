@@ -5,6 +5,7 @@ import {
   createCourseCertificateIssue,
   createCourseCompletionNotificationEvent,
   createCourseCompletionRecord,
+  createCourseCompletionRecordIfAbsent,
   getCourseComplianceHistoryRows,
   getCourseCurrentComplianceRows,
   getLatestComplianceRecordsByProfiles,
@@ -630,7 +631,9 @@ export async function runComplianceExpiryCheck() {
 
       await updateCourseCertificateIssueStatusByRecordId(record.id, 'expired', tx);
 
-      const created = await createCourseCompletionRecord(
+      // ON CONFLICT DO NOTHING (null = next cycle already exists). A caught unique-violation here would leave
+      // the transaction aborted and roll back the expiry/certificate updates above without any error.
+      const created = await createCourseCompletionRecordIfAbsent(
         {
           courseId: record.courseId,
           groupMemberId: record.groupMemberId,
@@ -642,13 +645,7 @@ export async function runComplianceExpiryCheck() {
           timeSpentMinutes: 0
         },
         tx
-      ).catch((error) => {
-        if (error instanceof Error && error.message.includes('duplicate key value')) {
-          return null;
-        }
-
-        throw error;
-      });
+      );
 
       processedCount += 1;
       if (created) {

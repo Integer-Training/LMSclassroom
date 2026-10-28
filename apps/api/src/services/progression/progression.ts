@@ -157,11 +157,14 @@ export async function getProgression(actor: Actor, courseId?: string): Promise<P
 
 /**
  * Org-wide progression for the admin Learner-Progressions page — the SAME computation as the tutor view but
- * over EVERY org learner (listOrgLearners), not just the allocated ones. Admin only.
+ * over EVERY org learner (listOrgLearners), not just the allocated ones. Admin or Manager (read-only: the Manager's
+ * learners report builds on it). The admin Learner-Progressions ROUTE stays requireAdmin; this is the service gate.
  */
 export async function getOrgProgression(actor: Actor, courseId?: string): Promise<ProgressionList> {
   if (!actor.authenticated) throw new AppError('Unauthorized', ErrorCodes.UNAUTHORIZED, 401);
-  if (actor.role !== 'ADMIN') throw new AppError('Admins only', ErrorCodes.FORBIDDEN, 403);
+  if (actor.role !== 'ADMIN' && actor.role !== 'MANAGER') {
+    throw new AppError('Admins or managers only', ErrorCodes.FORBIDDEN, 403);
+  }
   const learners = await listOrgLearners(actor.orgId);
   const roster: AllocatedLearner[] = learners.map((l) => ({ learnerId: l.learnerId, name: l.name, email: l.email }));
   return buildProgressionForRoster(roster, courseId);

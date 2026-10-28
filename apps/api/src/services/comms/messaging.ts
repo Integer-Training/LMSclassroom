@@ -9,7 +9,7 @@ import {
   getThreadById,
   insertMessage,
   listConversationsForParticipant,
-  listMessages,
+  listMessagesPage,
   markThreadRead as markThreadReadQuery,
   type MessageThreadRow
 } from '@cio/db/queries/comms';
@@ -50,19 +50,23 @@ export interface ThreadView {
   readOnly: boolean;
   canWrite: boolean;
   counterpart: { id: string; name: string };
+  /** Oldest-first window: the newest page, or (with a `before` cursor) the page just before it. */
   messages: MessageView[];
+  /** Older messages exist beyond this window — page back with `before = messages[0].createdAt`. */
+  hasMore: boolean;
 }
 
 async function buildView(
   actor: Extract<Actor, { authenticated: true }>,
-  thread: MessageThreadRow
+  thread: MessageThreadRow,
+  page: { limit?: number; before?: string } = {}
 ): Promise<ThreadView> {
   const participant = isParticipant(actor, thread);
   // For a participant, the counterpart is the OTHER party; for an Admin overseer, show the learner as subject.
   const counterpartId = actor.userId === thread.tutorId ? thread.learnerId : thread.tutorId;
-  const [counterpart, messages, allocated] = await Promise.all([
+  const [counterpart, { messages, hasMore }, allocated] = await Promise.all([
     getProfileById(counterpartId),
-    listMessages(thread.id),
+    listMessagesPage(thread.id, page),
     isTutorAllocatedToLearner(thread.tutorId, thread.learnerId)
   ]);
   const archived = thread.archivedAt != null;
@@ -76,6 +80,7 @@ async function buildView(
     readOnly: !participant || archived || !allocated,
     canWrite: participant && !archived && allocated,
     counterpart: { id: counterpartId, name: counterpart?.fullname ?? 'Conversation' },
+    hasMore,
     messages: messages.map((m) => ({
       id: m.id,
       senderId: m.senderId,
@@ -147,8 +152,15 @@ export async function openThread(actor: Actor, counterpartId: string): Promise<T
   return buildView(actor, thread);
 }
 
-/** View a thread by id — participant OR Admin (D2). A participant's read cursor is advanced on view. */
-export async function getThreadView(actor: Actor, threadId: string): Promise<ThreadView> {
+/**
+ * View a thread by id — participant OR Admin (D2). A participant's read cursor is advanced on view (not when
+ * paging back with `before`: older history is already read). Returns the newest messages, oldest-first.
+ */
+export async function getThreadView(
+  actor: Actor,
+  threadId: string,
+  page: { limit?: number; before?: string } = {}
+): Promise<ThreadView> {
   assertAuthed(actor);
   const thread = await getThreadById(threadId);
   if (!thread) throw new AppError('Thread not found', ErrorCodes.NOT_FOUND, 404);
@@ -158,8 +170,8 @@ export async function getThreadView(actor: Actor, threadId: string): Promise<Thr
   if (!participant && !isAdmin) {
     throw new AppError('You do not have access to this conversation', ErrorCodes.FORBIDDEN, 403);
   }
-  if (participant) await markThreadReadQuery(thread.id, actor.userId);
-  return buildView(actor, thread);
+  if (participant && !page.before) await markThreadReadQuery(thread.id, actor.userId);
+  return buildView(actor, thread, page);
 }
 
 /** Mark a thread read for the actor (participant only). */

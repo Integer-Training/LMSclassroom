@@ -32,8 +32,14 @@
   $effect(() => {
     const lid = lessonId;
     const key = assessmentKey;
-    if (lid && key) caseloadApi.loadSubmissions(data.courseId, lid, key);
+    if (lid && key) caseloadApi.loadSubmissions(data.courseId, lid, key, { reset: true });
   });
+
+  function retryLoad() {
+    if (lessonId && assessmentKey) {
+      caseloadApi.loadSubmissions(data.courseId, lessonId, assessmentKey, { reset: true });
+    }
+  }
 
   const grid = $derived(caseloadApi.submissionsGrid);
   const rows = $derived(grid?.rows ?? []);
@@ -180,7 +186,12 @@
   {/if}
 </div>
 
-{#if !grid}
+{#if !grid && caseloadApi.submissionsError}
+  <div class="flex flex-col items-center gap-3 py-16 text-center">
+    <p class="text-muted-foreground text-sm">{caseloadApi.submissionsError}</p>
+    <Button variant="outline" size="sm" onclick={retryLoad}>Retry</Button>
+  </div>
+{:else if !grid}
   <div class="flex justify-center py-16"><Spinner /></div>
 {:else if grid.summary.participants === 0}
   <Empty

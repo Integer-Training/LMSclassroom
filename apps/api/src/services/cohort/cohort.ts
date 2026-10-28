@@ -263,7 +263,7 @@ export async function addCohortMembers(cohortId: string, data: TAddCohortMembers
               tx
             );
             if (!existingOrgMemberId) {
-              await assertStudentCapacityOrThrow(cohort.organizationId, 1);
+              await assertStudentCapacityOrThrow(cohort.organizationId, 1, tx);
             }
 
             await insertOrganizationMembersOnConflictDoNothing(

@@ -283,6 +283,37 @@ export async function createCourseCompletionRecord(
   }
 }
 
+/**
+ * Insert a completion record unless one already exists for (course, profile, cycle); returns the new row or
+ * null when it was already there. Uses ON CONFLICT DO NOTHING so a duplicate never raises inside a caller's
+ * transaction (a swallowed unique-violation would leave the tx aborted and silently roll back its other writes).
+ */
+export async function createCourseCompletionRecordIfAbsent(
+  values: TNewCourseCompletionRecord,
+  dbClient: DbOrTxClient = db
+): Promise<TCourseCompletionRecord | null> {
+  try {
+    const [created] = await dbClient
+      .insert(schema.courseCompletionRecord)
+      .values(values)
+      .onConflictDoNothing({
+        target: [
+          schema.courseCompletionRecord.courseId,
+          schema.courseCompletionRecord.profileId,
+          schema.courseCompletionRecord.cycleNumber
+        ]
+      })
+      .returning();
+
+    return created ?? null;
+  } catch (error) {
+    console.error('createCourseCompletionRecordIfAbsent error:', error);
+    throw new Error(
+      `Failed to create course completion record: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
+}
+
 export async function updateCourseCompletionRecord(
   recordId: string,
   values: Partial<TNewCourseCompletionRecord>,

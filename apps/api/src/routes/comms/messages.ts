@@ -4,7 +4,8 @@ import { handleError } from '@api/utils/errors';
 import { requireActor } from '@api/middlewares/guards';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { MESSAGE_MAX_LENGTH } from '@cio/utils/constants';
+import { MESSAGE_MAX_LENGTH, MESSAGE_SEND_RATE_LIMIT } from '@cio/utils/constants';
+import { createRateLimiter } from '@api/middlewares/rate-limiter';
 import {
   getMyTutor,
   getThreadView,
@@ -20,6 +21,23 @@ import {
 const ZOpen = z.object({ counterpartId: z.string().uuid() });
 const ZSend = z.object({ body: z.string().min(1).max(MESSAGE_MAX_LENGTH) });
 const ZThreadParam = z.object({ threadId: z.string().uuid() });
+// History paging: newest page by default; `before` (a message createdAt) pages back. Page size is capped at 100.
+const ZThreadQuery = z.object({
+  before: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}(:?\d{2})?)?$/)
+    .optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional()
+});
+
+// Per-user send cap (30/min), keyed by user id — never a shared pool. Prod-only like every limiter; runs after
+// requireActor so the key is the authenticated user. Bounds a scripted/buggy client spamming a counterpart.
+const sendRateLimit = createRateLimiter({
+  windowMs: MESSAGE_SEND_RATE_LIMIT.windowMs,
+  maxRequests: MESSAGE_SEND_RATE_LIMIT.maxPerWindow,
+  message: 'You are sending messages too quickly. Please wait a moment.',
+  keyGenerator: (c) => `message-send:${(c.get('actor') as Actor).userId}`
+});
 
 export const messagesRouter = new Hono()
   // Learner convenience: their allocated tutor (or null → the empty state).
@@ -51,19 +69,26 @@ export const messagesRouter = new Hono()
     }
   })
   // View a thread by id — participant or Admin (D2). Advances the participant's read cursor.
-  .get('/threads/:threadId', requireActor(), zValidator('param', ZThreadParam), async (c) => {
-    try {
-      const { threadId } = c.req.valid('param');
-      const data = await getThreadView(c.get('actor') as Actor, threadId);
-      return c.json({ success: true, data }, 200);
-    } catch (error) {
-      return handleError(c, error, 'Failed to load conversation');
+  .get(
+    '/threads/:threadId',
+    requireActor(),
+    zValidator('param', ZThreadParam),
+    zValidator('query', ZThreadQuery),
+    async (c) => {
+      try {
+        const { threadId } = c.req.valid('param');
+        const data = await getThreadView(c.get('actor') as Actor, threadId, c.req.valid('query'));
+        return c.json({ success: true, data }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to load conversation');
+      }
     }
-  })
+  )
   // Send a text message (participant of an active, still-allocated pair only).
   .post(
     '/threads/:threadId/messages',
     requireActor(),
+    sendRateLimit,
     zValidator('param', ZThreadParam),
     zValidator('json', ZSend),
     async (c) => {

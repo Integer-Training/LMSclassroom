@@ -19,9 +19,12 @@ export async function createCourseInvite(values: TNewCourseInvite): Promise<TCou
   }
 }
 
-export async function createCourseInviteAudit(values: TNewCourseInviteAudit): Promise<TCourseInviteAudit> {
+export async function createCourseInviteAudit(
+  values: TNewCourseInviteAudit,
+  dbClient: DbOrTxClient = db
+): Promise<TCourseInviteAudit> {
   try {
-    const [created] = await db.insert(schema.courseInviteAudit).values(values).returning();
+    const [created] = await dbClient.insert(schema.courseInviteAudit).values(values).returning();
 
     if (!created) {
       throw new Error('Failed to create course invite audit event');
@@ -211,9 +214,13 @@ export async function listCourseInviteAuditStats(courseId: string): Promise<TCou
   }
 }
 
-export async function countInviteDistinctPreviewIps(inviteId: string, sinceIsoDate: string): Promise<number> {
+export async function countInviteDistinctPreviewIps(
+  inviteId: string,
+  sinceIsoDate: string,
+  dbClient: DbOrTxClient = db
+): Promise<number> {
   try {
-    const [row] = await db
+    const [row] = await dbClient
       .select({
         count: sql<number>`count(distinct ${schema.courseInviteAudit.ipAddress})::int`.as('count')
       })

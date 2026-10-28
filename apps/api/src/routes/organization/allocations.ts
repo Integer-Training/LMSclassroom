@@ -1,9 +1,14 @@
-import { ZAllocationCreate, ZAllocationIdParam } from '@cio/utils/validation/coursework';
+import {
+  ZAllocationCreate,
+  ZAllocationIdParam,
+  ZAllocationListQuery,
+  ZAssignablePeopleQuery
+} from '@cio/utils/validation/coursework';
 import {
   createTutorAllocation,
-  getAssignablePeople,
   listOrgAllocations,
-  removeTutorAllocation
+  removeTutorAllocation,
+  searchAssignablePeopleForOrg
 } from '@api/services/organization/allocation';
 
 import { Hono } from '@api/utils/hono';
@@ -17,24 +22,26 @@ import { zValidator } from '@hono/zod-validator';
 // are provider-wide pairs; every mutation audits in the service (ids only). Mounted at
 // /organization/allocations.
 export const allocationsRouter = new Hono()
-  .get('/', requireManagerOrAdmin, async (c) => {
+  .get('/', requireManagerOrAdmin, zValidator('query', ZAllocationListQuery), async (c) => {
     try {
       // Org comes from the RESOLVED actor, never a client-supplied header — a Manager/Admin can only
       // ever act on their own org's allocations (single-org today; correct + header-proof for multi-org).
       const orgId = (c.get('actor') as Extract<Actor, { authenticated: true }>).orgId;
-      const data = await listOrgAllocations(orgId);
+      const data = await listOrgAllocations(orgId, c.req.valid('query'));
       return c.json({ success: true, data }, 200);
     } catch (error) {
       return handleError(c, error, 'Failed to list allocations');
     }
   })
-  // Tutor + learner pickers for the assign form. Static path — registered before /:allocationId.
-  .get('/assignable', requireManagerOrAdmin, async (c) => {
+  // Typeahead picker for the assign form (one side per call, capped at 20). Static path — registered before
+  // /:allocationId.
+  .get('/assignable', requireManagerOrAdmin, zValidator('query', ZAssignablePeopleQuery), async (c) => {
     try {
       // Org comes from the RESOLVED actor, never a client-supplied header — a Manager/Admin can only
       // ever act on their own org's allocations (single-org today; correct + header-proof for multi-org).
       const orgId = (c.get('actor') as Extract<Actor, { authenticated: true }>).orgId;
-      const data = await getAssignablePeople(orgId);
+      const { role, search, pairedWith } = c.req.valid('query');
+      const data = await searchAssignablePeopleForOrg(orgId, { role, search, excludePairedWith: pairedWith });
       return c.json({ success: true, data }, 200);
     } catch (error) {
       return handleError(c, error, 'Failed to load assignable people');

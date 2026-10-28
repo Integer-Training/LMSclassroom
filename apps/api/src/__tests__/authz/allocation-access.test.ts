@@ -82,8 +82,8 @@ describe('isAllocatedTutor — DB-backed, TUTOR-only', () => {
 
 // ── (B) allocationsRouter — Manager/Admin only ───────────────────────────────────────────────────
 vi.mock('@api/services/organization/allocation', () => ({
-  listOrgAllocations: vi.fn(async () => []),
-  getAssignablePeople: vi.fn(async () => ({ tutors: [], learners: [] })),
+  listOrgAllocations: vi.fn(async () => ({ items: [], page: 1, limit: 50, total: 0, totalPages: 1 })),
+  searchAssignablePeopleForOrg: vi.fn(async () => []),
   createTutorAllocation: vi.fn(async () => ({ id: 'a-new' })),
   removeTutorAllocation: vi.fn(async () => ({ id: 'a-1' }))
 }));
@@ -114,7 +114,7 @@ const UUID_C = '33333333-3333-4333-8333-333333333333';
 
 const ROUTES: Array<{ method: string; path: string; body?: unknown }> = [
   { method: 'GET', path: '/organization/allocations' },
-  { method: 'GET', path: '/organization/allocations/assignable' },
+  { method: 'GET', path: '/organization/allocations/assignable?role=tutor' },
   { method: 'POST', path: '/organization/allocations', body: { tutorId: UUID_A, learnerId: UUID_B } },
   { method: 'DELETE', path: `/organization/allocations/${UUID_C}` }
 ];
@@ -132,4 +132,50 @@ describe('allocationsRouter — Manager/Admin only', () => {
       expect((await req(method, path, 'admin', body)).status).toBeLessThan(300);
     });
   }
+});
+
+// ── (C) typeahead + paginated list — Phase E (no 100-row roster dump) ────────────────────────────
+import { listOrgAllocations, searchAssignablePeopleForOrg } from '@api/services/organization/allocation';
+
+describe('allocationsRouter — typeahead picker + paginated table', () => {
+  beforeEach(() => {
+    vi.mocked(searchAssignablePeopleForOrg).mockClear();
+    vi.mocked(listOrgAllocations).mockClear();
+  });
+
+  it('GET /assignable requires a role (tutor | learner) → 400 without or with a bad one', async () => {
+    expect((await req('GET', '/organization/allocations/assignable', 'admin')).status).toBe(400);
+    expect((await req('GET', '/organization/allocations/assignable?role=admin', 'admin')).status).toBe(400);
+  });
+
+  it('GET /assignable forwards role/search/pairedWith, scoped to the ACTOR org (never a header org)', async () => {
+    const res = await req(
+      'GET',
+      `/organization/allocations/assignable?role=learner&search=ann&pairedWith=${UUID_A}`,
+      'manager'
+    );
+    expect(res.status).toBe(200);
+    expect(searchAssignablePeopleForOrg).toHaveBeenCalledWith(ORG, {
+      role: 'learner',
+      search: 'ann',
+      excludePairedWith: UUID_A
+    });
+  });
+
+  it('GET /assignable rejects a non-uuid pairedWith (400)', async () => {
+    expect((await req('GET', '/organization/allocations/assignable?role=tutor&pairedWith=nope', 'admin')).status).toBe(
+      400
+    );
+  });
+
+  it('GET / forwards page/limit/filters to the paged list', async () => {
+    const res = await req('GET', `/organization/allocations?page=3&limit=25&tutorId=${UUID_A}&search=bob`, 'admin');
+    expect(res.status).toBe(200);
+    expect(listOrgAllocations).toHaveBeenCalledWith(ORG, { page: 3, limit: 25, tutorId: UUID_A, search: 'bob' });
+  });
+
+  it('GET / caps limit at 100 and rejects page 0', async () => {
+    expect((await req('GET', '/organization/allocations?limit=101', 'admin')).status).toBe(400);
+    expect((await req('GET', '/organization/allocations?page=0', 'admin')).status).toBe(400);
+  });
 });

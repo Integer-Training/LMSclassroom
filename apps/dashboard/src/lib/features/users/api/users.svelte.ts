@@ -52,14 +52,21 @@ class UsersApi extends BaseApiWithErrors {
   totalPages = $state(1);
   search = $state('');
 
+  // Latest-request guard: a slow earlier response must not overwrite a newer search/page.
+  private listReqId = 0;
+
   async list(opts: { search?: string; page?: number } = {}) {
+    // Remember the active search so a re-list after a mutation (role/status/create) keeps the filter.
+    if (opts.search !== undefined) this.search = opts.search.trim();
     const query: Record<string, string> = { page: String(opts.page ?? this.page), limit: String(this.limit) };
-    if (opts.search?.trim()) query.search = opts.search.trim();
+    if (this.search) query.search = this.search;
+    const reqId = ++this.listReqId;
 
     return this.execute<ListRequest>({
       requestFn: () => classroomio.organization.users.$get({ query }),
       logContext: 'listing users',
       onSuccess: (result) => {
+        if (reqId !== this.listReqId) return;
         const data = result.data;
         this.users = data.items as OrgUser[];
         this.page = data.page;

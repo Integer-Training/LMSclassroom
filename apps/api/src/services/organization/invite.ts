@@ -139,7 +139,7 @@ async function syncOrgMemberForOrgInvite(
   }
 
   if (params.roleId === ROLE.STUDENT) {
-    await assertStudentCapacityOrThrow(params.organizationId, 1);
+    await assertStudentCapacityOrThrow(params.organizationId, 1, tx);
   }
 
   await createOrganizationMember(

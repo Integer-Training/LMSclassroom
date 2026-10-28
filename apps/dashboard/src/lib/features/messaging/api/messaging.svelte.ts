@@ -18,6 +18,8 @@ export interface ThreadView {
   canWrite: boolean;
   counterpart: { id: string; name: string };
   messages: MessageView[];
+  /** Older messages exist before `messages[0]` — fetch them with `loadEarlier`. */
+  hasMore?: boolean;
 }
 
 export interface ConversationSummary {
@@ -81,6 +83,32 @@ class MessagingApi extends BaseApi {
         this.view = result.data as ThreadView;
       }
     });
+  }
+
+  loadingEarlier = $state(false);
+
+  /** Prepend the page of messages just before the oldest one currently shown. */
+  async loadEarlier(threadId: string) {
+    const oldest = this.view?.messages[0];
+    if (!this.view || !oldest || this.loadingEarlier) return;
+    this.loadingEarlier = true;
+    try {
+      const res = await classroomio.messages.threads[':threadId'].$get({
+        param: { threadId },
+        query: { before: oldest.createdAt }
+      });
+      const result = (await res.json()) as { success: boolean; data?: ThreadView };
+      if (result.success && result.data && this.view?.threadId === threadId) {
+        // Older page first; drop any id already shown (a send racing the fetch can't duplicate a row).
+        const shown = new Set(this.view.messages.map((m) => m.id));
+        this.view.messages = [...result.data.messages.filter((m) => !shown.has(m.id)), ...this.view.messages];
+        this.view.hasMore = result.data.hasMore;
+      }
+    } catch (error) {
+      console.error('Error loading earlier messages:', error);
+    } finally {
+      this.loadingEarlier = false;
+    }
   }
 
   async send(threadId: string, body: string) {

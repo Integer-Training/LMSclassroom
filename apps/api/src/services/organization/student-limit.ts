@@ -2,6 +2,7 @@ import { AppError, ErrorCodes } from '@api/utils/errors';
 import { enqueueTransactionalEmail } from '@api/services/jobs';
 import { getDashboardBaseUrl } from '@cio/core/config/dashboard-url';
 import { getStudentLimit } from '@cio/utils/plans';
+import type { DbOrTxClient } from '@cio/db/drizzle';
 import { env } from '@cio/core/config/env';
 import {
   countActiveStudents,
@@ -57,17 +58,24 @@ async function notifyStudentMilestone(
  *
  * When the addition is allowed and crosses a milestone (50% or the limit), it
  * fires a one-time admin email (fire-and-forget). Blocked attempts do NOT email.
+ *
+ * Callers inside a `db.transaction` MUST pass their `tx` as `dbClient`: the reads then reuse the transaction's
+ * connection instead of checking out a second pool connection while the first is held (pool-exhaustion hang).
  */
-export async function assertStudentCapacityOrThrow(orgId: string, additionalStudents: number): Promise<void> {
+export async function assertStudentCapacityOrThrow(
+  orgId: string,
+  additionalStudents: number,
+  dbClient?: DbOrTxClient
+): Promise<void> {
   if (additionalStudents <= 0) return;
   if (env.PUBLIC_IS_SELFHOSTED === 'true') return;
 
-  const activePlan = await getActiveOrganizationPlan(orgId);
+  const activePlan = await getActiveOrganizationPlan(orgId, dbClient);
   const limit = getStudentLimit(activePlan?.planName);
 
   if (!Number.isFinite(limit)) return;
 
-  const currentCount = await countActiveStudents(orgId);
+  const currentCount = await countActiveStudents(orgId, dbClient);
   const newCount = currentCount + additionalStudents;
 
   if (newCount > limit) {

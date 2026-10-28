@@ -1,6 +1,6 @@
 import * as schema from '@db/schema';
 
-import { and, db, eq } from '@db/drizzle';
+import { and, asc, count, db, eq, ilike, notExists, or, sql } from '@db/drizzle';
 import { alias } from 'drizzle-orm/pg-core';
 
 // Tutor↔learner allocation (PearlLMS Phase 3). Provider-wide pairs; a tutor is "staff" only for the
@@ -149,6 +149,148 @@ export async function listAllocationsByOrg(organizationId: string): Promise<Allo
     .leftJoin(learner, eq(learner.id, schema.tutorAllocation.learnerId))
     .where(eq(schema.tutorAllocation.organizationId, organizationId))
     .orderBy(schema.tutorAllocation.createdAt);
+}
+
+export interface ListAllocationsPageOptions {
+  page?: number;
+  limit?: number;
+  tutorId?: string;
+  learnerId?: string;
+  /** Case-insensitive match on either side's name/email. */
+  search?: string;
+}
+
+/**
+ * One page of the org's allocations (the Manager/Admin table), filterable by tutor / learner / free-text
+ * search. Stable order (`created_at, id`) so pages never skip or repeat a row. `listAllocationsByOrg` stays
+ * the unpaginated read for the management aggregates (tutor learner-counts need every pair).
+ */
+export async function listAllocationsPageByOrg(organizationId: string, options: ListAllocationsPageOptions = {}) {
+  const page = options.page && options.page > 0 ? options.page : 1;
+  const limit = options.limit && options.limit > 0 ? Math.min(options.limit, 100) : 50;
+  const offset = (page - 1) * limit;
+  const search = options.search?.trim();
+
+  const tutor = alias(schema.profile, 'tutor_profile');
+  const learner = alias(schema.profile, 'learner_profile');
+
+  const conditions = [eq(schema.tutorAllocation.organizationId, organizationId)];
+  if (options.tutorId) conditions.push(eq(schema.tutorAllocation.tutorId, options.tutorId));
+  if (options.learnerId) conditions.push(eq(schema.tutorAllocation.learnerId, options.learnerId));
+  if (search) {
+    const value = `%${search}%`;
+    conditions.push(
+      or(
+        ilike(tutor.fullname, value),
+        ilike(tutor.email, value),
+        ilike(learner.fullname, value),
+        ilike(learner.email, value)
+      )!
+    );
+  }
+  const where = and(...conditions);
+
+  const [totalRow] = await db
+    .select({ count: count() })
+    .from(schema.tutorAllocation)
+    .leftJoin(tutor, eq(tutor.id, schema.tutorAllocation.tutorId))
+    .leftJoin(learner, eq(learner.id, schema.tutorAllocation.learnerId))
+    .where(where);
+  const total = Number(totalRow?.count ?? 0);
+
+  const items: AllocationWithNames[] = await db
+    .select({
+      id: schema.tutorAllocation.id,
+      tutorId: schema.tutorAllocation.tutorId,
+      learnerId: schema.tutorAllocation.learnerId,
+      createdAt: schema.tutorAllocation.createdAt,
+      tutorName: tutor.fullname,
+      tutorEmail: tutor.email,
+      learnerName: learner.fullname,
+      learnerEmail: learner.email
+    })
+    .from(schema.tutorAllocation)
+    .leftJoin(tutor, eq(tutor.id, schema.tutorAllocation.tutorId))
+    .leftJoin(learner, eq(learner.id, schema.tutorAllocation.learnerId))
+    .where(where)
+    .orderBy(asc(schema.tutorAllocation.createdAt), asc(schema.tutorAllocation.id))
+    .limit(limit)
+    .offset(offset);
+
+  return { items, page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) };
+}
+
+export interface AssignablePersonRow {
+  userId: string;
+  name: string;
+  email: string;
+}
+
+export interface SearchAssignablePeopleOptions {
+  /** 2 (TUTOR) or 3 (STUDENT) — the org-scoped role of the people being searched. */
+  role: number;
+  search?: string;
+  limit?: number;
+  /**
+   * When searching learners: hide learners already allocated to this tutor. When searching tutors: hide
+   * tutors already allocated to this learner. (The DB UNIQUE would 409 on them anyway.)
+   */
+  excludePairedWith?: string;
+}
+
+/**
+ * ACTIVE org members of one role, matched by name/email, for the allocation typeahead pickers. Capped
+ * (default 20, max 50) — never a roster dump. Deactivated users and members with no profile row are
+ * excluded. Authorization is unchanged: `createTutorAllocation` still re-validates both roles server-side.
+ */
+export async function searchAssignablePeople(
+  organizationId: string,
+  options: SearchAssignablePeopleOptions
+): Promise<AssignablePersonRow[]> {
+  const limit = options.limit && options.limit > 0 ? Math.min(options.limit, 50) : 20;
+  const search = options.search?.trim();
+
+  const conditions = [
+    eq(schema.organizationmember.organizationId, organizationId),
+    eq(schema.organizationmember.roleId, options.role),
+    eq(schema.profile.status, 'ACTIVE')
+  ];
+  if (search) {
+    const value = `%${search}%`;
+    conditions.push(or(ilike(schema.profile.fullname, value), ilike(schema.profile.email, value))!);
+  }
+  if (options.excludePairedWith) {
+    const searchingLearners = options.role === ROLE_STUDENT_ID;
+    const pairedCol = searchingLearners ? schema.tutorAllocation.tutorId : schema.tutorAllocation.learnerId;
+    const selfCol = searchingLearners ? schema.tutorAllocation.learnerId : schema.tutorAllocation.tutorId;
+    conditions.push(
+      notExists(
+        db
+          .select({ one: sql`1` })
+          .from(schema.tutorAllocation)
+          .where(and(eq(pairedCol, options.excludePairedWith), eq(selfCol, schema.profile.id)))
+      )
+    );
+  }
+
+  const rows = await db
+    .select({
+      userId: schema.profile.id,
+      fullname: schema.profile.fullname,
+      profileEmail: schema.profile.email,
+      memberEmail: schema.organizationmember.email
+    })
+    .from(schema.organizationmember)
+    .innerJoin(schema.profile, eq(schema.organizationmember.profileId, schema.profile.id))
+    .where(and(...conditions))
+    .orderBy(asc(schema.profile.fullname), asc(schema.profile.id))
+    .limit(limit);
+
+  return rows.map((row) => {
+    const email = (row.profileEmail || row.memberEmail || '').trim();
+    const name = row.fullname?.trim() || (email.includes('@') ? email.split('@')[0] : email) || '';
+    return { userId: row.userId, name, email };
+  });
 }
 
 export interface AllocatedLearner {

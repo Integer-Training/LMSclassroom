@@ -620,9 +620,9 @@ export const getOrganizationTeam = async (orgId: string) => {
 /**
  * Counts active organization members with the student role. Used to enforce per-plan student caps.
  */
-export async function countActiveStudents(orgId: string): Promise<number> {
+export async function countActiveStudents(orgId: string, dbClient: DbOrTxClient = db): Promise<number> {
   try {
-    const [row] = await db
+    const [row] = await dbClient
       .select({ count: count(schema.organizationmember.id) })
       .from(schema.organizationmember)
       .where(
@@ -1208,8 +1208,8 @@ export const getOrganizationPlanStatus = async (orgId: string) => {
   return result;
 };
 
-export const getActiveOrganizationPlan = async (orgId: string) => {
-  const [plan] = await db
+export const getActiveOrganizationPlan = async (orgId: string, dbClient: DbOrTxClient = db) => {
+  const [plan] = await dbClient
     .select()
     .from(schema.organizationPlan)
     .where(and(eq(schema.organizationPlan.orgId, orgId), eq(schema.organizationPlan.isActive, true)))
@@ -1218,7 +1218,7 @@ export const getActiveOrganizationPlan = async (orgId: string) => {
   if (plan) return plan;
 
   // Secondary workspaces inherit their primary's plan.
-  const [org] = await db
+  const [org] = await dbClient
     .select({ parentOrganizationId: schema.organization.parentOrganizationId })
     .from(schema.organization)
     .where(eq(schema.organization.id, orgId))
@@ -1226,7 +1226,7 @@ export const getActiveOrganizationPlan = async (orgId: string) => {
 
   if (!org?.parentOrganizationId) return null;
 
-  const [parentPlan] = await db
+  const [parentPlan] = await dbClient
     .select()
     .from(schema.organizationPlan)
     .where(and(eq(schema.organizationPlan.orgId, org.parentOrganizationId), eq(schema.organizationPlan.isActive, true)))

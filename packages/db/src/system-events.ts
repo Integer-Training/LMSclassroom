@@ -94,5 +94,10 @@ export async function recordSystemEvent(input: RecordSystemEventInput): Promise<
   }
 }
 
-export { getSystemEvents, deleteSystemEventsOlderThan } from './queries/system-events/system-events';
+export {
+  getSystemEvents,
+  getSystemEventTotals,
+  countSystemEventsSince,
+  deleteSystemEventsOlderThan
+} from './queries/system-events/system-events';
 export type { SystemEventRow, SystemEventFilters } from './queries/system-events/system-events';

@@ -19,7 +19,7 @@ vi.mock('@cio/db/queries/comms', () => ({
   getThreadById: vi.fn(),
   ensureActiveThread: vi.fn(),
   insertMessage: vi.fn(async () => ({ id: 'm1', threadId: 'th1', senderId: 't1', body: 'hi', createdAt: 't' })),
-  listMessages: vi.fn(async () => []),
+  listMessagesPage: vi.fn(async () => ({ messages: [], hasMore: false })),
   markThreadRead: vi.fn(async () => {})
 }));
 vi.mock('@api/services/comms/notify', () => ({ emitNotification: vi.fn(async () => {}) }));
@@ -27,7 +27,13 @@ vi.mock('@cio/email', () => ({ buildEmailBranding: vi.fn(() => ({})) }));
 vi.mock('@cio/core/config/dashboard-url', () => ({ getAppBaseUrl: vi.fn(() => 'http://app') }));
 
 import { isTutorAllocatedToLearner, listTutorsForLearner } from '@cio/db/queries/allocation';
-import { getThreadById, ensureActiveThread, insertMessage } from '@cio/db/queries/comms';
+import {
+  getThreadById,
+  ensureActiveThread,
+  insertMessage,
+  listMessagesPage,
+  markThreadRead
+} from '@cio/db/queries/comms';
 import { emitNotification } from '@api/services/comms/notify';
 import { getMyTutor, getThreadView, openThread, sendMessage } from '@api/services/comms/messaging';
 
@@ -37,6 +43,8 @@ const mGetThread = vi.mocked(getThreadById);
 const mEnsure = vi.mocked(ensureActiveThread);
 const mInsert = vi.mocked(insertMessage);
 const mEmit = vi.mocked(emitNotification);
+const mPage = vi.mocked(listMessagesPage);
+const mMarkRead = vi.mocked(markThreadRead);
 
 const A = (id: string, role: string): Actor =>
   ({ authenticated: true, userId: id, role, status: 'ACTIVE', orgId: 'o1' }) as Actor;
@@ -118,6 +126,28 @@ describe('getThreadView — participant OR Admin (D2); Manager excluded', () => 
   it('unknown thread → 404', async () => {
     mGetThread.mockResolvedValue(null as never);
     expect(await code(getThreadView(tutorT1, 'th1'))).toBe(404);
+  });
+  it('returns the newest page oldest-first and says whether older messages exist', async () => {
+    mPage.mockResolvedValue({
+      messages: [
+        { id: 'm1', threadId: 'th1', senderId: 'lA', body: 'older', createdAt: '2026-01-01 10:00:00+00' },
+        { id: 'm2', threadId: 'th1', senderId: 't1', body: 'newer', createdAt: '2026-01-01 11:00:00+00' }
+      ],
+      hasMore: true
+    });
+    const v = await getThreadView(tutorT1, 'th1');
+    expect(v.messages.map((m) => m.id)).toEqual(['m1', 'm2']);
+    expect(v.messages.map((m) => m.mine)).toEqual([false, true]);
+    expect(v.hasMore).toBe(true);
+  });
+  it('paging back with a before cursor forwards it, and does not re-advance the read cursor', async () => {
+    await getThreadView(tutorT1, 'th1', { before: '2026-01-01 10:00:00+00', limit: 50 });
+    expect(mPage).toHaveBeenCalledWith('th1', { before: '2026-01-01 10:00:00+00', limit: 50 });
+    expect(mMarkRead).not.toHaveBeenCalled();
+  });
+  it('the first page advances the participant read cursor', async () => {
+    await getThreadView(tutorT1, 'th1');
+    expect(mMarkRead).toHaveBeenCalledWith('th1', 't1');
   });
   it('an archived thread is read-only for its participant', async () => {
     mGetThread.mockResolvedValue({ ...THREAD, archivedAt: 't' } as never);

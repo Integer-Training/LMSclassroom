@@ -3,6 +3,7 @@ import { type ApiClientConfig, ApiError, type RequestConfig } from './types';
 import { dev } from '$app/environment';
 import { DEFAULT_CONFIG } from './constants';
 import { delay } from './utils';
+import { isIdempotentMethod, isRetryableStatus, retryDelayMs } from './retry';
 import { hcWithType } from '@cio/api/rpc-types';
 import { get } from 'svelte/store';
 import { currentOrg } from '$lib/utils/store/org';
@@ -156,21 +157,28 @@ class ApiClient {
       headers.set('Content-Type', CIO_ENVELOPE_CONTENT_TYPE);
     }
 
-    // Create abort controller for timeout
-    const timeoutController = new AbortController();
-    const timeoutId = setTimeout(() => timeoutController.abort(), timeout);
-
-    const requestInit: RequestInit = {
-      ...fetchConfig,
-      headers,
-      body: requestBody,
-      signal: mergeAbortSignals(fetchConfig.signal, timeoutController.signal)
-    };
+    // Only GET/HEAD are retried: repeating a POST/PUT/DELETE after a 502/503/504 or a dropped connection can
+    // apply the mutation twice (the first attempt may have reached the server). Writes fail fast and surface
+    // the error instead.
+    const method = fetchConfig.method ?? (typeof input === 'object' && 'method' in input ? input.method : 'GET');
+    const maxRetries = isIdempotentMethod(method) ? retries : 0;
 
     let lastError: Error | null = null;
 
-    // Retry logic with exponential backoff
-    for (let attempt = 0; attempt <= retries; attempt++) {
+    // Retry logic with exponential backoff + jitter
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      // A fresh timeout (and abort signal) per attempt, so a retry gets the full budget rather than the
+      // already-spent remainder of the first attempt's timer.
+      const timeoutController = new AbortController();
+      const timeoutId = setTimeout(() => timeoutController.abort(), timeout);
+
+      const requestInit: RequestInit = {
+        ...fetchConfig,
+        headers,
+        body: requestBody,
+        signal: mergeAbortSignals(fetchConfig.signal, timeoutController.signal)
+      };
+
       try {
         const response = await this.config.customFetch(fullUrl, requestInit);
 
@@ -195,12 +203,12 @@ class ApiClient {
         if (response.status >= 500) {
           const error = new ApiError(response.statusText, response.status, response.statusText, response);
 
-          if (attempt === retries) {
+          if (!isRetryableStatus(response.status) || attempt === maxRetries) {
             throw error;
           }
 
           lastError = error;
-          await delay(this.config.retryDelay * Math.pow(2, attempt));
+          await delay(retryDelayMs(this.config.retryDelay, attempt));
           continue;
         }
 
@@ -218,17 +226,17 @@ class ApiClient {
           throw new ApiError('Request timeout', 408, 'Request Timeout');
         }
 
-        // Handle network errors - retryable
+        // Handle network errors - retryable for GET/HEAD only (maxRetries is 0 for writes)
         if (error instanceof TypeError && error.message.includes('fetch')) {
           const networkError = new ApiError('Network error', 0, 'Network Error');
 
-          if (attempt === retries) {
+          if (attempt === maxRetries) {
             await this.config.onNetworkError(networkError);
             throw networkError;
           }
 
           lastError = networkError;
-          await delay(this.config.retryDelay * Math.pow(2, attempt));
+          await delay(retryDelayMs(this.config.retryDelay, attempt));
           continue;
         }
 

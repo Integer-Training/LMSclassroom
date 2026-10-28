@@ -2,7 +2,8 @@
   import { onMount } from 'svelte';
   import * as Table from '@cio/ui/base/table';
   import * as Dialog from '@cio/ui/base/dialog';
-  import * as Select from '@cio/ui/base/select';
+  import { Search } from '@cio/ui/custom/search';
+  import PersonPicker from '$features/allocation/components/person-picker.svelte';
   import { Button } from '@cio/ui/base/button';
   import { allocationApi, type Allocation, type AssignablePerson } from '$features/allocation/api/allocation.svelte';
 
@@ -15,29 +16,37 @@
 
   // Assign modal
   let assignOpen = $state(false);
-  let aTutor = $state('');
-  let aLearner = $state('');
+  let aTutor = $state<AssignablePerson | null>(null);
+  let aLearner = $state<AssignablePerson | null>(null);
+
+  // Table search (server-side, debounced) — the list is paginated, so filtering must be too.
+  let searchValue = $state('');
+  let debounce: ReturnType<typeof setTimeout> | undefined;
+  let firstSearch = true;
 
   // Remove confirm modal
   let removeOpen = $state(false);
   let removeTarget = $state<Allocation | null>(null);
 
   onMount(() => {
-    allocationApi.list();
-    allocationApi.loadAssignable();
+    allocationApi.list({ search: '', page: 1 });
+    return () => clearTimeout(debounce);
   });
 
-  function personLabel(p: AssignablePerson): string {
-    return p.name ? `${p.name} (${p.email})` : p.email;
-  }
-  function tutorLabel(id: string): string {
-    const p = allocationApi.tutors.find((t) => t.userId === id);
-    return p ? personLabel(p) : 'Select a tutor';
-  }
-  function learnerLabel(id: string): string {
-    const p = allocationApi.learners.find((l) => l.userId === id);
-    return p ? personLabel(p) : 'Select a learner';
-  }
+  $effect(() => {
+    const v = searchValue;
+    if (firstSearch) {
+      firstSearch = false;
+      return;
+    }
+    clearTimeout(debounce);
+    debounce = setTimeout(() => allocationApi.list({ search: v, page: 1 }), 300);
+  });
+
+  // Typeahead sources for the assign form: the learner list hides learners already allocated to the chosen
+  // tutor (and vice versa), so a duplicate pair can't even be picked.
+  const searchTutors = (q: string) => allocationApi.searchPeople('tutor', q, aLearner?.userId);
+  const searchLearners = (q: string) => allocationApi.searchPeople('learner', q, aTutor?.userId);
 
   // Group allocations for the two views. Key = the person being grouped by; rows = their counterparts.
   interface Group {
@@ -60,11 +69,11 @@
 
   async function submitAssign() {
     if (!aTutor || !aLearner) return;
-    const ok = await allocationApi.create({ tutorId: aTutor, learnerId: aLearner });
+    const ok = await allocationApi.create({ tutorId: aTutor.userId, learnerId: aLearner.userId });
     if (ok) {
       assignOpen = false;
-      aTutor = '';
-      aLearner = '';
+      aTutor = null;
+      aLearner = null;
     }
   }
 
@@ -99,9 +108,15 @@
     </Button>
   </div>
 
+  <Search placeholder="Search tutor or learner" bind:value={searchValue} class="mb-4 w-full md:max-w-sm" />
+
   {#if allocationApi.allocations.length === 0}
     <div class="text-muted-foreground rounded-md border p-8 text-center text-sm">
-      {allocationApi.isLoading ? 'Loading…' : 'No allocations yet. Assign a tutor to get started.'}
+      {allocationApi.isLoading
+        ? 'Loading…'
+        : searchValue.trim()
+          ? 'No allocations match your search.'
+          : 'No allocations yet. Assign a tutor to get started.'}
     </div>
   {:else}
     <div class="space-y-6">
@@ -139,6 +154,30 @@
       {/each}
     </div>
   {/if}
+
+  {#if allocationApi.totalPages > 1}
+    <div class="mt-4 flex items-center justify-end gap-3">
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={allocationApi.page <= 1 || allocationApi.isLoading}
+        onclick={() => allocationApi.list({ page: allocationApi.page - 1 })}
+      >
+        Previous
+      </Button>
+      <span class="text-muted-foreground text-sm">
+        Page {allocationApi.page} of {allocationApi.totalPages} ({allocationApi.total} allocations)
+      </span>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={allocationApi.page >= allocationApi.totalPages || allocationApi.isLoading}
+        onclick={() => allocationApi.list({ page: allocationApi.page + 1 })}
+      >
+        Next
+      </Button>
+    </div>
+  {/if}
 </div>
 
 <!-- Assign tutor to learner -->
@@ -153,25 +192,23 @@
     <div class="space-y-3">
       <div class="space-y-1">
         <label for="assign-tutor" class="text-sm font-medium">Tutor</label>
-        <Select.Root type="single" bind:value={aTutor}>
-          <Select.Trigger id="assign-tutor" class="ui:w-full">{tutorLabel(aTutor)}</Select.Trigger>
-          <Select.Content>
-            {#each allocationApi.tutors as t (t.userId)}
-              <Select.Item value={t.userId}>{personLabel(t)}</Select.Item>
-            {/each}
-          </Select.Content>
-        </Select.Root>
+        <PersonPicker
+          id="assign-tutor"
+          placeholder="Search tutors by name or email"
+          bind:selected={aTutor}
+          search={searchTutors}
+          refreshKey={aLearner?.userId ?? ''}
+        />
       </div>
       <div class="space-y-1">
         <label for="assign-learner" class="text-sm font-medium">Learner</label>
-        <Select.Root type="single" bind:value={aLearner}>
-          <Select.Trigger id="assign-learner" class="ui:w-full">{learnerLabel(aLearner)}</Select.Trigger>
-          <Select.Content>
-            {#each allocationApi.learners as l (l.userId)}
-              <Select.Item value={l.userId}>{personLabel(l)}</Select.Item>
-            {/each}
-          </Select.Content>
-        </Select.Root>
+        <PersonPicker
+          id="assign-learner"
+          placeholder="Search learners by name or email"
+          bind:selected={aLearner}
+          search={searchLearners}
+          refreshKey={aTutor?.userId ?? ''}
+        />
       </div>
       <div class="flex justify-end gap-2 pt-2">
         <Button variant="outline" onclick={() => (assignOpen = false)} disabled={allocationApi.isLoading}>Cancel</Button

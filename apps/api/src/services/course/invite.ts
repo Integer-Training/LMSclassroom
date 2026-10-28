@@ -36,7 +36,7 @@ import { generateSlug } from '@cio/utils/functions';
 import { ensureComplianceEnrollmentRecordsForProfiles } from './compliance';
 import { assertStudentCapacityOrThrow } from '../organization/student-limit';
 import { getWelcomeSessionIcs } from './session-invite';
-import { db } from '@cio/db/drizzle';
+import { db, type DbOrTxClient } from '@cio/db/drizzle';
 import { trackServerEvent, SERVER_EVENTS } from '@cio/analytics';
 
 /**
@@ -298,18 +298,39 @@ async function recordInviteAudit(
     ipAddress?: string | null;
     userAgent?: string | null;
     metadata?: Record<string, unknown>;
-  } = {}
+  } = {},
+  // Pass the transaction client when called inside `db.transaction` — a bare pool write there checks out a second
+  // connection while the tx holds the first (pool-exhaustion hang under concurrent accepts).
+  dbClient: DbOrTxClient = db
 ) {
-  await createCourseInviteAudit({
-    inviteId,
-    courseId,
-    eventType,
-    actorProfileId: context.actorProfileId ?? null,
-    targetEmail: context.targetEmail ?? null,
-    ipAddress: context.ipAddress ?? null,
-    userAgent: context.userAgent ?? null,
-    metadata: context.metadata ?? {}
-  });
+  await createCourseInviteAudit(
+    {
+      inviteId,
+      courseId,
+      eventType,
+      actorProfileId: context.actorProfileId ?? null,
+      targetEmail: context.targetEmail ?? null,
+      ipAddress: context.ipAddress ?? null,
+      userAgent: context.userAgent ?? null,
+      metadata: context.metadata ?? {}
+    },
+    dbClient
+  );
+}
+
+/**
+ * Thrown from inside the accept transaction when an invite shows abusive preview-IP diversity. Carries the audit
+ * payload so the ABUSE_BLOCKED row is written on the pool AFTER the transaction rolls back (writing it on `tx`
+ * would roll it back with everything else; writing it on the pool inside the tx nests a second connection).
+ */
+class InviteAbuseBlockedError extends AppError {
+  constructor(
+    readonly inviteId: string,
+    readonly courseId: string,
+    readonly audit: Parameters<typeof recordInviteAudit>[3]
+  ) {
+    super('Suspicious invite activity detected', ErrorCodes.VALIDATION_ERROR, 429);
+  }
 }
 
 async function createSingleInvite(
@@ -918,47 +939,145 @@ export async function acceptStudentInvite(token: string, user: TAuthUser, contex
   const normalizedEmail = user.email.toLowerCase().trim();
   const tokenHash = hashToken(token);
 
-  const result = await db.transaction(async (tx) => {
-    const inviteRow = await selectCourseInviteAcceptBundleByTokenHash(tx, tokenHash);
+  const result = await db
+    .transaction(async (tx) => {
+      const inviteRow = await selectCourseInviteAcceptBundleByTokenHash(tx, tokenHash);
 
-    if (!inviteRow) {
-      throw new AppError('Invalid invite link', ErrorCodes.NOT_FOUND, 404);
-    }
+      if (!inviteRow) {
+        throw new AppError('Invalid invite link', ErrorCodes.NOT_FOUND, 404);
+      }
 
-    const { invite, course, organization } = inviteRow;
+      const { invite, course, organization } = inviteRow;
 
-    const sinceIso = new Date(Date.now() - ANOMALY_WINDOW_MINUTES * 60 * 1000).toISOString();
-    const ipDiversity = await countInviteDistinctPreviewIps(invite.id, sinceIso);
-    if (ipDiversity >= MAX_PREVIEW_IP_DIVERSITY) {
-      await recordInviteAudit(invite.id, invite.courseId, 'ABUSE_BLOCKED', {
-        actorProfileId: user.id,
-        targetEmail: normalizedEmail,
-        ipAddress: context.ipAddress,
-        userAgent: context.userAgent,
-        metadata: {
-          reason: 'accept_ip_diversity',
-          uniqueIpCount: ipDiversity
-        }
-      });
-      throw new AppError('Suspicious invite activity detected', ErrorCodes.VALIDATION_ERROR, 429);
-    }
+      const sinceIso = new Date(Date.now() - ANOMALY_WINDOW_MINUTES * 60 * 1000).toISOString();
+      const ipDiversity = await countInviteDistinctPreviewIps(invite.id, sinceIso, tx);
+      if (ipDiversity >= MAX_PREVIEW_IP_DIVERSITY) {
+        throw new InviteAbuseBlockedError(invite.id, invite.courseId, {
+          actorProfileId: user.id,
+          targetEmail: normalizedEmail,
+          ipAddress: context.ipAddress,
+          userAgent: context.userAgent,
+          metadata: {
+            reason: 'accept_ip_diversity',
+            uniqueIpCount: ipDiversity
+          }
+        });
+      }
 
-    // Idempotent behavior: if user is already enrolled, don't consume invite again.
-    const existingMemberId = await getGroupMemberIdByGroupAndProfile(course.groupId, user.id, tx);
+      // Idempotent behavior: if user is already enrolled, don't consume invite again.
+      const existingMemberId = await getGroupMemberIdByGroupAndProfile(course.groupId, user.id, tx);
 
-    if (existingMemberId) {
+      if (existingMemberId) {
+        await markUserAndProfileEmailVerified(user.id, tx);
+
+        await recordInviteAudit(
+          invite.id,
+          invite.courseId,
+          'ACCEPTED',
+          {
+            actorProfileId: user.id,
+            targetEmail: normalizedEmail,
+            ipAddress: context.ipAddress,
+            userAgent: context.userAgent,
+            metadata: { alreadyJoined: true }
+          },
+          tx
+        );
+
+        return {
+          alreadyJoined: true,
+          courseId: course.id,
+          courseName: course.title,
+          orgName: organization.name,
+          organizationId: organization.id,
+          orgSiteName: organization.siteName,
+          orgCustomDomain: organization.customDomain,
+          orgIsCustomDomainVerified: organization.isCustomDomainVerified,
+          orgAvatarUrl: organization.avatarUrl,
+          orgTheme: organization.theme
+        };
+      }
+
+      if (invite.roleId !== ROLE.STUDENT) {
+        throw new AppError('This invite is not valid for student enrollment', ErrorCodes.UNAUTHORIZED, 403);
+      }
+
+      if (course.status !== 'ACTIVE') {
+        throw new AppError('This course is not available for enrollment', ErrorCodes.VALIDATION_ERROR, 400);
+      }
+
+      const status = getInviteStatus(invite);
+      if (status === 'REVOKED') {
+        throw new AppError('This invite has been revoked', ErrorCodes.UNAUTHORIZED, 403);
+      }
+      if (status === 'EXPIRED') {
+        throw new AppError('This invite link has expired', ErrorCodes.VALIDATION_ERROR, 400);
+      }
+      if (status === 'USED_UP') {
+        throw new AppError('This invite has reached its usage limit', ErrorCodes.VALIDATION_ERROR, 400);
+      }
+
+      const allowedEmails = invite.allowedEmails?.map((email) => email.toLowerCase()) || [];
+      if (allowedEmails.length > 0 && !allowedEmails.includes(normalizedEmail)) {
+        throw new AppError('This invite is restricted to a different email address', ErrorCodes.UNAUTHORIZED, 403);
+      }
+
+      const allowedDomains = invite.allowedDomains?.map((domain) => domain.toLowerCase()) || [];
+      if (allowedDomains.length > 0 && !allowedDomains.includes(getEmailDomain(normalizedEmail))) {
+        throw new AppError('This invite is restricted to specific email domains', ErrorCodes.UNAUTHORIZED, 403);
+      }
+
+      const orgMemberId = await getOrganizationMemberIdByOrgAndProfile(organization.id, user.id, tx);
+
+      if (!orgMemberId) {
+        await assertStudentCapacityOrThrow(organization.id, 1, tx);
+
+        await createOrganizationMember(
+          {
+            organizationId: organization.id,
+            roleId: ROLE.STUDENT,
+            profileId: user.id,
+            email: normalizedEmail,
+            verified: true
+          },
+          tx
+        );
+      }
+
+      await addGroupMember(
+        {
+          groupId: course.groupId,
+          roleId: ROLE.STUDENT,
+          profileId: user.id,
+          email: normalizedEmail
+        },
+        tx
+      );
+
       await markUserAndProfileEmailVerified(user.id, tx);
 
-      await recordInviteAudit(invite.id, invite.courseId, 'ACCEPTED', {
-        actorProfileId: user.id,
-        targetEmail: normalizedEmail,
-        ipAddress: context.ipAddress,
-        userAgent: context.userAgent,
-        metadata: { alreadyJoined: true }
-      });
+      const consumeInvite = await optimisticIncrementCourseInviteUsedCount(tx, invite.id, invite.usedCount);
+
+      if (!consumeInvite) {
+        throw new AppError('This invite was already used. Please try another link.', ErrorCodes.VALIDATION_ERROR, 409);
+      }
+
+      await recordInviteAudit(
+        invite.id,
+        invite.courseId,
+        'ACCEPTED',
+        {
+          actorProfileId: user.id,
+          targetEmail: normalizedEmail,
+          ipAddress: context.ipAddress,
+          userAgent: context.userAgent,
+          metadata: { alreadyJoined: false }
+        },
+        tx
+      );
 
       return {
-        alreadyJoined: true,
+        alreadyJoined: false,
         courseId: course.id,
         courseName: course.title,
         orgName: organization.name,
@@ -967,97 +1086,20 @@ export async function acceptStudentInvite(token: string, user: TAuthUser, contex
         orgCustomDomain: organization.customDomain,
         orgIsCustomDomainVerified: organization.isCustomDomainVerified,
         orgAvatarUrl: organization.avatarUrl,
-        orgTheme: organization.theme
+        orgTheme: organization.theme,
+        welcomeEmailMessage:
+          (course.metadata as { welcomeEmailMessage?: string | null } | null)?.welcomeEmailMessage ?? null
       };
-    }
-
-    if (invite.roleId !== ROLE.STUDENT) {
-      throw new AppError('This invite is not valid for student enrollment', ErrorCodes.UNAUTHORIZED, 403);
-    }
-
-    if (course.status !== 'ACTIVE') {
-      throw new AppError('This course is not available for enrollment', ErrorCodes.VALIDATION_ERROR, 400);
-    }
-
-    const status = getInviteStatus(invite);
-    if (status === 'REVOKED') {
-      throw new AppError('This invite has been revoked', ErrorCodes.UNAUTHORIZED, 403);
-    }
-    if (status === 'EXPIRED') {
-      throw new AppError('This invite link has expired', ErrorCodes.VALIDATION_ERROR, 400);
-    }
-    if (status === 'USED_UP') {
-      throw new AppError('This invite has reached its usage limit', ErrorCodes.VALIDATION_ERROR, 400);
-    }
-
-    const allowedEmails = invite.allowedEmails?.map((email) => email.toLowerCase()) || [];
-    if (allowedEmails.length > 0 && !allowedEmails.includes(normalizedEmail)) {
-      throw new AppError('This invite is restricted to a different email address', ErrorCodes.UNAUTHORIZED, 403);
-    }
-
-    const allowedDomains = invite.allowedDomains?.map((domain) => domain.toLowerCase()) || [];
-    if (allowedDomains.length > 0 && !allowedDomains.includes(getEmailDomain(normalizedEmail))) {
-      throw new AppError('This invite is restricted to specific email domains', ErrorCodes.UNAUTHORIZED, 403);
-    }
-
-    const orgMemberId = await getOrganizationMemberIdByOrgAndProfile(organization.id, user.id, tx);
-
-    if (!orgMemberId) {
-      await assertStudentCapacityOrThrow(organization.id, 1);
-
-      await createOrganizationMember(
-        {
-          organizationId: organization.id,
-          roleId: ROLE.STUDENT,
-          profileId: user.id,
-          email: normalizedEmail,
-          verified: true
-        },
-        tx
-      );
-    }
-
-    await addGroupMember(
-      {
-        groupId: course.groupId,
-        roleId: ROLE.STUDENT,
-        profileId: user.id,
-        email: normalizedEmail
-      },
-      tx
-    );
-
-    await markUserAndProfileEmailVerified(user.id, tx);
-
-    const consumeInvite = await optimisticIncrementCourseInviteUsedCount(tx, invite.id, invite.usedCount);
-
-    if (!consumeInvite) {
-      throw new AppError('This invite was already used. Please try another link.', ErrorCodes.VALIDATION_ERROR, 409);
-    }
-
-    await recordInviteAudit(invite.id, invite.courseId, 'ACCEPTED', {
-      actorProfileId: user.id,
-      targetEmail: normalizedEmail,
-      ipAddress: context.ipAddress,
-      userAgent: context.userAgent,
-      metadata: { alreadyJoined: false }
+    })
+    .catch(async (error: unknown) => {
+      if (error instanceof InviteAbuseBlockedError) {
+        // Best-effort: the 429 must reach the caller even if the audit write fails.
+        await recordInviteAudit(error.inviteId, error.courseId, 'ABUSE_BLOCKED', error.audit).catch((auditError) =>
+          console.error('acceptStudentInvite: failed to record ABUSE_BLOCKED audit:', auditError)
+        );
+      }
+      throw error;
     });
-
-    return {
-      alreadyJoined: false,
-      courseId: course.id,
-      courseName: course.title,
-      orgName: organization.name,
-      organizationId: organization.id,
-      orgSiteName: organization.siteName,
-      orgCustomDomain: organization.customDomain,
-      orgIsCustomDomainVerified: organization.isCustomDomainVerified,
-      orgAvatarUrl: organization.avatarUrl,
-      orgTheme: organization.theme,
-      welcomeEmailMessage:
-        (course.metadata as { welcomeEmailMessage?: string | null } | null)?.welcomeEmailMessage ?? null
-    };
-  });
 
   await ensureComplianceEnrollmentRecordsForProfiles([result.courseId], [user.id]);
 

@@ -8,19 +8,19 @@ import {
   deleteAllocationById,
   getAllocationById,
   getOrgMemberRoleId,
-  listAllocationsByOrg,
-  type AllocationWithNames
+  listAllocationsPageByOrg,
+  searchAssignablePeople,
+  type ListAllocationsPageOptions
 } from '@cio/db/queries/allocation';
-import { getOrganizationUsers } from '@cio/db/queries/organization';
 import { archiveThreadForPair } from '@cio/db/queries/comms';
 
 // Tutor↔learner allocation management (PearlLMS Phase 3). Manager/Admin only — enforced at the route
 // (requireManagerOrAdmin). Every mutation validates roles against the org membership (never trust the
 // client's word) and audits with USER IDS ONLY — no names/emails in metadata.
 
-/** All allocations in the org, with tutor + learner display names (the Manager/Admin table). */
-export async function listOrgAllocations(orgId: string): Promise<AllocationWithNames[]> {
-  return listAllocationsByOrg(orgId);
+/** One page of the org's allocations (the Manager/Admin table), with tutor + learner display names. */
+export async function listOrgAllocations(orgId: string, query: ListAllocationsPageOptions = {}) {
+  return listAllocationsPageByOrg(orgId, query);
 }
 
 export interface AssignablePerson {
@@ -28,26 +28,21 @@ export interface AssignablePerson {
   name: string;
   email: string;
 }
-export interface AssignablePeople {
-  tutors: AssignablePerson[];
-  learners: AssignablePerson[];
-}
 
-/** ACTIVE tutors + learners in the org, for the allocation pickers (Manager/Admin surface). */
-export async function getAssignablePeople(orgId: string): Promise<AssignablePeople> {
-  const [tutors, learners] = await Promise.all([
-    getOrganizationUsers(orgId, { role: ROLE.TUTOR, status: 'ACTIVE', limit: 100 }),
-    getOrganizationUsers(orgId, { role: ROLE.STUDENT, status: 'ACTIVE', limit: 100 })
-  ]);
-  const toPerson = (r: { userId: string | null; name: string; email: string }): AssignablePerson => ({
-    userId: r.userId as string,
-    name: r.name,
-    email: r.email
+/**
+ * Typeahead for the allocation pickers (Manager/Admin surface): ACTIVE tutors OR learners in the org matching
+ * `search`, capped at 20, hiding people already paired with the counterpart already chosen in the form.
+ */
+export async function searchAssignablePeopleForOrg(
+  orgId: string,
+  input: { role: 'tutor' | 'learner'; search?: string; excludePairedWith?: string; limit?: number }
+): Promise<AssignablePerson[]> {
+  return searchAssignablePeople(orgId, {
+    role: input.role === 'tutor' ? ROLE.TUTOR : ROLE.STUDENT,
+    search: input.search,
+    excludePairedWith: input.excludePairedWith,
+    limit: input.limit ?? 20
   });
-  return {
-    tutors: tutors.items.filter((r) => r.userId).map(toPerson),
-    learners: learners.items.filter((r) => r.userId).map(toPerson)
-  };
 }
 
 /**

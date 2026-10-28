@@ -57,3 +57,9 @@ export const UNAUTH_PROXY_RATE_LIMIT = {
   windowMs: 60 * 60 * 1000,
   maxPerWindow: 20
 } as const;
+
+/** Per-user cap on sending tutor↔learner messages: 30 per minute (ms window for the api Redis limiter). */
+export const MESSAGE_SEND_RATE_LIMIT = {
+  windowMs: 60 * 1000,
+  maxPerWindow: 30
+} as const;

@@ -1,7 +1,13 @@
 import type { Actor } from '@cio/db/actor';
 import { AppError, ErrorCodes } from '@api/utils/errors';
 import { isRole } from '@cio/utils/auth';
-import { getSystemEvents, type SystemEventFilters, type SystemEventRow } from '@cio/db/queries';
+import {
+  countSystemEventsSince,
+  getSystemEvents,
+  getSystemEventTotals,
+  type SystemEventFilters,
+  type SystemEventRow
+} from '@cio/db/queries';
 
 // PearlLMS admin ACTIVITY LOG — the system_event_log viewer (logins, logouts, API/client errors). ADMIN ONLY,
 // org-scoped. Rows carry only the masked IP (the writer masks it); nothing here re-exposes a raw IP.
@@ -28,15 +34,17 @@ export async function getSystemEventsReport(
   filters: SystemEventFilters = {}
 ): Promise<SystemEventsReport> {
   assertAdmin(actor);
-  const rows = await getSystemEvents(actor.orgId, filters);
-
-  const bySeverity: Record<string, number> = {};
-  for (const r of rows) bySeverity[r.severity] = (bySeverity[r.severity] ?? 0) + 1;
-
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const recent = await getSystemEvents(actor.orgId, { from: since, limit: 2000 });
-  const errorsLast24h = recent.filter((r) => r.severity === 'error').length;
-  const failedLoginsLast24h = recent.filter((r) => r.eventType === 'auth.login.failure').length;
+  // Page + filtered totals + last-24h KPI counts are independent reads. The totals use the page's WHERE but not
+  // its limit, so they describe every matching event; the 24h tiles are COUNT-only scans (no 2000-row fetch).
+  const [rows, { total, bySeverity }, recent] = await Promise.all([
+    getSystemEvents(actor.orgId, filters),
+    getSystemEventTotals(actor.orgId, filters),
+    countSystemEventsSince(actor.orgId, since)
+  ]);
 
-  return { rows, totals: { total: rows.length, bySeverity, errorsLast24h, failedLoginsLast24h } };
+  return {
+    rows,
+    totals: { total, bySeverity, errorsLast24h: recent.errors, failedLoginsLast24h: recent.failedLogins }
+  };
 }

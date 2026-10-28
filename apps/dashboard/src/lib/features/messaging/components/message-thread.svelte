@@ -55,6 +55,17 @@
   </div>
 
   <div bind:this={listEl} class="flex flex-1 flex-col gap-2 overflow-y-auto px-4 py-3">
+    {#if view.hasMore}
+      <Button
+        variant="ghost"
+        size="sm"
+        class="self-center"
+        loading={messagingApi.loadingEarlier}
+        onclick={() => messagingApi.loadEarlier(view.threadId)}
+      >
+        Load earlier messages
+      </Button>
+    {/if}
     {#if view.messages.length === 0}
       <p class="ui:text-muted-foreground m-auto text-sm">No messages yet. Say hello.</p>
     {:else}

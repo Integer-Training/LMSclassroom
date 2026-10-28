@@ -5,9 +5,7 @@ import { snackbar } from '$features/ui/snackbar/store';
 import { courseworkApi, type CourseworkFile } from '$features/course/api/coursework.svelte';
 
 // Tutor course-view + submissions-grid response shapes, inferred from the RPC endpoints.
-type CourseContentResp = InferResponseType<
-  (typeof classroomio.caseload.courses)[':courseId']['content']['$get']
->;
+type CourseContentResp = InferResponseType<(typeof classroomio.caseload.courses)[':courseId']['content']['$get']>;
 export type TutorCourseContent = Extract<CourseContentResp, { success: true }>['data'];
 export type TutorOutlineUnit = TutorCourseContent['units'][number];
 export type OutlineAssessmentStat = TutorOutlineUnit['assessments'][number];
@@ -219,6 +217,8 @@ class CaseloadApi extends BaseApi {
   // Tutor course view + submissions grid.
   courseContent = $state<TutorCourseContent | null>(null);
   submissionsGrid = $state<SubmissionsGrid | null>(null);
+  /** Set when the latest submissions-grid load failed (cleared on the next load); drives the retry state. */
+  submissionsError = $state<string | null>(null);
   unitContent = $state<TutorUnitContent | null>(null);
   #submissionsReqId = 0;
   #unitReqId = 0;
@@ -227,9 +227,7 @@ class CaseloadApi extends BaseApi {
   async loadUnitContent(courseId: string, lessonId: string) {
     const reqId = ++this.#unitReqId;
     this.unitContent = null;
-    return this.execute<
-      (typeof classroomio.caseload.courses)[':courseId']['lessons'][':lessonId']['unit']['$get']
-    >({
+    return this.execute<(typeof classroomio.caseload.courses)[':courseId']['lessons'][':lessonId']['unit']['$get']>({
       requestFn: () =>
         classroomio.caseload.courses[':courseId'].lessons[':lessonId'].unit.$get({ param: { courseId, lessonId } }),
       logContext: 'loading unit content',
@@ -278,9 +276,15 @@ class CaseloadApi extends BaseApi {
     });
   }
 
-  /** The submissions grid for one assessment (workbook) on a unit. */
-  async loadSubmissions(courseId: string, lessonId: string, assessmentKey: string) {
+  /**
+   * The submissions grid for one assessment (workbook) on a unit. `reset` (pass it when the TARGET assessment
+   * changed) drops the previous grid first, so the old assessment's rows can't show — or be graded — under the
+   * new one while it loads or if the load fails. A plain refresh (after grading) keeps the grid visible.
+   */
+  async loadSubmissions(courseId: string, lessonId: string, assessmentKey: string, opts: { reset?: boolean } = {}) {
     const reqId = ++this.#submissionsReqId;
+    if (opts.reset) this.submissionsGrid = null;
+    this.submissionsError = null;
     return this.execute<
       (typeof classroomio.caseload.courses)[':courseId']['lessons'][':lessonId']['submissions']['$get']
     >({
@@ -294,7 +298,15 @@ class CaseloadApi extends BaseApi {
         if (reqId === this.#submissionsReqId) this.submissionsGrid = result.data as SubmissionsGrid;
       },
       onError: (result) => {
-        if (typeof result === 'string') snackbar.error(result);
+        if (reqId !== this.#submissionsReqId) return;
+        const message =
+          typeof result === 'string'
+            ? result
+            : 'error' in result && typeof result.error === 'string'
+              ? result.error
+              : 'Could not load the submissions.';
+        this.submissionsError = message;
+        snackbar.error(message);
       }
     });
   }
@@ -440,9 +452,9 @@ class CaseloadApi extends BaseApi {
   /** Download a zip of every roster learner's latest submission for one workbook. */
   async downloadAllSubmissions(courseId: string, lessonId: string, assessmentKey: string): Promise<void> {
     try {
-      const res = await classroomio.caseload.courses[':courseId'].lessons[':lessonId'].submissions[
-        'download-all'
-      ].$get({ param: { courseId, lessonId }, query: { assessmentKey } });
+      const res = await classroomio.caseload.courses[':courseId'].lessons[':lessonId'].submissions['download-all'].$get(
+        { param: { courseId, lessonId }, query: { assessmentKey } }
+      );
       if (!res.ok) {
         snackbar.error('Could not prepare the download (no submitted files yet?).');
         return;
