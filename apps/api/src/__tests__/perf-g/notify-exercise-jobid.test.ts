@@ -7,7 +7,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { add } = vi.hoisted(() => ({
   add: vi.fn(async (_name: string, _data: unknown, opts: { jobId?: string }) => ({ id: opts.jobId ?? 'auto-1' }))
 }));
-vi.mock('../../../../../packages/jobs/src/queues/factories', () => ({ getQueue: () => ({ add }) }));
+const { getJob } = vi.hoisted(() => ({ getJob: vi.fn(async (_id: string): Promise<unknown> => undefined) }));
+vi.mock('../../../../../packages/jobs/src/queues/factories', () => ({ getQueue: () => ({ add, getJob }) }));
 
 import {
   NOTIFY_EXERCISE_DEDUPE_WINDOW_MS,
@@ -27,6 +28,8 @@ const payload = {
 
 beforeEach(() => {
   add.mockClear();
+  getJob.mockReset();
+  getJob.mockResolvedValue(undefined);
 });
 
 describe('notifyCourseExerciseJobId', () => {
@@ -66,5 +69,35 @@ describe('enqueueNotifyCourseExercise', () => {
   it('without an exerciseId the old behaviour (no stable jobId) is kept', async () => {
     await enqueueNotifyCourseExercise(payload);
     expect(add.mock.calls[0]![2].jobId).toBeUndefined();
+    expect(getJob).not.toHaveBeenCalled();
+  });
+
+  it('removes a FAILED job with the same id before adding so a retry click is not swallowed', async () => {
+    const remove = vi.fn(async () => undefined);
+    getJob.mockResolvedValue({ getState: async () => 'failed', remove });
+    await enqueueNotifyCourseExercise({ ...payload, exerciseId: 'e1' });
+    expect(getJob).toHaveBeenCalledWith(add.mock.calls[0]![2].jobId);
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(add).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['completed', 'waiting', 'active', 'delayed'])('keeps a %s job (still dedupes)', async (state) => {
+    const remove = vi.fn(async () => undefined);
+    getJob.mockResolvedValue({ getState: async () => state, remove });
+    await enqueueNotifyCourseExercise({ ...payload, exerciseId: 'e1' });
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it('still enqueues when the failed-job cleanup throws', async () => {
+    getJob.mockResolvedValue({
+      getState: async () => 'failed',
+      remove: async () => {
+        throw new Error('boom');
+      }
+    });
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await enqueueNotifyCourseExercise({ ...payload, exerciseId: 'e1' });
+    expect(add).toHaveBeenCalledTimes(1);
+    errSpy.mockRestore();
   });
 });

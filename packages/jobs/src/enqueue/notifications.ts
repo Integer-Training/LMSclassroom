@@ -21,16 +21,31 @@ export function notifyCourseExerciseJobId(courseId: string, exerciseId: string, 
  * Enqueue a `notifications:notify-course-exercise` job. Returns the BullMQ
  * job id so the dashboard can poll its status. Clicks for the same exercise
  * within the same 15-minute bucket collapse onto one job (see
- * notifyCourseExerciseJobId); a later click is a fresh nudge.
+ * notifyCourseExerciseJobId) unless that job failed, in which case it is
+ * replaced; a later click is a fresh nudge.
  */
 export async function enqueueNotifyCourseExercise(
   payload: TNotifyCourseExercisePayload & { exerciseId?: string },
   options: JobsOptions = {}
 ): Promise<string | undefined> {
   const { exerciseId, ...jobPayload } = payload;
-  const job = await getQueue(QUEUE_NAMES.notifications).add(JOB_NAMES.notifications.notifyCourseExercise, jobPayload, {
+  const queue = getQueue(QUEUE_NAMES.notifications);
+  const jobId = exerciseId ? notifyCourseExerciseJobId(payload.courseId, exerciseId) : undefined;
+
+  // A job that exhausted its attempts stays in Redis for days and would swallow every retry click in this bucket.
+  // Only failed jobs are cleared; waiting/active/delayed/completed ones still dedupe.
+  if (jobId) {
+    try {
+      const existing = await queue.getJob(jobId);
+      if (existing && (await existing.getState()) === 'failed') await existing.remove();
+    } catch (error) {
+      console.error('notify-exercise: could not clear failed job before retry:', error);
+    }
+  }
+
+  const job = await queue.add(JOB_NAMES.notifications.notifyCourseExercise, jobPayload, {
     ...QUEUE_DEFAULTS[QUEUE_NAMES.notifications],
-    ...(exerciseId ? { jobId: notifyCourseExerciseJobId(payload.courseId, exerciseId) } : {}),
+    ...(jobId ? { jobId } : {}),
     ...options
   });
 
