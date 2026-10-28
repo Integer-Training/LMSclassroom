@@ -29,6 +29,10 @@
   const session = authClient.useSession();
   let authed = $derived(!!$session.data);
 
+  // Backoff schedule (ms) for re-checking the session after a failed (not "signed out") check.
+  const SESSION_RETRY_DELAYS_MS = [1_000, 3_000, 8_000, 20_000, 45_000];
+  let sessionRetries = 0;
+
   // Live-presence heartbeat: while signed in, ping every 60s so "Online now" reflects real activity (the
   // panel counts sessions refreshed within 5 minutes). Best-effort — failures are ignored.
   onMount(() => {
@@ -42,14 +46,22 @@
   });
 
   $effect(() => {
+    if ($session.data) sessionRetries = 0;
+
     if ($session.isPending || $session.isRefetching || !!$session.data) {
       return;
     }
 
-    // The session check itself failed (network blip / API 5xx): that is NOT "signed out". Stay put and let the next
-    // refetch recover; the server guards and the API still reject a genuinely invalid session.
+    // The session check itself failed (network blip / API 5xx): that is NOT "signed out". Stay put (no redirect) and
+    // retry with backoff, bounded, so the app finishes initialising once the API is back instead of waiting for a
+    // tab refocus. The server guards and the API still reject a genuinely invalid session.
     if ($session.error) {
-      return;
+      if (sessionRetries >= SESSION_RETRY_DELAYS_MS.length) return;
+      const timer = setTimeout(() => {
+        sessionRetries += 1;
+        void $session.refetch({ query: { disableCookieCache: true } });
+      }, SESSION_RETRY_DELAYS_MS[sessionRetries]);
+      return () => clearTimeout(timer);
     }
 
     if (data.skipAuth) return;
