@@ -41,7 +41,7 @@ direct host) differ.
 | `DIRECT_DATABASE_URL` | **Direct** conn string (5432) for migrations/DDL | `drizzle.config.ts`, `scripts/db-setup.ts`, `baseline.ts`, `db-reset.ts` (via `scripts/db-connection.ts`) | Supabase **direct or session pooler** URL, port 5432 | 🔒 |
 | `DATABASE_SSL` | SSL escape hatch — default is SSL **required** | drizzle.ts + admin scripts | unset (SSL on); `disable` only for a plain local PG | |
 | `PRIVATE_DATABASE_URL` | Legacy fallback read after DATABASE_URL | drizzle.ts, jobs, scripts | unused by us | 🔒 |
-| `DATABASE_POOL_MAX` | postgres-js pool size | drizzle.ts | tune vs Supabase pooler client limit | |
+| `DATABASE_POOL_MAX` | postgres-js pool size | drizzle.ts | tune vs Supabase pooler client limit; compose passes `DATABASE_POOL_MAX` to the api and `JOBS_DATABASE_POOL_MAX` to jobs (both default 10; budget table in `docs/DEPLOY.md`) | |
 | `POSTGRES_DB/USER/PASSWORD` | docker-compose local Postgres container only | compose | **unused** — the local Postgres container is retired (Supabase is external); see the flag comment atop `docker-compose.yaml` | 🔒 |
 
 **Which Supabase value goes where.** From the project's *Connect* dialog, copy:
@@ -132,7 +132,7 @@ ZeptoMail's HTTP API instead of SMTP. Email branding is still ClassroomIO — se
 |---|---|---|
 | `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `ANTHROPIC_API_KEY`, `MOONSHOT_API_KEY` | AI assistant / course-gen / Whisper transcription | 🔒 |
 | `UNSPLASH_API_KEY` | Cover-image search | 🔒 |
-| `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_TRACES_SAMPLE_RATE` (API) / `PUBLIC_SENTRY_DSN`, `PUBLIC_SENTRY_ENVIRONMENT`, `PUBLIC_SENTRY_TRACES_SAMPLE_RATE`, `PUBLIC_SENTRY_REPLAYS_SESSION_SAMPLE_RATE`, `PUBLIC_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE` (dashboard) | Error tracking. NB: replay-on-error sample rate defaults to 1 — full session replay if a DSN is ever set | 🔒 |
+| `SENTRY_DSN` + `SENTRY_ENABLED=true`, `SENTRY_ENVIRONMENT`, `SENTRY_TRACES_SAMPLE_RATE` (API) / `PUBLIC_SENTRY_DSN` + `PUBLIC_SENTRY_ENABLED=true`, `PUBLIC_SENTRY_ENVIRONMENT`, `PUBLIC_SENTRY_TRACES_SAMPLE_RATE`, `PUBLIC_SENTRY_REPLAYS_SESSION_SAMPLE_RATE`, `PUBLIC_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE` (dashboard) | Error tracking, **off unless both the DSN and the opt-in flag are set** (K6; self-hosting alone no longer blocks it). `sendDefaultPii=false`; traces default 0.05; replay rates default 0 (session and on-error). The browser also needs the Sentry ingest host in `CSP_CONNECT_SRC_DOMAINS` | 🔒 |
 | `TINYBIRD_TOKEN`, `TINYBIRD_BASE_URL` | AI-agent observability (skipped when unset) | 🔒 |
 | `JINA_API_KEY`, `AGENT_MAX_FETCHES_PER_CONVERSATION` (def 15), `AGENT_MAX_FETCHES_PER_ORG_PER_DAY` (def 500) | Agent URL-reader limits | 🔒 |
 | `POLAR_ACCESS_TOKEN`, `POLAR_WEBHOOK_SECRET`, `POLAR_TOKEN_PACK_PRODUCT_ID`, `POLAR_SERVER` | Vendor billing (moot: self-hosted auto-gets ENTERPRISE plan) | 🔒 |
@@ -155,7 +155,7 @@ ZeptoMail's HTTP API instead of SMTP. Email branding is still ClassroomIO — se
 | `UPLOAD_MAX_{DOCUMENT,IMAGE,VIDEO,EXERCISE_FILE,AGENT_DOCUMENT,LANDING_IMAGE,THUMBNAIL}_MB` | Upload caps (defaults **50**/5/800/2/5/0.5/5; DOCUMENT is 50MB for learner coursework) — set on BOTH api and dashboard. NB the Supabase `documents` bucket has no per-file limit set, so this app cap governs. | stock for now |
 | `CI_ENVIRONMENT` | `cloudflare` switches the SvelteKit adapter | unset (adapter-node) |
 | `CIO_VERSION` | docker-compose.images tag | unused (we build from source) |
-| `SKIP_DB_SETUP` | Skips db:setup in the api container entrypoint | default false |
+| `SKIP_DB_SETUP` | Skips db:setup in the api container entrypoint (`docker/entrypoint-api.sh`) | default false; `docker-compose.deploy.yaml` sets it `true` on the api because the one-shot `migrate` service runs db:setup first |
 
 ## 9. `PUBLIC_IS_SELFHOSTED` — where it's read and what it changes
 

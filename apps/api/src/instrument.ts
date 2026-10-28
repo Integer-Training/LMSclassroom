@@ -5,22 +5,18 @@
  * Sentry will not be traced.
  */
 import * as Sentry from '@sentry/node';
+import { resolveSentryConfig } from './utils/sentry-config';
 
-const dsn = process.env.SENTRY_DSN?.trim();
-const isProd = process.env.NODE_ENV === 'production';
-const isSelfHosted = process.env.PUBLIC_IS_SELFHOSTED === 'true';
+// K6 — disabled by default; enabled only by SENTRY_DSN + SENTRY_ENABLED=true in production (see sentry-config.ts).
+const sentryConfig = resolveSentryConfig(process.env);
 
-if (dsn && isProd && !isSelfHosted) {
+if (sentryConfig) {
   Sentry.init({
-    dsn,
-    environment: process.env.SENTRY_ENVIRONMENT?.trim() || 'production',
-    tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE ?? 0),
-    sendDefaultPii: false,
+    ...sentryConfig,
     // process-error-guards.ts registers handlers with transient Redis filtering.
     integrations(integrations) {
       return integrations.filter(
-        (integration) =>
-          integration.name !== 'OnUncaughtException' && integration.name !== 'OnUnhandledRejection'
+        (integration) => integration.name !== 'OnUncaughtException' && integration.name !== 'OnUnhandledRejection'
       );
     }
   });

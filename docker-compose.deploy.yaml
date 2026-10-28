@@ -7,6 +7,9 @@
 # equals the pushed source (AGPL sync rule).
 #
 #   docker compose -f docker-compose.deploy.yaml up -d --build
+#
+# Build one image at a time on this small droplet: COMPOSE_PARALLEL_LIMIT=1 docker compose ... up -d --build
+# (docs/DEPLOY.md, "Build memory"). Migrations run in the one-shot `migrate` service; api and dashboard wait for it.
 
 # Cap container logs (json-file is unbounded by default and can fill the droplet disk).
 x-logging: &logging
@@ -19,7 +22,9 @@ services:
   redis:
     image: redis:7-alpine
     container_name: pearl-redis
-    command: ['redis-server', '--appendonly', 'yes']
+    # maxmemory sits under the container limit; noeviction is required by BullMQ (docs/DEPLOY.md, memory limits).
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory', '400mb', '--maxmemory-policy', 'noeviction']
+    mem_limit: ${REDIS_MEM_LIMIT:-512m}
     volumes:
       - redis-data:/data
     healthcheck:
@@ -31,14 +36,35 @@ services:
     logging: *logging
     restart: unless-stopped
 
+  # One-shot migrator: the api image running db:setup (roles, migrations over the direct 5432 connection, essential seed),
+  # then exiting. api and dashboard start only after it exits 0, so a failing migration never produces a crash-looping
+  # new api (the previous api container keeps serving). Re-run by hand: `docker compose -f docker-compose.deploy.yaml run --rm migrate`
+  migrate:
+    image: pearl-api:local
+    # Built by the `api` service below; never try to pull the local tag.
+    pull_policy: never
+    container_name: pearl-migrate
+    entrypoint: ['pnpm', '--filter', '@cio/db', 'db:setup']
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?set the Supabase transaction-pooler URL (6543)}
+      DIRECT_DATABASE_URL: ${DIRECT_DATABASE_URL:?set the Supabase direct/session URL (5432) for migrations}
+      MIGRATION_LOCK_TIMEOUT: ${MIGRATION_LOCK_TIMEOUT:-}
+      MIGRATION_STATEMENT_TIMEOUT: ${MIGRATION_STATEMENT_TIMEOUT:-}
+    logging: *logging
+    restart: 'no'
+
   api:
     build:
       context: .
       dockerfile: docker/Dockerfile.api
+    image: pearl-api:local
     container_name: pearl-api
     depends_on:
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [
@@ -60,7 +86,7 @@ services:
       DASHBOARD_ORIGIN: ${PUBLIC_APP_URL:?set PUBLIC_APP_URL}
       TRUSTED_ORIGINS: ${PUBLIC_APP_URL:?set PUBLIC_APP_URL}
       # Supabase Postgres: runtime over the TRANSACTION POOLER (6543); the api entrypoint
-      # runs db:setup migrations over the DIRECT/session connection (5432) — both required.
+      # `migrate` service runs db:setup migrations over the DIRECT/session connection (5432) — both required.
       DATABASE_URL: ${DATABASE_URL:?set the Supabase transaction-pooler URL (6543)}
       DIRECT_DATABASE_URL: ${DIRECT_DATABASE_URL:?set the Supabase direct/session URL (5432) for migrations}
       REDIS_URL: redis://redis:6379
@@ -85,11 +111,23 @@ services:
       # Auth secrets — generate strong random values (openssl rand -hex 32); see docs/DEPLOY.md
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?generate a strong BETTER_AUTH_SECRET}
       PRIVATE_SERVER_KEY: ${PRIVATE_SERVER_KEY:?generate a strong PRIVATE_SERVER_KEY}
+      # Migrations, roles and the essential seed already ran in the `migrate` service this container waits for.
+      SKIP_DB_SETUP: 'true'
+      # K4 starting points (connection budget in docs/DEPLOY.md). The pool stays at the code default of 10 until the
+      # Supabase pooler pool_size is checked; the heap sits under the container mem_limit below.
+      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
+      NODE_OPTIONS: ${API_NODE_OPTIONS:---max-old-space-size=576}
+      # K6 error tracking: OFF unless both SENTRY_DSN and SENTRY_ENABLED=true are set. No PII is sent.
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENABLED: ${SENTRY_ENABLED:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-}
       # Phase J tuning/flags: all optional, empty = built-in default (see docs/ENV.md).
       SHUTDOWN_TIMEOUT: ${API_SHUTDOWN_TIMEOUT:-}
       REPORT_STATEMENT_TIMEOUT_MS: ${REPORT_STATEMENT_TIMEOUT_MS:-}
       SYSTEM_EVENT_THROTTLE_WINDOW_MS: ${SYSTEM_EVENT_THROTTLE_WINDOW_MS:-}
       COHORT_GOAL_REMINDER_EMAILS_ENABLED: ${COHORT_GOAL_REMINDER_EMAILS_ENABLED:-}
+    mem_limit: ${API_MEM_LIMIT:-768m}
     # Let in-flight requests finish on redeploy: SHUTDOWN_TIMEOUT (25s drain) + pool close fits inside 60s.
     stop_grace_period: 60s
     logging: *logging
@@ -104,8 +142,23 @@ services:
         PUBLIC_IS_SELFHOSTED: 'true'
     container_name: pearl-dashboard
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       api:
         condition: service_healthy
+    # Cheap TCP check (the SSR `/` route does session + api work every time). Lets caddy wait for a listening dashboard.
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('net').connect(3082,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
     environment:
       NODE_ENV: production
       PORT: 3082
@@ -132,6 +185,14 @@ services:
       CSP_MEDIA_SRC_DOMAINS: ${CSP_MEDIA_SRC_DOMAINS:-}
       # adapter-node: seconds to wait for in-flight requests after SIGTERM before exiting.
       SHUTDOWN_TIMEOUT: '30'
+      NODE_OPTIONS: ${DASHBOARD_NODE_OPTIONS:---max-old-space-size=576}
+      # K6 browser error tracking: OFF unless both PUBLIC_SENTRY_DSN and PUBLIC_SENTRY_ENABLED=true are set
+      # (also add the Sentry ingest host to CSP_CONNECT_SRC_DOMAINS or the browser blocks the reports).
+      PUBLIC_SENTRY_DSN: ${PUBLIC_SENTRY_DSN:-}
+      PUBLIC_SENTRY_ENABLED: ${PUBLIC_SENTRY_ENABLED:-}
+      PUBLIC_SENTRY_ENVIRONMENT: ${PUBLIC_SENTRY_ENVIRONMENT:-}
+      PUBLIC_SENTRY_TRACES_SAMPLE_RATE: ${PUBLIC_SENTRY_TRACES_SAMPLE_RATE:-}
+    mem_limit: ${DASHBOARD_MEM_LIMIT:-768m}
     stop_grace_period: 60s
     logging: *logging
     restart: unless-stopped
@@ -148,6 +209,14 @@ services:
       NODE_ENV: production
       REDIS_URL: redis://redis:6379
       DATABASE_URL: ${DATABASE_URL:?}
+      # Own knob so api and jobs are budgeted separately (docs/DEPLOY.md); default = the code default of 10.
+      DATABASE_POOL_MAX: ${JOBS_DATABASE_POOL_MAX:-10}
+      # Heap stays well under mem_limit: ffmpeg/Whisper child processes need the rest.
+      NODE_OPTIONS: ${JOBS_NODE_OPTIONS:---max-old-space-size=512}
+      # Worker concurrencies: empty = built-in default (media 2, transcribe 1, course generation 1).
+      MEDIA_WORKER_CONCURRENCY: ${MEDIA_WORKER_CONCURRENCY:-}
+      TRANSCRIBE_WORKER_CONCURRENCY: ${TRANSCRIBE_WORKER_CONCURRENCY:-}
+      AGENT_COURSE_GENERATION_WORKER_CONCURRENCY: ${AGENT_COURSE_GENERATION_WORKER_CONCURRENCY:-}
       # Supabase Storage (mirrors api)
       OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT:?}
       OBJECT_STORAGE_PUBLIC_ENDPOINT: ${OBJECT_STORAGE_PUBLIC_ENDPOINT:?}
@@ -179,6 +248,8 @@ services:
       RETENTION_JOB_RECORDS_ENABLED: ${RETENTION_JOB_RECORDS_ENABLED:-}
       COMPLIANCE_EXPIRY_SCAN_ENABLED: ${COMPLIANCE_EXPIRY_SCAN_ENABLED:-}
       COMPLIANCE_REMINDER_SCAN_ENABLED: ${COMPLIANCE_REMINDER_SCAN_ENABLED:-}
+    mem_limit: ${JOBS_MEM_LIMIT:-1200m}
+    cpus: ${JOBS_CPUS:-1.0}
     # An ffmpeg/Whisper job can run for many minutes: give the workers time to finish (or hand back) on redeploy.
     stop_grace_period: 300s
     logging: *logging
@@ -188,7 +259,9 @@ services:
     image: caddy:2-alpine
     container_name: pearl-caddy
     depends_on:
-      - dashboard
+      dashboard:
+        condition: service_healthy
+    mem_limit: ${CADDY_MEM_LIMIT:-128m}
     ports:
       - '80:80'
       - '443:443'

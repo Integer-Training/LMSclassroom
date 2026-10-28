@@ -21,6 +21,10 @@
 	# Never forward client-supplied real-IP headers: no Cloudflare is in front, so they are spoofable and the api
 	# rate limiters key on X-Forwarded-For (which Caddy sets itself) instead.
 	reverse_proxy dashboard:3082 {
+		# Redeploys restart the dashboard for a few seconds: retry the upstream for up to 30s (every 250ms) instead of
+		# returning 502 straight away, so visitors see a short pause rather than an error.
+		lb_try_duration 30s
+		lb_try_interval 250ms
 		header_up -CF-Connecting-IP
 		header_up -X-Real-IP
 	}

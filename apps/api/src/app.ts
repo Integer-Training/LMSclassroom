@@ -35,6 +35,7 @@ import { lmsRouter } from '@api/routes/lms/lms';
 import { logger } from 'hono/logger';
 import type { Context } from 'hono';
 import { recordApiError } from '@api/utils/record-api-error';
+import { readyHandler } from '@api/utils/readiness';
 import { logRouter } from '@api/routes/log';
 // ROUTES
 import { hlsRouter } from '@api/routes/hls';
@@ -67,7 +68,7 @@ export const app = new Hono()
   // Middleware
   // Skip the docker healthcheck (`/`, every 10s) and `/health` so the access log is not flooded with probes.
   .use('*', async (c, next) => {
-    if (c.req.path === '/' || c.req.path === '/health') return next();
+    if (c.req.path === '/' || c.req.path === '/health' || c.req.path === '/ready') return next();
 
     return accessLogger(c, next);
   })
@@ -98,6 +99,9 @@ export const app = new Hono()
   // Deliberately dependency-free (no DB/Redis call) so a transient dep blip doesn't page on liveness; readiness
   // of Supabase/Redis is covered by their own dashboards. No PII, no secrets. See docs/RUNBOOK.md §Health.
   .get('/health', (c) => c.json({ status: 'ok', service: 'api', timestamp: new Date().toISOString() }))
+  // K6 — readiness for MONITORING ONLY (DB `select 1` + Redis PING, each bounded to 2s): 200 when both answer, else 503
+  // with per-dependency ok/fail. Never use it for docker healthchecks or autoheal; liveness is `/health`.
+  .get('/ready', readyHandler)
   .get('/', (c) =>
     c.json({
       message: `"Welcome to Classroomio.com API - docs are at ${API_SERVER_URL}/docs"`

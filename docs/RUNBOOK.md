@@ -14,11 +14,14 @@ setup) and [HARDENING-PLAN.md](HARDENING-PLAN.md) (security register).
 |---|---|---|
 | **API liveness** | `GET https://learn.epearlacademy.com/proxy/health` (or api `:3002/health` on the droplet) | `200 {"status":"ok","service":"api",...}` |
 | **Site up** | `GET https://learn.epearlacademy.com/login` | `200`, valid TLS, login renders |
+| **API readiness (monitoring only)** | `GET https://learn.epearlacademy.com/proxy/ready` (or api `:3081/ready` in the container) | `200 {"status":"ok","checks":{"db":"ok","redis":"ok"}}`; `503` with the failing dependency marked `fail` |
 | **Containers** | on droplet: `docker compose -f docker-compose.deploy.yaml ps` | all 5 (redis, api, jobs, dashboard, caddy) `healthy`/`Up` |
 | **Migrations** | `docker compose -f docker-compose.deploy.yaml logs api \| grep -i migrat` | ran clean at last boot |
 
 `/health` is an **unauthenticated liveness probe** (no DB/Redis call — a transient dependency blip must not page on
-liveness). Readiness of Supabase/Redis is observed at their own dashboards. It returns no PII and no secrets.
+liveness). `/ready` (K6) runs `select 1` and a Redis `PING`, each bounded to 2s, and returns `503` if either fails. Use it for
+an uptime/alert check only, **never** for a docker healthcheck or autoheal: a Supabase or Redis blip must page a human, not
+restart a healthy api. Both return no PII and no secrets.
 
 ## 2. Monitoring & alerts  *(owner sets up at the DO dashboard — O5)*
 

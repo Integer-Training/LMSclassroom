@@ -22,6 +22,8 @@ COPY . .
 RUN pnpm install --offline --frozen-lockfile --ignore-scripts \
     --store-dir /pnpm/store --filter @cio/dashboard...
 RUN find . -name 'tsconfig.tsbuildinfo' -delete
+# Keep the 8072 MB build heap: a trial `vite build` with --max-old-space-size=3072 ran out of memory (K1, 2026-10-28), so it
+# cannot be lowered yet. On the 4 GB droplet build one image at a time (COMPOSE_PARALLEL_LIMIT=1, docs/DEPLOY.md).
 RUN NODE_OPTIONS="--max-old-space-size=8072" \
     PUBLIC_IS_SELFHOSTED="${PUBLIC_IS_SELFHOSTED}" \
     pnpm -r --filter @cio/dashboard... build

@@ -58,7 +58,7 @@ Env files are **per app** (`apps/api/.env`, `apps/dashboard/.env`, `apps/jobs/.e
 Docker: `docker-compose.yaml` (build from source: postgres, redis, minio+minio-init [profile], api:3081,
 dashboard:3082, jobs) and `docker-compose.images.yaml` (same topology from Docker Hub images).
 `PRIVATE_SERVER_KEY` and `BETTER_AUTH_SECRET` use `:?` so the stack refuses to start unset.
-`docker/entrypoint-api.sh` runs `db:setup` on every api container start (idempotent, skip with `SKIP_DB_SETUP=true`).
+`docker/entrypoint-api.sh` runs `db:setup` on every api container start (idempotent, skip with `SKIP_DB_SETUP=true`); in the prod compose the one-shot `migrate` service runs it instead and the api sets `SKIP_DB_SETUP=true`.
 **No mailpit/mailhog service exists upstream — we add Mailpit ourselves for local SMTP.**
 `apps/course-app` dev has no port flag → defaults to 5173 and collides with the dashboard if both run.
 

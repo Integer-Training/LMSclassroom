@@ -59,18 +59,26 @@ SMTP host/port/user/pass/`SMTP_SENDER`/`SMTP_REPLY_TO`.
 ## 4. Deploy
 
 ```bash
-docker compose -f docker-compose.deploy.yaml up -d --build
+COMPOSE_PARALLEL_LIMIT=1 docker compose -f docker-compose.deploy.yaml up -d --build
 ```
 
-- The **api entrypoint auto-runs `db:setup`** (migrations over `DIRECT_DATABASE_URL`),
-  then starts. Pending migrations are applied in order (see the safety notes below); the
-  baseline logic no-ops on the already-migrated Supabase DB.
+- The one-shot **`migrate` service** (the api image, `restart: 'no'`) runs `db:setup` (roles, migrations over
+  `DIRECT_DATABASE_URL`, essential seed) and exits. `api` and `dashboard` `depends_on` it with
+  `service_completed_successfully`, and the api runs with `SKIP_DB_SETUP=true`, so migrations run exactly once per deploy
+  and a failing migration stops the rollout **before** a new api is started (the previous api container keeps serving; a
+  crash-looping new api is no longer possible). Pending migrations are applied in order (see the safety notes below); the
+  baseline logic no-ops on the already-migrated Supabase DB. Check it with `docker compose -f docker-compose.deploy.yaml logs migrate`;
+  re-run by hand with `docker compose -f docker-compose.deploy.yaml run --rm migrate`.
+- Migrations are **expand-then-contract only** from now on: the old api keeps running against the new schema while the new
+  one starts, so a deploy must never drop or rename something the previous release still reads. Remove columns in a later
+  release.
 - Caddy obtains a Let's Encrypt cert for `APP_DOMAIN` on first request (needs port 80/443
   reachable + DNS resolving).
 
 ```bash
 docker compose -f docker-compose.deploy.yaml ps          # all healthy?
-docker compose -f docker-compose.deploy.yaml logs -f api  # watch startup / migrations
+docker compose -f docker-compose.deploy.yaml logs migrate  # migration output (one-shot service, exits 0)
+docker compose -f docker-compose.deploy.yaml logs -f api  # watch startup
 ```
 
 ### Migration safety and index changes on large tables
@@ -123,12 +131,76 @@ docker compose -f docker-compose.deploy.yaml logs -f api  # watch startup / migr
 cd /opt/pearllms
 git pull                                   # fast-forward main
 git rev-parse HEAD                          # new deployed commit (record it)
-docker compose -f docker-compose.deploy.yaml up -d --build
+COMPOSE_PARALLEL_LIMIT=1 docker compose -f docker-compose.deploy.yaml up -d --build
 ```
+
+Caddy retries the dashboard upstream for up to 30s (`lb_try_duration 30s`, `lb_try_interval 250ms`), so the few seconds
+while the dashboard container restarts show visitors a short pause instead of a 502. The dashboard has a cheap TCP
+healthcheck and Caddy waits for it on first start.
 
 Rollback: `git checkout <previous-commit>` then re-run the `up -d --build`.
 
-## 7. AGPL sync rule
+## 7. Capacity, build memory and monitoring (K1, K3, K4, K6)
+
+### Build memory (K1)
+
+A source build of three images is the heaviest thing the 4 GB droplet does. Build one image at a time:
+`COMPOSE_PARALLEL_LIMIT=1 docker compose -f docker-compose.deploy.yaml up -d --build` (or export it in the deploy shell).
+`docker/Dockerfile.dashboard` keeps its 8072 MB build heap: a trial `vite build` with `--max-old-space-size=3072` ran out of
+memory, so do not lower it until the dashboard build itself gets lighter. Make sure the droplet has swap (`swapon --show`;
+if empty add a 4 GB swapfile: `fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile`
+and an `/etc/fstab` line) and free old build layers now and then: `docker image prune -af --filter until=168h`
+(weekly cron is fine; it never touches running containers).
+
+### Memory limits (K4 starting points)
+
+Limits are **starting points** to be revisited after about a week of `docker stats`. Each is overridable from `.env` (see
+`.env.deploy.example`), so a limit that proves too tight is a one-line change and a `docker compose up -d`.
+
+| Service | `mem_limit` | Node heap (`NODE_OPTIONS`) | Other |
+|---|---|---|---|
+| api | 768m (`API_MEM_LIMIT`) | `--max-old-space-size=576` (`API_NODE_OPTIONS`) | |
+| dashboard | 768m (`DASHBOARD_MEM_LIMIT`) | `--max-old-space-size=576` (`DASHBOARD_NODE_OPTIONS`) | |
+| jobs | 1200m (`JOBS_MEM_LIMIT`) | `--max-old-space-size=512` (`JOBS_NODE_OPTIONS`) | `cpus: 1.0`; the rest is headroom for ffmpeg/Whisper |
+| redis | 512m (`REDIS_MEM_LIMIT`) | n/a | `--maxmemory 400mb --maxmemory-policy noeviction` (BullMQ needs noeviction; never use an LRU policy on this instance) |
+| caddy | 128m (`CADDY_MEM_LIMIT`) | n/a | |
+
+The limits total about 3.4 GB on a 4 GB droplet, which is deliberately tight for the OS and Docker daemon: this is the reason
+to keep swap and to watch `docker stats` / DO memory alerts before and after the first week. An OOM-killed container shows up
+as `OOMKilled: true` in `docker inspect` and as a restart; raise that one service's limit rather than removing limits.
+
+### Database connection budget (K4)
+
+postgres-js pools are per process. Pool sizes stay at the code default of **10** each; do not raise them before checking the
+Supabase pooler `pool_size` (Supabase dashboard, Database, Connection pooling) and `max_connections`, because raising the app
+pool only moves the queue rather than adding real concurrency.
+
+| Consumer | Pool / connections | Variable | Via |
+|---|---|---|---|
+| api runtime | up to 10 | `DATABASE_POOL_MAX` | transaction pooler 6543 |
+| jobs workers | up to 10 | `JOBS_DATABASE_POOL_MAX` (compose maps it to the jobs container's `DATABASE_POOL_MAX`) | transaction pooler 6543 |
+| dashboard | 0 (talks to the api only) | n/a | n/a |
+| migrate (a few seconds per deploy) | 2 to 3 (advisory-lock + migrator + setup client) | n/a | direct/session 5432 |
+| **Steady total** | **20** | | |
+| **During a deploy** | **20 + 3, plus the old api's pool while it drains (about 33 worst case)** | | |
+
+Compare the steady total and the deploy peak with the pooler `pool_size`; if the peak is close to it, lower the two pool sizes
+(for example 8 and 6) rather than raising the plan. A session-pooler 5432 connection (migrate) counts against a separate limit
+from the 6543 transaction pool.
+
+### Monitoring (K6)
+
+- **Liveness:** `GET /proxy/health` (no dependencies). **Readiness, monitoring only:** `GET /proxy/ready` runs `select 1` and a
+  Redis `PING` (2s each) and returns `503` with the failing dependency marked `fail`. Point the DO uptime check or alert at it.
+  **Never** use `/ready` for a docker healthcheck, autoheal or a restart policy: a Supabase/Redis blip must alert a human, not
+  restart a healthy api.
+- **DO monitoring alerts** (owner, DO console): CPU above 80%, memory above 85%, disk above 80%.
+- **Sentry is off by default.** It only starts when the DSN **and** the opt-in flag are both set: api `SENTRY_DSN` +
+  `SENTRY_ENABLED=true`; browser `PUBLIC_SENTRY_DSN` + `PUBLIC_SENTRY_ENABLED=true` (also add the Sentry ingest host to
+  `CSP_CONNECT_SRC_DOMAINS`). It sends no PII (`sendDefaultPii=false`), traces default to 5%, session replay stays off.
+  Self-hosting no longer disables it by itself. Leave the variables unset to keep it disabled.
+
+## 8. AGPL sync rule
 
 The running app is built from source at the commit above. **`git rev-parse HEAD` on the
 droplet MUST equal `origin/main` HEAD** on GitHub. Never apply deploy-only patches; land
