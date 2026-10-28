@@ -13,7 +13,7 @@ import { logRedisUnavailableOnce, redis } from './redis/redis';
 
 export type GetSignedUrlParameters = Parameters<typeof getSignedUrl>;
 
-const PRESIGN_CACHE_TTL_SECONDS = 3000; // 50 min; presigned URLs typically valid 1 hour
+const PRESIGN_CACHE_TTL_SECONDS = 1500; // 25 min; presigned URLs are signed for 1 hour, so a cached one always has >= 35 min left
 const PRESIGN_CACHE_KEY_PREFIX = 'presign:download:';
 
 export async function uploadToS3(params: PutObjectCommandInput): Promise<{ success: boolean; error?: string }> {

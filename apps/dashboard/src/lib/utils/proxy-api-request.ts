@@ -13,6 +13,28 @@ const AUTH_PREFIX = '/api/auth';
 /** Hop-by-hop / encoding headers that must not be forwarded after Node fetch decompresses. */
 const RESPONSE_HEADERS_TO_STRIP = ['content-encoding', 'content-length', 'transfer-encoding'] as const;
 
+/**
+ * PearlLMS scalability Phase I — total deadline for a proxied API call. Without it a stalled upstream pins an
+ * adapter-node request (and its buffered body) forever; a client disconnect also cancels the upstream fetch via
+ * `request.signal`. Long-lived STREAMS are exempt (their whole point is to run long): agent chat (SSE), HLS
+ * segments and the download-all ZIP.
+ */
+export const PROXY_UPSTREAM_TIMEOUT_MS = 120_000;
+
+const STREAMING_UPSTREAM_PATHS = [/^\/agent\/chat(\/|$)/, /^\/hls\//, /\/submissions\/download-all\/?$/];
+
+export function isStreamingUpstreamPath(upstreamPath: string): boolean {
+  return STREAMING_UPSTREAM_PATHS.some((re) => re.test(upstreamPath));
+}
+
+function upstreamSignal(request: Request, upstreamPath: string): AbortSignal | undefined {
+  if (isStreamingUpstreamPath(upstreamPath)) return undefined;
+
+  const timeout = AbortSignal.timeout(PROXY_UPSTREAM_TIMEOUT_MS);
+
+  return typeof AbortSignal.any === 'function' ? AbortSignal.any([request.signal, timeout]) : timeout;
+}
+
 export function shouldForwardToApi(pathname: string): boolean {
   return (
     pathname === PROXY_PREFIX ||
@@ -137,14 +159,24 @@ export async function proxyRequestToApi(request: Request): Promise<Response> {
   const init: RequestInit = {
     method: request.method,
     headers: upstreamHeaders,
-    redirect: 'manual'
+    redirect: 'manual',
+    signal: upstreamSignal(request, upstreamPath)
   };
 
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     init.body = await request.arrayBuffer();
   }
 
-  const upstreamResponse = await fetch(upstreamUrl, init);
+  let upstreamResponse: Response;
+  try {
+    upstreamResponse = await fetch(upstreamUrl, init);
+  } catch (error) {
+    if (error instanceof Error && error.name === 'TimeoutError') {
+      console.error('proxyRequestToApi: upstream timed out', { path: upstreamPath });
+      return new Response('API upstream timed out', { status: 504 });
+    }
+    throw error;
+  }
 
   return buildProxiedApiResponse(upstreamResponse);
 }

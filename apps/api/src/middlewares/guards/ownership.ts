@@ -301,6 +301,13 @@ export async function assertCourseMaterialDownloadAccess(
   if (keys.some((k) => k.startsWith('coursework/'))) {
     throw new AppError('These files are not available here', ErrorCodes.FORBIDDEN, 403);
   }
+  // Phase I — two more namespaces that have their OWN guarded endpoints and must never be signed here, even for staff
+  // (who skip the currency check below): tutor feedback files (assertCourseworkDownloadAccess handles the
+  // coursework-feedback/ prefix) and learner video recordings (getVideoRecordingPlaybackUrl: owner / allocated tutor /
+  // admin). Nothing else about the staff bypass changes.
+  if (keys.some((k) => k.startsWith('coursework-feedback/') || k.startsWith('exercise-recordings/'))) {
+    throw new AppError('These files are not available here', ErrorCodes.FORBIDDEN, 403);
+  }
 
   if (!courseId) {
     // Org-level asset download (no course context) — restrict to staff (closes the any-authed-user hole).

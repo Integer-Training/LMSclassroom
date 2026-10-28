@@ -1,3 +1,5 @@
+import http from 'node:http';
+import https from 'node:https';
 import { S3Client } from '@aws-sdk/client-s3';
 
 import { env } from './env';
@@ -74,6 +76,13 @@ export function getStorageConfig(): StorageConfig {
   return cachedConfig;
 }
 
+// PearlLMS scalability Phase I — bounded S3 I/O (see packages/core/src/config/storage.ts). Workers stream big
+// video objects, so the socket IDLE timeout (no bytes for N ms, not a total deadline) is more generous.
+const S3_CONNECTION_TIMEOUT_MS = 5_000;
+const S3_IDLE_TIMEOUT_MS = 300_000;
+const S3_MAX_SOCKETS = 200;
+const S3_MAX_ATTEMPTS = 3;
+
 let s3Client: S3Client | null = null;
 
 export function getS3Client(): S3Client {
@@ -87,7 +96,14 @@ export function getS3Client(): S3Client {
       accessKeyId: config.accessKeyId,
       secretAccessKey: config.secretAccessKey
     },
-    forcePathStyle: config.forcePathStyle
+    forcePathStyle: config.forcePathStyle,
+    requestHandler: {
+      connectionTimeout: S3_CONNECTION_TIMEOUT_MS,
+      requestTimeout: S3_IDLE_TIMEOUT_MS,
+      httpsAgent: new https.Agent({ keepAlive: true, maxSockets: S3_MAX_SOCKETS }),
+      httpAgent: new http.Agent({ keepAlive: true, maxSockets: S3_MAX_SOCKETS })
+    },
+    maxAttempts: S3_MAX_ATTEMPTS
   });
 
   return s3Client;

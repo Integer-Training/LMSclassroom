@@ -16,6 +16,7 @@ vi.mock('@cio/db/queries/coursework', () => ({
   getCourseOutline: vi.fn(),
   getCourseGridLearners: vi.fn(),
   getSubmissionsForAssessment: vi.fn(),
+  getLatestSubmissionFilesForAssessment: vi.fn(),
   getLessonTitle: vi.fn(),
   getUnitContent: vi.fn(),
   getAssessmentItemsForLesson: vi.fn(),
@@ -25,7 +26,11 @@ vi.mock('@cio/db/queries/coursework', () => ({
   hasLearnerPassedUnit: vi.fn()
 }));
 vi.mock('@cio/core/utils/s3', () => ({ generateDocumentDownloadPresignedUrls: vi.fn(async () => ({})) }));
-vi.mock('@cio/core/utils/zip', () => ({ zipDocumentObjects: vi.fn() }));
+vi.mock('@cio/core/utils/zip', () => ({
+  createDocumentZipStream: vi.fn(() => new ReadableStream()),
+  ZIP_MAX_FILES: 200,
+  ZIP_MAX_TOTAL_BYTES: 250 * 1024 * 1024
+}));
 
 import { isCourseTutor, listAllocatedLearnerIdsForCourse } from '@cio/db/queries/allocation';
 import { listEnrolledLearnersWithName } from '@cio/db/queries/reports';
@@ -34,11 +39,12 @@ import {
   getCourseGridLearners,
   getCourseOutline,
   getLessonTitle,
+  getLatestSubmissionFilesForAssessment,
   getSubmissionsForAssessment,
   getSubmissionsWithContextForLearners,
   getUnitContent
 } from '@cio/db/queries/coursework';
-import { zipDocumentObjects } from '@cio/core/utils/zip';
+import { createDocumentZipStream } from '@cio/core/utils/zip';
 import { visibleLearnerIdsForCourse } from '@api/middlewares/guards';
 import {
   getAssessmentSubmissions,
@@ -101,6 +107,7 @@ beforeEach(() => {
     async (_c: string, ids: string[]) => ids.map((learnerId) => ({ learnerId, name: learnerId })) as never
   );
   vi.mocked(getSubmissionsForAssessment).mockResolvedValue([]);
+  vi.mocked(getLatestSubmissionFilesForAssessment).mockResolvedValue([]);
   vi.mocked(getAssessmentItemsForLesson).mockResolvedValue([
     { key: 'wb', name: 'Workbook', kind: 'workbook', dueAt: null, allowDrafts: false }
   ] as never);
@@ -153,11 +160,23 @@ describe('course-view roster scoping', () => {
     await expect(signCourseMaterialsForTutor(t, C, ['k1'])).resolves.toEqual({});
   });
 
-  it('team tutor with 0 allocations: download-all zips no learner files (404, nothing added)', async () => {
+  it('team tutor with 0 allocations: download-all is a 404 and never queries submissions (empty roster, not "no filter")', async () => {
     mTeam.mockResolvedValue(true);
-    vi.mocked(zipDocumentObjects).mockResolvedValue({ buffer: Buffer.alloc(0), added: 0 } as never);
     expect(await code(buildAssessmentSubmissionsZip(mk('tTeam', 'TUTOR'), C, 'U1', 'wb'))).toBe(404);
-    expect(vi.mocked(zipDocumentObjects)).toHaveBeenCalledWith([]);
+    expect(vi.mocked(getLatestSubmissionFilesForAssessment)).not.toHaveBeenCalled();
+    expect(vi.mocked(createDocumentZipStream)).not.toHaveBeenCalled();
+  });
+
+  it('download-all: tutor A slim query is limited to their roster; admin gets all enrolled', async () => {
+    vi.mocked(getLatestSubmissionFilesForAssessment).mockResolvedValue([
+      { learnerId: 'L1', files: [{ key: 'k1', name: 'a.pdf' }] }
+    ] as never);
+    await buildAssessmentSubmissionsZip(tutorA, C, 'U1', 'wb');
+    expect(vi.mocked(getLatestSubmissionFilesForAssessment).mock.calls[0][3]).toEqual(['L1']);
+    await buildAssessmentSubmissionsZip(admin, C, 'U1', 'wb');
+    expect([...(vi.mocked(getLatestSubmissionFilesForAssessment).mock.calls[1][3] as string[])].sort()).toEqual(
+      ENROLLED
+    );
   });
 
   it('non-team tutor with 0 allocations on the course -> 403 everywhere', async () => {

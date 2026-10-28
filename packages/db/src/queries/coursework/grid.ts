@@ -309,3 +309,40 @@ export async function getSubmissionsForAssessment(
     recordedByName: r.recordedByName ?? null
   }));
 }
+
+/**
+ * Slim variant of getSubmissionsForAssessment for "Download all submissions": ONLY each learner's latest
+ * version's files (no result/grader joins, no older versions). Same scoping contract — the caller passes an
+ * already-scoped learnerIds set and an empty set returns [] (never "no filter"). "Latest" is the same newest
+ * `submittedAt` rule the grid uses (draft or final); the id breaks exact ties so the pick is deterministic.
+ */
+export async function getLatestSubmissionFilesForAssessment(
+  courseId: string,
+  lessonId: string,
+  assessmentKey: string,
+  learnerIds: string[],
+  client: DbOrTxClient = db
+): Promise<{ learnerId: string; files: CourseworkFile[] }[]> {
+  if (learnerIds.length === 0) return [];
+  const rows = await client
+    .selectDistinctOn([schema.courseworkSubmission.learnerId], {
+      learnerId: schema.courseworkSubmission.learnerId,
+      files: schema.courseworkSubmission.files
+    })
+    .from(schema.courseworkSubmission)
+    .where(
+      and(
+        eq(schema.courseworkSubmission.courseId, courseId),
+        eq(schema.courseworkSubmission.lessonId, lessonId),
+        eq(schema.courseworkSubmission.assessmentKey, assessmentKey),
+        inArray(schema.courseworkSubmission.learnerId, learnerIds)
+      )
+    )
+    .orderBy(
+      schema.courseworkSubmission.learnerId,
+      desc(schema.courseworkSubmission.submittedAt),
+      desc(schema.courseworkSubmission.id)
+    );
+
+  return rows.map((r) => ({ learnerId: r.learnerId, files: (r.files ?? []) as CourseworkFile[] }));
+}

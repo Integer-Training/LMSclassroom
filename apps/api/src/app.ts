@@ -18,6 +18,7 @@ import { accountRouter } from '@api/routes/account';
 import { agentRouter } from '@api/routes/agent';
 import { auth } from '@cio/db/auth';
 import { identityMiddleware } from '@api/middlewares/identity';
+import { hlsFastPath, skipOnHlsFastPath } from '@api/middlewares/hls-fast-path';
 import { communityRouter } from '@api/routes/community';
 import { courseRouter } from '@api/routes/course';
 import { dashAnalyticsRouter } from '@api/routes/dash';
@@ -114,9 +115,12 @@ export const app = new Hono()
 
     return sessionCors(c, next);
   })
+  // Phase I — a verified `cio_hls_<assetId>` cookie on GET/HEAD /hls/:assetId/* skips the session/Actor pipeline and the
+  // global per-user bucket (own limiter inside). Anything else falls through unchanged. See middlewares/hls-fast-path.ts.
+  .use('/hls/*', hlsFastPath())
   // Session + Actor, one identity read per request (see middlewares/identity.ts).
-  .use('*', identityMiddleware())
-  .use('*', rateLimiter)
+  .use('*', skipOnHlsFastPath(identityMiddleware()))
+  .use('*', skipOnHlsFastPath(rateLimiter))
 
   // Routes
   // HP/RUN-2 — unauthenticated liveness probe for the DO uptime check. 200 = the api process is up and serving.

@@ -193,7 +193,7 @@ export const caseloadRouter = new Hono()
     }
   )
   // "Download all submissions" — a zip of every roster learner's latest files for one workbook. Same
-  // access scope as the grid (reuses getAssessmentSubmissions inside the zip builder).
+  // access scope as the grid (visibleLearnerIdsForCourse via getAssessmentDownloadFiles in the zip builder).
   .get(
     '/courses/:courseId/lessons/:lessonId/submissions/download-all',
     requireStaff,
@@ -204,10 +204,13 @@ export const caseloadRouter = new Hono()
         const actor = c.get('actor') as Actor;
         const { courseId, lessonId } = c.req.valid('param');
         const { assessmentKey } = c.req.valid('query');
-        const { filename, buffer } = await buildAssessmentSubmissionsZip(actor, courseId, lessonId, assessmentKey);
+        // Every refusal (404 empty / 413 too big / 403) is thrown HERE, before any header is sent; the zip body is
+        // then streamed (never buffered whole).
+        const { filename, stream } = await buildAssessmentSubmissionsZip(actor, courseId, lessonId, assessmentKey);
         c.header('Content-Type', 'application/zip');
         c.header('Content-Disposition', `attachment; filename="${filename}"`);
-        return c.body(buffer as unknown as ArrayBuffer);
+        c.header('Cache-Control', 'no-store');
+        return c.body(stream);
       } catch (error) {
         return handleError(c, error, 'Failed to build submissions zip');
       }

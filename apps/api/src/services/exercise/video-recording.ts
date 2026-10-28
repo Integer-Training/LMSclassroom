@@ -27,6 +27,29 @@ type RecordingContext = {
   maxDurationSeconds: number;
 };
 
+// Phase I — size ceiling for a recording, derived from the question's max duration. Browser MediaRecorder output
+// is ~2.5-6 Mbps; 10 Mbps (1.25 MB/s) leaves generous headroom, with a floor so very short limits still fit. The
+// presigned PUT cannot enforce a size (Supabase S3 compatibility is untested), so this bounds what the client may
+// DECLARE at init/complete; the bucket's own file_size_limit is the hard stop.
+const VIDEO_RECORDING_MAX_BYTES_PER_SECOND = 1_250_000;
+const VIDEO_RECORDING_MIN_SIZE_CAP_BYTES = 10 * 1024 * 1024;
+
+export function getVideoRecordingMaxBytes(maxDurationSeconds: number): number {
+  // +2s mirrors the duration grace completeVideoRecordingUpload already allows.
+  return Math.max(VIDEO_RECORDING_MIN_SIZE_CAP_BYTES, (maxDurationSeconds + 2) * VIDEO_RECORDING_MAX_BYTES_PER_SECOND);
+}
+
+function assertRecordingSizeWithinCap(size: number, maxDurationSeconds: number): void {
+  const maxBytes = getVideoRecordingMaxBytes(maxDurationSeconds);
+  if (size > maxBytes) {
+    throw new AppError(
+      `Recording is too large. The maximum for this question is ${Math.round(maxBytes / 1024 / 1024)}MB.`,
+      'FILE_TOO_LARGE',
+      413
+    );
+  }
+}
+
 function getExtensionFromMimeType(mimeType: string): string {
   if (mimeType.includes('mp4')) return 'mp4';
   if (mimeType.includes('quicktime')) return 'mov';
@@ -83,6 +106,7 @@ export async function initVideoRecordingUpload(
   input: TExerciseVideoRecordingUploadInit
 ) {
   const context = await getRecordingContext(courseId, exerciseId, questionId, profileId);
+  assertRecordingSizeWithinCap(input.size, context.maxDurationSeconds);
   const extension = getExtensionFromMimeType(input.mimeType);
   const storageKey = [
     'exercise-recordings',
@@ -140,6 +164,7 @@ export async function completeVideoRecordingUpload(
   if (input.durationSeconds > context.maxDurationSeconds + 2) {
     throw new AppError('Recording exceeds the configured duration', ErrorCodes.VALIDATION_ERROR, 400);
   }
+  assertRecordingSizeWithinCap(input.size, context.maxDurationSeconds);
 
   const asset = await getAssetById(input.assetId, context.organizationId);
   if (!asset || asset.storageKey !== input.storageKey) {

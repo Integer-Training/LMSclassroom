@@ -1,4 +1,9 @@
-import { buildProxiedApiResponse, proxyRequestToApi, shouldForwardToApi } from './proxy-api-request';
+import {
+  buildProxiedApiResponse,
+  isStreamingUpstreamPath,
+  proxyRequestToApi,
+  shouldForwardToApi
+} from './proxy-api-request';
 
 describe('shouldForwardToApi', () => {
   it('forwards /proxy and /api/auth paths', () => {
@@ -130,5 +135,67 @@ describe('proxyRequestToApi', () => {
     expect(response.headers.get('content-encoding')).toBeNull();
     expect(response.headers.get('content-length')).toBeNull();
     expect(await response.text()).toBe('{"session":null}');
+  });
+});
+
+describe('proxyRequestToApi upstream timeout (Phase I)', () => {
+  const originalPrivateServerUrl = process.env.PRIVATE_SERVER_URL;
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    process.env.PRIVATE_SERVER_URL = 'http://api.internal:3081';
+  });
+
+  afterEach(() => {
+    if (originalPrivateServerUrl === undefined) delete process.env.PRIVATE_SERVER_URL;
+    else process.env.PRIVATE_SERVER_URL = originalPrivateServerUrl;
+    global.fetch = originalFetch;
+  });
+
+  it('classifies the long-lived streams as exempt from the timeout', () => {
+    expect(isStreamingUpstreamPath('/agent/chat')).toBe(true);
+    expect(isStreamingUpstreamPath('/hls/abc/master.m3u8')).toBe(true);
+    expect(isStreamingUpstreamPath('/caseload/courses/c1/lessons/l1/submissions/download-all')).toBe(true);
+    expect(isStreamingUpstreamPath('/agent/upload')).toBe(false);
+    expect(isStreamingUpstreamPath('/media/image')).toBe(false);
+    expect(isStreamingUpstreamPath('/course/123')).toBe(false);
+  });
+
+  it('attaches an abort signal to ordinary proxied calls', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    global.fetch = fetchMock as typeof fetch;
+
+    await proxyRequestToApi(new Request('https://dashboard.example/proxy/course/123'));
+
+    const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(init.signal).toBeDefined();
+  });
+
+  it('does not attach a signal to agent chat, HLS or download-all streams', async () => {
+    const fetchMock = jest.fn().mockImplementation(async () => new Response('x', { status: 200 }));
+    global.fetch = fetchMock as typeof fetch;
+
+    await proxyRequestToApi(new Request('https://dashboard.example/proxy/agent/chat', { method: 'GET' }));
+    await proxyRequestToApi(new Request('https://dashboard.example/proxy/hls/a1/master.m3u8'));
+    await proxyRequestToApi(
+      new Request(
+        'https://dashboard.example/proxy/caseload/courses/c/lessons/l/submissions/download-all?assessmentKey=k'
+      )
+    );
+
+    for (const call of fetchMock.mock.calls) {
+      expect((call[1] as RequestInit).signal).toBeUndefined();
+    }
+  });
+
+  it('answers 504 when the upstream times out', async () => {
+    const err = new Error('The operation was aborted due to timeout');
+    err.name = 'TimeoutError';
+    global.fetch = jest.fn().mockRejectedValue(err) as typeof fetch;
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const response = await proxyRequestToApi(new Request('https://dashboard.example/proxy/course/123'));
+
+    expect(response.status).toBe(504);
   });
 });

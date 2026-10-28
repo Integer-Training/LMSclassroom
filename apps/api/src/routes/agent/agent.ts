@@ -8,9 +8,10 @@ import { b64EnvelopeRewrite } from '@api/middlewares/b64-envelope';
 import { createRateLimiter } from '@api/middlewares/rate-limiter';
 import { agentChatKeyGenerator, agentUploadKeyGenerator } from '@api/utils/redis/key-generators';
 import type { MiddlewareHandler } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { every } from 'hono/combine';
-import { handleError, AppError } from '@api/utils/errors';
-import { MAX_AGENT_DOCUMENT_SIZE } from '@api/constants/upload';
+import { handleError, AppError, isBodyLimitError } from '@api/utils/errors';
+import { MAX_AGENT_DOCUMENT_SIZE, MAX_AGENT_UPLOAD_BODY_BYTES } from '@api/constants/upload';
 import { zValidator } from '@hono/zod-validator';
 import { streamText, stepCountIs, convertToModelMessages } from 'ai';
 import {
@@ -115,6 +116,13 @@ export const agentUploadLimit = limitPerMinuteAndDay(agentUploadKeyGenerator, {
   day: 'Daily upload limit reached. Please try again tomorrow.'
 });
 
+// Phase I — reject an oversized multipart body from its Content-Length (or while counting a chunked one) before
+// anything is buffered; the per-file check in parseAndStoreDocument stays as the precise, user-facing cap.
+const agentUploadBodyLimit = bodyLimit({
+  maxSize: MAX_AGENT_UPLOAD_BODY_BYTES,
+  onError: (c) => c.json({ success: false, error: 'file_too_large', maxSize: MAX_AGENT_DOCUMENT_SIZE }, 413)
+});
+
 const agentCoreRouter = new Hono()
   .get('/status', authMiddleware, orgMemberMiddleware, zValidator('query', ZAgentStatusQuery), async (c) => {
     try {
@@ -156,7 +164,7 @@ const agentCoreRouter = new Hono()
       return handleError(c, error, 'Failed to get agent status');
     }
   })
-  .post('/upload', authMiddleware, orgMemberMiddleware, agentUploadLimit, async (c) => {
+  .post('/upload', authMiddleware, orgMemberMiddleware, agentUploadLimit, agentUploadBodyLimit, async (c) => {
     try {
       const user = c.get('user')!;
       const orgId = c.req.header('cio-org-id')!;
@@ -204,6 +212,10 @@ const agentCoreRouter = new Hono()
 
       return c.json({ success: true, data: result });
     } catch (error) {
+      if (isBodyLimitError(error)) {
+        return c.json({ success: false, error: 'file_too_large', maxSize: MAX_AGENT_DOCUMENT_SIZE }, 413);
+      }
+
       if (error instanceof AppError) {
         if (error.statusCode === 413) {
           return c.json({ success: false, error: 'file_too_large', maxSize: MAX_AGENT_DOCUMENT_SIZE }, 413);

@@ -113,8 +113,40 @@
   const uploadStorageKey =
     video.type === 'upload' && typeof video.key === 'string' && video.key.length > 0 ? video.key : null;
 
-  /** Refresh ~10 minutes before server presign expiry (1 hour). */
-  const PLAYBACK_URL_REFRESH_MS = 50 * 60 * 1000;
+  /**
+   * Presigned URLs are signed for 1 hour but the server hands out a Redis-cached copy for up to 25 minutes
+   * (PRESIGN_CACHE_TTL_SECONDS), so a fresh response can already have only ~35 minutes of validity left. Refresh
+   * at 30 minutes so the URL is always replaced before it can expire.
+   */
+  const PLAYBACK_URL_REFRESH_MS = 30 * 60 * 1000;
+
+  /**
+   * The HLS playback cookie lives 15 minutes (server TTL unchanged). Re-mint it at ~10 minutes so a long video
+   * keeps using the cheap cookie-verified streaming path instead of falling back to a full session check.
+   */
+  const HLS_COOKIE_REMINT_MS = 10 * 60 * 1000;
+  let hlsCookieRemintTimer: ReturnType<typeof setInterval> | null = null;
+
+  function startHlsCookieRemint() {
+    if (!isHls || !uploadAssetId || hlsCookieRemintTimer) return;
+
+    const assetId = uploadAssetId;
+    hlsCookieRemintTimer = setInterval(() => {
+      if (!isMounted) return;
+
+      void mintHlsCookie(assetId).then((result) => {
+        // Session expired: stop quietly — the player's own auth-error flow prompts the re-login.
+        if (result?.authExpired) clearHlsCookieRemint();
+      });
+    }, HLS_COOKIE_REMINT_MS);
+  }
+
+  function clearHlsCookieRemint() {
+    if (hlsCookieRemintTimer) {
+      clearInterval(hlsCookieRemintTimer);
+      hlsCookieRemintTimer = null;
+    }
+  }
 
   let isMounted = true;
   const isHls = $derived(isHlsVideo(video));
@@ -405,6 +437,7 @@
     }
 
     void restoreWatchProgress();
+    startHlsCookieRemint();
 
     void (async () => {
       await loadTranscript();
@@ -417,6 +450,7 @@
   onDestroy(() => {
     isMounted = false;
     clearPlaybackRefreshTimer();
+    clearHlsCookieRemint();
     clearVttRefetchTimer();
     stopJobPoller();
     revokeBlobTrackUrl?.();

@@ -127,6 +127,14 @@ export const agentUploadKeyGenerator = (c: Context): string => {
 };
 
 /**
+ * Rate limit key for the image upload endpoint (per-user).
+ */
+export const mediaImageUploadKeyGenerator = (c: Context): string => {
+  const baseKey = userKeyGenerator(c);
+  return `${baseKey}:media:image`;
+};
+
+/**
  * Redis keys for engagement analytics read endpoints (landing-stats, funnel,
  * country breakdown, time-to-enrollment). Value: JSON.
  */

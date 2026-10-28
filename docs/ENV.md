@@ -91,6 +91,7 @@ required: route media through signed URLs too.)*
 | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ACCESS_KEY`, `CLOUDFLARE_SECRET_ACCESS_KEY`, `CLOUDFLARE_BUCKET_DOMAIN`, `CLOUDFLARE_IMAGE_BUCKET_DOMAIN`, `CLOUDFLARE_BUCKET_ID` | R2 fallback storage | unset | unused | 🔒 |
 | `CLOUDFLARE_RENDERING_API_KEY` | CF browser-rendering (certificate PDFs) | unset | unused (certificates out of scope) | 🔒 |
 | `HLS_SIGNING_SECRET` | Signs `cio_hls` playback cookie (pairs with tenant-router) | blank | unset (HLS disabled when self-hosted anyway) | 🔒 |
+| `HLS_COOKIE_FAST_PATH` | Phase I: a verified `cio_hls_<assetId>` cookie on GET/HEAD `/hls/:assetId/*` skips the session/Actor lookup and the per-user rate bucket (own asset+IP limiter). Set `false`/`0` to roll back | `true` | optional | |
 
 ## 5. Redis + jobs
 

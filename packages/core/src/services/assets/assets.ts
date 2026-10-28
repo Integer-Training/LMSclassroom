@@ -754,9 +754,9 @@ export async function verifyHlsToken(token: string): Promise<VerifiedHlsToken | 
 }
 
 /**
- * Mint a short-lived HMAC-signed cookie scoped to a single assetId. The
- * tenant-router Worker (production) and the API's `/hls/*` streaming route
- * (local dev / fallback) both verify the cookie before serving segments.
+ * Mint a short-lived (15 min) HMAC-signed cookie scoped to a single assetId. The API's `/hls/*` streaming
+ * route verifies it (and, via the HLS fast path, skips the session lookup when it is valid); the legacy
+ * tenant-router Worker verifies the same format. The player re-mints it at ~10 minutes.
  * Format: `<base64url(JSON({aid,exp}))>.<base64url(HMAC-SHA256(payload, secret))>`
  */
 export async function issueHlsCookieService(orgId: string, assetId: string) {

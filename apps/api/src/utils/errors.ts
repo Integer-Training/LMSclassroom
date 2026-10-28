@@ -41,6 +41,12 @@ export function formatZodErrorMessage(error: ZodError): string {
 }
 
 /**
+ * hono's bodyLimit() aborts a chunked body (no Content-Length) mid-read with a BodyLimitError. A route that wraps
+ * parseBody() in try/catch swallows it before bodyLimit can answer, so the catch must recognise it and reply 413.
+ */
+export const isBodyLimitError = (error: unknown): boolean => error instanceof Error && error.name === 'BodyLimitError';
+
+/**
  * Handles errors consistently across all routes
  * @param c - Hono context
  * @param error - The error to handle

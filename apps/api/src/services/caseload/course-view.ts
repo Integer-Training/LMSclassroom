@@ -8,6 +8,7 @@ import {
   getCourseOutline,
   getCourseGridLearners,
   getSubmissionsForAssessment,
+  getLatestSubmissionFilesForAssessment,
   getLessonTitle,
   getUnitContent,
   getAssessmentItemsForLesson,
@@ -345,5 +346,48 @@ export async function getAssessmentSubmissions(
       dueAt: item.dueAt
     },
     rows
+  };
+}
+
+export interface AssessmentDownloadLearner {
+  learnerId: string;
+  name: string;
+  files: CourseworkFile[];
+}
+
+/**
+ * Slim read for "Download all submissions": every in-scope learner's LATEST version's files for one assessment —
+ * no grading state, no older versions, no grader joins. The scope is exactly the grid's (resolveRoster ->
+ * visibleLearnerIdsForCourse: allocated∩enrolled for a tutor, all enrolled for an admin) and an EMPTY roster is a
+ * 404, never "no filter". Only learners still enrolled (present in getCourseGridLearners) are returned, name-sorted.
+ */
+export async function getAssessmentDownloadFiles(
+  actor: Actor,
+  courseId: string,
+  lessonId: string,
+  assessmentKey: string
+): Promise<{ assessmentName: string; learners: AssessmentDownloadLearner[] }> {
+  const { ids: roster } = await resolveRoster(actor, courseId);
+  if (roster.length === 0) {
+    throw new AppError('No submitted files to download for this assessment', ErrorCodes.NOT_FOUND, 404);
+  }
+
+  const [learners, latest, items] = await Promise.all([
+    getCourseGridLearners(courseId, roster),
+    getLatestSubmissionFilesForAssessment(courseId, lessonId, assessmentKey, roster),
+    getAssessmentItemsForLesson(lessonId)
+  ]);
+
+  const item = items.find((i) => i.key === assessmentKey);
+  if (!item) throw new AppError('Assessment not found on this unit', ErrorCodes.NOT_FOUND, 404);
+
+  const filesByLearner = new Map(latest.map((r) => [r.learnerId, r.files]));
+  return {
+    assessmentName: item.name,
+    learners: learners
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((l) => ({ learnerId: l.learnerId, name: l.name, files: filesByLearner.get(l.learnerId) ?? [] }))
+      .filter((l) => l.files.length > 0)
   };
 }

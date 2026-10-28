@@ -34,6 +34,9 @@
     });
   }
 
+  /** The cookie lives 15 minutes server-side; re-mint at ~10 so a long public video never loses its cookie. */
+  const HLS_COOKIE_REMINT_MS = 10 * 60 * 1000;
+
   const exerciseLabels = $derived(getExerciseQuestionLabels());
 
   let { data } = $props();
@@ -47,6 +50,20 @@
   const exerciseView = $derived<PublicExerciseViewData | null>(
     data.item.kind === 'exercise' ? toPublicExerciseView(data.item) : null
   );
+
+  $effect(() => {
+    if (!lessonView?.video?.hls) return;
+
+    const courseSlug = data.tree.course.slug;
+    const slug = itemSlug;
+    const timer = setInterval(() => {
+      void mintPublicHlsCookie(courseSlug, slug).catch(() => {
+        // best effort — playback falls back to the normal request path / the player's reload prompt
+      });
+    }, HLS_COOKIE_REMINT_MS);
+
+    return () => clearInterval(timer);
+  });
 
   const breadcrumbJsonLd = $derived.by(() => {
     const courseUrl = new URL(`/course/${data?.tree.course.slug}`, page.url.origin).href;

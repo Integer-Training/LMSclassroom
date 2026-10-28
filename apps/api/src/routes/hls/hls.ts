@@ -1,18 +1,14 @@
 /**
  * HLS playback streaming.
  *
- * Same URL shape as the production Cloudflare Worker that fronts the
- * tenant-router (`/hls/{assetId}/{path}`). In production the Worker
- * intercepts these requests at the edge and serves directly from an R2
- * binding, so Render is never in the bytestream. This Hono route only
- * fires in environments where the Worker isn't in front of the api —
- * primarily local development, but it also acts as a defensive fallback
- * if the Worker route ever misfires.
+ * Serves `/hls/{assetId}/{path}` (manifests + segments) straight from the videos bucket. In the current deployment
+ * (Caddy -> dashboard proxy -> this API) this route IS the production path; no Cloudflare Worker / R2 binding sits in
+ * front of it. (The tenant-router Worker's R2 fast path only applies to the legacy hosted topology.)
  *
- * Auth: standard session via `authMiddleware`. We then verify the
- * caller's session belongs to the same organization that owns the
- * asset. No separate `cio_hls` HMAC cookie is needed here — that's only
- * how the Worker authorizes requests in production.
+ * Auth, in order: (1) the asset-scoped `cio_hls_<assetId>` HMAC cookie — when it verifies, app.ts' HLS fast path
+ * (middlewares/hls-fast-path.ts) has already skipped the session/Actor pipeline and the per-user rate bucket, and this
+ * handler re-checks the same cookie; (2) otherwise the caller's session must belong to the organization that owns
+ * the asset (the full middleware stack ran as normal).
  */
 
 import { GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';

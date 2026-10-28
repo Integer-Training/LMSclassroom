@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { classroomio, type InferResponseType } from '$lib/utils/services/api';
+import { ApiError } from '$lib/utils/services/api/types';
 import { BaseApi } from '$lib/utils/services/api/base.svelte';
 import { snackbar } from '$features/ui/snackbar/store';
 import { courseworkApi, type CourseworkFile } from '$features/course/api/coursework.svelte';
@@ -452,8 +453,11 @@ class CaseloadApi extends BaseApi {
   /** Download a zip of every roster learner's latest submission for one workbook. */
   async downloadAllSubmissions(courseId: string, lessonId: string, assessmentKey: string): Promise<void> {
     try {
+      // The API answers 404 (nothing to zip) / 413 (too many files) BEFORE streaming; the zip itself is streamed, so
+      // only the wait for headers is bounded. A longer header timeout, and NO retry — a retry would rebuild the zip.
       const res = await classroomio.caseload.courses[':courseId'].lessons[':lessonId'].submissions['download-all'].$get(
-        { param: { courseId, lessonId }, query: { assessmentKey } }
+        { param: { courseId, lessonId }, query: { assessmentKey } },
+        { init: { timeout: 120_000, retries: 0 } as RequestInit }
       );
       if (!res.ok) {
         snackbar.error('Could not prepare the download (no submitted files yet?).');
@@ -470,10 +474,26 @@ class CaseloadApi extends BaseApi {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-    } catch {
-      snackbar.error('Could not download submissions.');
+    } catch (error) {
+      snackbar.error(downloadAllErrorMessage(error));
     }
   }
+}
+
+/** Friendly text for a refused download-all: 413 carries the API's "download per learner" guidance. */
+function downloadAllErrorMessage(error: unknown): string {
+  if (error instanceof ApiError && error.status === 413) {
+    try {
+      const parsed = JSON.parse(error.message) as { error?: string };
+      if (parsed.error) return parsed.error;
+    } catch {
+      // not JSON — fall through to the generic 413 text
+    }
+    return 'Too many files to download at once. Download submissions per learner instead.';
+  }
+  if (error instanceof ApiError && error.status === 404) return 'No submitted files to download for this assessment.';
+
+  return 'Could not download submissions.';
 }
 
 export const caseloadApi = new CaseloadApi();

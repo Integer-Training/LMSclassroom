@@ -28,7 +28,7 @@ function identityUnavailable(c: Context) {
   );
 }
 
-function setAnonymous(c: Context) {
+export function setAnonymousIdentity(c: Context) {
   c.set('user', null);
   c.set('session', null);
   c.set('orgRoles', {});
@@ -37,7 +37,7 @@ function setAnonymous(c: Context) {
 
 export const identityMiddleware = (): MiddlewareHandler => async (c, next) => {
   if (isPublicCorsPath(c.req.path)) {
-    setAnonymous(c);
+    setAnonymousIdentity(c);
 
     return next();
   }
@@ -54,7 +54,7 @@ export const identityMiddleware = (): MiddlewareHandler => async (c, next) => {
     }
 
     if (!session) {
-      setAnonymous(c);
+      setAnonymousIdentity(c);
       await next();
 
       return;

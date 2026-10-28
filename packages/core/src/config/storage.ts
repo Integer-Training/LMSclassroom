@@ -3,6 +3,8 @@
  * Supports both generic OBJECT_STORAGE_* vars and backward-compatible CLOUDFLARE_* fallback.
  */
 
+import http from 'node:http';
+import https from 'node:https';
 import { S3Client } from '@aws-sdk/client-s3';
 import { env } from './env';
 
@@ -91,6 +93,27 @@ export function getStorageConfig(): StorageConfig {
   return cachedConfig;
 }
 
+/**
+ * PearlLMS scalability Phase I — bounded S3 I/O. Without these the SDK waits forever on a stalled object-storage
+ * socket (one hung read pins a request, a pool slot and memory) and opens a fresh TLS connection per call.
+ * `requestTimeout` is the SDK's socket IDLE timeout (no bytes for N ms), NOT a total deadline, so a long streamed
+ * GET/PUT that keeps moving is never cut. keepAlive reuses sockets across the many small HLS/presign calls.
+ */
+const S3_CONNECTION_TIMEOUT_MS = 5_000;
+const S3_IDLE_TIMEOUT_MS = 60_000;
+const S3_MAX_SOCKETS = 200;
+const S3_MAX_ATTEMPTS = 3;
+
+/** Request-handler options for the operations client (http agent too, for http:// MinIO endpoints). */
+export function s3RequestHandlerOptions(idleTimeoutMs: number = S3_IDLE_TIMEOUT_MS) {
+  return {
+    connectionTimeout: S3_CONNECTION_TIMEOUT_MS,
+    requestTimeout: idleTimeoutMs,
+    httpsAgent: new https.Agent({ keepAlive: true, maxSockets: S3_MAX_SOCKETS }),
+    httpAgent: new http.Agent({ keepAlive: true, maxSockets: S3_MAX_SOCKETS })
+  };
+}
+
 /** S3 client for API operations (upload, get, delete). Uses internal endpoint. */
 let s3ClientInstance: S3Client | null = null;
 
@@ -105,6 +128,8 @@ export function getS3Client(): S3Client {
         secretAccessKey: config.secretAccessKey
       },
       forcePathStyle: config.forcePathStyle,
+      requestHandler: s3RequestHandlerOptions(),
+      maxAttempts: S3_MAX_ATTEMPTS,
       // S3-compatible endpoints (Supabase/MinIO/R2) reject the aws-chunked flexible-checksum
       // trailer the AWS SDK v3 (>=3.729) adds by default, which fails larger multi-chunk uploads
       // (small bodies slip through, ~>500KB PutObject fails). Only checksum when the op requires it.
