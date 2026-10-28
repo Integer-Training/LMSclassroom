@@ -12,8 +12,9 @@ export interface NotificationItem {
 
 /**
  * The current user's in-app notification centre (PearlLMS Phase 6 Step 3). STRICTLY self — the server takes
- * the actor from the session, there is no user id anywhere in these calls. Loads on demand + a light poll for
- * the unread badge (no realtime infra). Mutations are optimistic; the server is the source of truth on reload.
+ * the actor from the session, there is no user id anywhere in these calls. The full list loads on demand (mount +
+ * popover open); the background poll only refreshes the unread count via the count-only endpoint. Mutations are
+ * optimistic; the server is the source of truth on reload.
  */
 class NotificationCentreApi extends BaseApi {
   items = $state<NotificationItem[]>([]);
@@ -31,6 +32,19 @@ class NotificationCentreApi extends BaseApi {
         this.loaded = true;
       }
     });
+  }
+
+  /** Count-only refresh for the bell's background poll (no list). Resolves false on failure so the poll backs off. */
+  async refreshUnreadCount() {
+    const result = await this.execute<(typeof classroomio.notifications)['unread-count']['$get']>({
+      requestFn: () => classroomio.notifications['unread-count'].$get(),
+      logContext: 'loading unread count',
+      onSuccess: (res) => {
+        this.unreadCount = (res.data as { unreadCount: number }).unreadCount;
+      }
+    });
+
+    return result !== undefined;
   }
 
   async markRead(id: string) {

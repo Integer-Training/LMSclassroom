@@ -6,6 +6,7 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import {
   getNotificationCentre,
+  getOwnUnreadCount,
   markAllOwnNotificationsRead,
   markOwnNotificationRead
 } from '@api/services/comms/notification-centre';
@@ -34,6 +35,15 @@ export const notificationsRouter = new Hono()
       return c.json({ success: true, data }, 200);
     } catch (error) {
       return handleError(c, error, 'Failed to load notifications');
+    }
+  })
+  // Count-only: the bell's background poll (the full list loads only when the popover opens).
+  .get('/unread-count', requireActor(), async (c) => {
+    try {
+      const data = await getOwnUnreadCount(c.get('actor') as Actor);
+      return c.json({ success: true, data }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to load unread count');
     }
   })
   // Mark all read — registered before /:id/read (distinct segment, but keep it explicit).

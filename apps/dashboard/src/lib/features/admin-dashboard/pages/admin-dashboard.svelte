@@ -3,6 +3,7 @@
   import * as Page from '@cio/ui/base/page';
   import { Skeleton } from '@cio/ui/base/skeleton';
   import { currentOrg, isOrgAdmin } from '$lib/utils/store/org';
+  import { createVisiblePoll } from '$lib/utils/functions/visible-poll';
   import { adminDashboardApi } from '$features/admin-dashboard/api/admin-dashboard.svelte';
   import HeadlineTiles from '$features/admin-dashboard/components/headline-tiles.svelte';
   import UnallocatedLearnersWarning from '$features/admin-dashboard/components/unallocated-learners-warning.svelte';
@@ -33,12 +34,17 @@
     adminDashboardApi.loadOnline(orgId);
   });
 
-  // Poll "online now" every 45s while mounted.
+  // Poll "online now" every ~45s while mounted AND the tab is visible (the shared helper pauses when hidden,
+  // refreshes on return, jitters, and backs off on errors). The first load is done by the effect above.
   onMount(() => {
-    const timer = setInterval(() => {
-      if ($currentOrg.id) adminDashboardApi.loadOnline($currentOrg.id);
-    }, 45000);
-    return () => clearInterval(timer);
+    const poll = createVisiblePoll({
+      intervalMs: 45_000,
+      immediate: false,
+      isEnabled: () => !!$currentOrg.id,
+      task: async () => (await adminDashboardApi.loadOnline($currentOrg.id)) !== undefined
+    });
+    poll.start();
+    return () => poll.stop();
   });
 </script>
 

@@ -1,7 +1,7 @@
 import * as schema from '@db/schema';
 
 import bcrypt from 'bcrypt';
-import { and, count, desc, eq, ilike, or } from 'drizzle-orm';
+import { and, count, desc, eq, ilike, lt, or } from 'drizzle-orm';
 
 import { db } from '@db/drizzle';
 
@@ -99,12 +99,27 @@ export async function deleteSessionsByUserId(userId: string): Promise<void> {
   await db.delete(schema.session).where(eq(schema.session.userId, userId));
 }
 
+/** A session touched more recently than this is not rewritten by the heartbeat. */
+export const SESSION_TOUCH_MIN_AGE_MS = 45_000;
+
 /**
  * Bump a session's `updated_at` to now — the live-presence signal the "Online now" panel reads
- * (it counts sessions refreshed within N minutes). Called by the client heartbeat.
+ * (it counts sessions refreshed within N minutes). Called by the client heartbeat (every ~60s per tab).
+ *
+ * Conditional write: a session touched in the last 45s is left alone, so several open tabs (or a retry burst)
+ * cost one row rewrite per window instead of one per ping. The beat cadence (60s, jittered +-20% => >= 48s) is
+ * above the threshold, so a single tab still writes on every beat and the 5-minute presence window is unaffected.
+ * Both timestamps come from the same JS clock, so the comparison is consistent with the value written.
+ * `session.updated_at` must stay UNINDEXED (an index would disable HOT updates on this hot row).
  */
 export async function touchSession(sessionId: string): Promise<void> {
-  await db.update(schema.session).set({ updatedAt: new Date() }).where(eq(schema.session.id, sessionId));
+  const now = Date.now();
+  await db
+    .update(schema.session)
+    .set({ updatedAt: new Date(now) })
+    .where(
+      and(eq(schema.session.id, sessionId), lt(schema.session.updatedAt, new Date(now - SESSION_TOUCH_MIN_AGE_MS)))
+    );
 }
 
 /**

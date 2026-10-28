@@ -10,7 +10,6 @@ import {
   getIdVerificationBreakdown,
   getLessonCoursePairs,
   getMemberRoleStatusCounts,
-  getOnlineOrgMembers,
   getOrgCoursesWithEnrolment,
   getOrgMessagingStats,
   getOrgStudyHoursMonthly,
@@ -27,6 +26,7 @@ import { getAssessmentItemsByLesson } from '@cio/db/queries/coursework';
 import { getCourseProgressReport } from '@cio/db/queries/reports';
 import { computePipelineForRoster } from '@api/services/caseload/caseload';
 import { ROLE } from '@cio/utils/constants';
+import { getCachedOnlineMembers } from '@api/services/dash/online-presence';
 
 // PearlLMS admin dashboard service — the org-wide analytics bundle. Manager/Admin only (the route also
 // guards). Everything is org-scoped via the org member set + course→group.organizationId joins, NOT
@@ -34,7 +34,6 @@ import { ROLE } from '@cio/utils/constants';
 // computePipelineForRoster (the same code the tutor pipeline uses) fed the org-wide learner roster.
 
 const THIRTY_DAYS_MS = 30 * 86_400_000;
-const ONLINE_WINDOW_MIN = 5;
 
 function assertManagerOrAdmin(actor: Actor): asserts actor is Extract<Actor, { authenticated: true }> {
   if (!actor.authenticated) throw new AppError('Unauthorized', ErrorCodes.UNAUTHORIZED, 401);
@@ -340,10 +339,11 @@ export interface OnlineNow {
 
 const ROLE_LABEL: Record<number, string> = { 1: 'Admin', 2: 'Tutor', 3: 'Learner', 4: 'Manager' };
 
-/** The near-live "Online now" panel (session refreshed within 5 minutes). Polled separately, uncached. */
+/** The near-live "Online now" panel (session refreshed within 5 minutes). Polled separately; the member read is a
+ *  per-org ~15s single-flight cache (services/dash/online-presence.ts), the manager/admin guard is fresh per call. */
 export async function getOnlineNow(actor: Actor): Promise<OnlineNow> {
   assertManagerOrAdmin(actor);
-  const rows = await getOnlineOrgMembers(actor.orgId, ONLINE_WINDOW_MIN);
+  const rows = await getCachedOnlineMembers(actor.orgId);
   const byRole = { learners: 0, tutors: 0, managers: 0, admins: 0 };
   for (const r of rows) {
     if (r.roleId === ROLE.STUDENT) byRole.learners++;

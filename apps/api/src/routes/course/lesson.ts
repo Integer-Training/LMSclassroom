@@ -43,7 +43,7 @@ import { requireAdmin, requireCourseContentRead, requireCourseInOrg } from '@api
 import { notifyCourseSessionUpdateService } from '@api/services/course/notify-session';
 import { generateLessonPdf } from '@api/utils/lesson';
 import { getGroupMemberIdByCourseAndProfile } from '@cio/db/queries/group';
-import { addUnitTimeSpent } from '@cio/db/queries/caseload';
+import { addUnitTimeSpent, getUnitTimeBeatTarget } from '@cio/db/queries/caseload';
 import { createRateLimiter } from '@api/middlewares/rate-limiter';
 import type { Actor } from '@cio/db/actor';
 
@@ -58,7 +58,7 @@ const unitTimeRateLimit = createRateLimiter({
     return `unit-time:${actor?.userId ?? 'anon'}:${c.req.param('lessonId') ?? ''}`;
   }
 });
-import { handleError } from '@api/utils/errors';
+import { AppError, ErrorCodes, handleError } from '@api/utils/errors';
 import { lessonLanguageRouter } from '@api/routes/course/lesson-language';
 import { courseworkRouter } from '@api/routes/course/coursework';
 import { zValidator } from '@hono/zod-validator';
@@ -368,8 +368,12 @@ export const lessonRouter = new Hono()
     }
   )
   // PearlLMS Phase 9 — unit-view active-time heartbeat. Records active seconds against (learner, unit) for
-  // the tutor progression view. Enrolled-student-only (assertEnrolledStudentContentAccess), so staff
-  // previewing a unit never accrue time. Each beat is capped server-side before accumulating.
+  // the tutor progression view. LEARNER-only: staff/managers return before any lookup, so staff previewing a
+  // unit never accrue time (and cost nothing). Learners get ONE cheap check — an enrolled STUDENT groupmember of
+  // :courseId AND the lesson belongs to :courseId (a forged lessonId from another course is a 404 and writes
+  // nothing). The sequential-unlock content check is deliberately not run per beat: the client never beats for
+  // locked content, and a forged beat can only add capped time to the caller's own total. Each beat is capped
+  // server-side before accumulating and the route is rate-limited per (learner, lesson).
   .put(
     '/:lessonId/time',
     authMiddleware,
@@ -385,20 +389,18 @@ export const lessonRouter = new Hono()
         const { lessonId } = c.req.valid('param');
         const { seconds } = c.req.valid('json');
 
-        await assertEnrolledStudentContentAccess({
-          courseId,
-          profileId: user.id,
-          contentId: lessonId,
-          type: ContentType.Lesson
-        });
-
-        // Record ONLY for a LEARNER (assertEnrolledStudentContentAccess is a content-lock check that
-        // returns silently for non-students, so gate explicitly here — staff/managers never accrue time).
         if (actor?.authenticated && actor.role === 'LEARNER') {
-          // Cap each beat (client sends ~30s beats; a legit refocus catch-up is small). With the rate limit
-          // above, this bounds how fast a total can grow. 120s ceiling per beat.
-          const capped = Math.min(seconds, 120);
-          await addUnitTimeSpent({ learnerId: user.id, courseId, lessonId, seconds: capped });
+          const target = await getUnitTimeBeatTarget({ courseId, lessonId, profileId: user.id });
+          if (target === 'LESSON_NOT_IN_COURSE') {
+            throw new AppError('Lesson not found', ErrorCodes.LESSON_NOT_FOUND, 404);
+          }
+
+          if (target === 'OK') {
+            // Cap each beat (client sends ~30s beats; a legit refocus catch-up is small). With the rate limit
+            // above, this bounds how fast a total can grow. 120s ceiling per beat.
+            const capped = Math.min(seconds, 120);
+            await addUnitTimeSpent({ learnerId: user.id, courseId, lessonId, seconds: capped });
+          }
         }
 
         return c.json({ success: true }, 200);

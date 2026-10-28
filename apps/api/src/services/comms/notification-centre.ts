@@ -85,6 +85,12 @@ export async function getNotificationCentre(
   return { items: rows.map((r) => enrich(r, lessons, homePath)), unreadCount };
 }
 
+/** Just the actor's own unread count — the cheap background poll for the bell badge (no list, no enrichment). */
+export async function getOwnUnreadCount(actor: Actor): Promise<{ unreadCount: number }> {
+  assertAuthed(actor);
+  return { unreadCount: await countUnreadNotifications(actor.userId) };
+}
+
 /** Mark ONE of the actor's own notifications read — scoped to actor.userId (a foreign id affects nothing). */
 export async function markOwnNotificationRead(actor: Actor, notificationId: string): Promise<{ marked: number }> {
   assertAuthed(actor);

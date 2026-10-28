@@ -10,6 +10,7 @@
   import { currentOrg } from '$lib/utils/store/org';
   import { authClient } from '$lib/utils/services/auth/client';
   import { classroomio } from '$lib/utils/services/api';
+  import { createVisiblePoll } from '$lib/utils/functions/visible-poll';
 
   interface Props {
     children?: import('svelte').Snippet;
@@ -33,16 +34,25 @@
   const SESSION_RETRY_DELAYS_MS = [1_000, 3_000, 8_000, 20_000, 45_000];
   let sessionRetries = 0;
 
-  // Live-presence heartbeat: while signed in, ping every 60s so "Online now" reflects real activity (the
-  // panel counts sessions refreshed within 5 minutes). Best-effort — failures are ignored.
+  // Live-presence heartbeat: while signed in AND the tab is visible, ping every 60s (+-20% jitter) so "Online now"
+  // reflects real activity (the panel counts sessions refreshed within 5 minutes, so the cadence stays 60s). A
+  // hidden tab stops pinging and drops out of "Online now" after 5 minutes — intended; it pings again as soon as
+  // the tab is visible. Best-effort: failures only back the poll off (the shared helper), nothing is surfaced.
   onMount(() => {
-    const HEARTBEAT_MS = 60_000;
-    const ping = () => {
-      if (authed) void classroomio.account.heartbeat.$post().catch(() => {});
-    };
-    ping();
-    const timer = setInterval(ping, HEARTBEAT_MS);
-    return () => clearInterval(timer);
+    const poll = createVisiblePoll({
+      intervalMs: 60_000,
+      isEnabled: () => authed,
+      task: async () => {
+        try {
+          await classroomio.account.heartbeat.$post();
+          return true;
+        } catch {
+          return false;
+        }
+      }
+    });
+    poll.start();
+    return () => poll.stop();
   });
 
   $effect(() => {

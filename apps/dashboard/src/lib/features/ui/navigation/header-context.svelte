@@ -1,25 +1,33 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { untrack } from 'svelte';
   import { page } from '$app/state';
   import { Badge } from '@cio/ui/base/badge';
+  import { isOrgAdmin } from '$lib/utils/store/org';
+  import { createVisiblePoll } from '$lib/utils/functions/visible-poll';
   import { orgSummaryApi } from './org-summary.svelte';
 
   // Per-view header context bar. Shows a live, contextual summary for the current admin section (learners →
   // count · suspended, tutors → count, courses → published · draft, etc.) plus a live "online" pill. Polls
-  // the lightweight summary endpoint so counts + presence stay fresh.
+  // the lightweight summary endpoint so counts + presence stay fresh — ADMINS ONLY: the endpoint is
+  // admin-only, so other roles (manager, tutor, learner) would just 403 on every poll. Polls ~45s while the
+  // tab is visible; the shared helper pauses when hidden, refreshes on return, jitters and backs off on errors.
 
   const POLL_MS = 45_000;
-  let poll: ReturnType<typeof setInterval> | undefined;
 
-  onMount(() => {
-    orgSummaryApi.load();
-    poll = setInterval(() => orgSummaryApi.load(), POLL_MS);
-  });
-  onDestroy(() => {
-    if (poll) clearInterval(poll);
+  $effect(() => {
+    if ($isOrgAdmin !== true) return;
+
+    const poll = createVisiblePoll({
+      intervalMs: POLL_MS,
+      task: async () => (await orgSummaryApi.load()) !== undefined
+    });
+    // start() runs the first load synchronously; keep its state reads out of this effect's dependencies.
+    untrack(() => poll.start());
+    return () => poll.stop();
   });
 
-  const s = $derived(orgSummaryApi.data);
+  // Never show another role's / org's stale summary after switching to a workspace where the actor is not an admin.
+  const s = $derived($isOrgAdmin === true ? orgSummaryApi.data : null);
 
   // path is /org/<slug>/<section>... ; '' = the org index (dashboard).
   const section = $derived.by(() => {

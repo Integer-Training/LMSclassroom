@@ -14,7 +14,7 @@ import { listAllocationsByOrg } from '@cio/db/queries/allocation';
 import { getCoursesForLearners, getEnrolmentsForLearners } from '@cio/db/queries/caseload';
 import { getUnitTimeForLearners } from '@cio/db/queries/caseload';
 import { getLastSeenForUserIds } from '@cio/db/queries/analytics';
-import { getCourseCounts, getMemberRoleStatusCounts, getOnlineOrgMembers } from '@cio/db/queries/dash';
+import { getCachedOnlineMembers, getCachedOrgCounts } from '@api/services/dash/online-presence';
 import { getCourseEnrolmentTarget, listAllCoursesForOrg } from '@cio/db/queries/onboarding';
 import {
   addCourseMember,
@@ -255,14 +255,14 @@ export interface OrgSummary {
 }
 
 /** A lightweight org summary (role counts, course published/draft, live-online count) for the header context
- *  bar. One call, cheap grouped queries. Admin only. */
+ *  bar. Admin only (asserted fresh on every call). The three reads are per-org single-flight cached for ~15s
+ *  (services/dash/online-presence.ts) so many open admin tabs polling it don't each hit the database. */
 export async function getOrgSummary(actor: Actor): Promise<OrgSummary> {
   assertAdmin(actor);
   const orgId = actor.orgId;
-  const [roleCounts, courses, online] = await Promise.all([
-    getMemberRoleStatusCounts(orgId),
-    getCourseCounts(orgId),
-    getOnlineOrgMembers(orgId, 5) // matches the "Online now" 5-minute window
+  const [{ roleCounts, courses }, online] = await Promise.all([
+    getCachedOrgCounts(orgId),
+    getCachedOnlineMembers(orgId) // the "Online now" 5-minute window
   ]);
   const tally = (roleId: number) => {
     let total = 0;

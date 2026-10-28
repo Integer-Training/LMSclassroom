@@ -1,6 +1,7 @@
 import * as schema from '@db/schema';
 
 import { and, db, eq, like, sql, inArray, type DbOrTxClient } from '@db/drizzle';
+import { ROLE } from '@cio/utils/constants';
 
 // PearlLMS Phase 9 — accumulated active time per (learner, unit). Written by the lesson-view heartbeat
 // (wall-clock-capped in the service), read by the tutor progression view for per-unit + per-course time.
@@ -22,6 +23,44 @@ export interface MonthlyStudyRow {
 /** UTC 'YYYY-MM' for the given instant (default now) — the month bucket key. */
 function utcYearMonth(at: Date = new Date()): string {
   return at.toISOString().slice(0, 7);
+}
+
+export type UnitTimeBeatTarget =
+  /** The lesson does not exist, or belongs to a different course than the one in the URL. */
+  | 'LESSON_NOT_IN_COURSE'
+  /** The lesson is in the course but the profile is not an enrolled STUDENT of it. */
+  | 'NOT_ENROLLED_STUDENT'
+  | 'OK';
+
+/**
+ * ONE cheap query for the learner time heartbeat (replaces the heavy content-lock assert): is `profileId` an
+ * enrolled STUDENT groupmember of `courseId` AND does `lessonId` belong to `courseId`? The second condition stops
+ * time from being written against a lesson of another course through a forged `lessonId`. Fresh every call —
+ * enrolment is authorization state and is never cached.
+ */
+export async function getUnitTimeBeatTarget(
+  input: { courseId: string; lessonId: string; profileId: string },
+  client: DbOrTxClient = db
+): Promise<UnitTimeBeatTarget> {
+  const [row] = await client
+    .select({ lessonCourseId: schema.lesson.courseId, memberId: schema.groupmember.id })
+    .from(schema.lesson)
+    .leftJoin(schema.course, eq(schema.course.id, input.courseId))
+    .leftJoin(
+      schema.groupmember,
+      and(
+        eq(schema.groupmember.groupId, schema.course.groupId),
+        eq(schema.groupmember.profileId, input.profileId),
+        eq(schema.groupmember.roleId, ROLE.STUDENT)
+      )
+    )
+    .where(eq(schema.lesson.id, input.lessonId))
+    .limit(1);
+
+  if (!row || row.lessonCourseId !== input.courseId) return 'LESSON_NOT_IN_COURSE';
+  if (!row.memberId) return 'NOT_ENROLLED_STUDENT';
+
+  return 'OK';
 }
 
 /**
@@ -88,9 +127,7 @@ export async function getMonthlyStudyForLearner(
       seconds: sql<number>`sum(${schema.unitTimeMonthly.seconds})`
     })
     .from(schema.unitTimeMonthly)
-    .where(
-      and(eq(schema.unitTimeMonthly.learnerId, learnerId), like(schema.unitTimeMonthly.yearMonth, `${year}-%`))
-    )
+    .where(and(eq(schema.unitTimeMonthly.learnerId, learnerId), like(schema.unitTimeMonthly.yearMonth, `${year}-%`)))
     .groupBy(schema.unitTimeMonthly.yearMonth);
   return rows.map((r) => ({ yearMonth: r.yearMonth, seconds: Number(r.seconds) }));
 }

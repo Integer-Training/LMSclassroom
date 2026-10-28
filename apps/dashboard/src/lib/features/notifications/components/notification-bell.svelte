@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import BellIcon from '@lucide/svelte/icons/bell';
   import CheckCheckIcon from '@lucide/svelte/icons/check-check';
@@ -7,15 +7,16 @@
   import * as Popover from '@cio/ui/base/popover';
   import * as Empty from '@cio/ui/base/empty';
   import { notificationCentreApi } from '$features/notifications/api/notification-centre.svelte';
+  import { createVisiblePoll } from '$lib/utils/functions/visible-poll';
 
   // PearlLMS Phase 6 Step 3 — the notification bell, shared by every role's header. Unread badge + a
   // newest-first list; each item links to its subject and marks itself read on click; a mark-all control.
-  // Data loads on mount + on open + a light 60s poll (no realtime infra). Deep links land on guarded
-  // surfaces — the link is a convenience, the target's own guards are the control.
+  // The list loads on mount + whenever the popover opens; between those a light ~60s background poll refreshes
+  // ONLY the unread count (count-only endpoint) and only while the tab is visible (no realtime infra). Deep links
+  // land on guarded surfaces — the link is a convenience, the target's own guards are the control.
 
   let open = $state(false);
   const POLL_MS = 60_000;
-  let poll: ReturnType<typeof setInterval> | undefined;
 
   function timeAgo(iso: string): string {
     const secs = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
@@ -42,10 +43,15 @@
 
   onMount(() => {
     void notificationCentreApi.load();
-    poll = setInterval(() => void notificationCentreApi.load(), POLL_MS);
-  });
-  onDestroy(() => {
-    if (poll) clearInterval(poll);
+    const poll = createVisiblePoll({
+      intervalMs: POLL_MS,
+      immediate: false,
+      // While the popover is open keep the visible list fresh too; otherwise just the badge count.
+      task: async () =>
+        open ? (await notificationCentreApi.load()) !== undefined : notificationCentreApi.refreshUnreadCount()
+    });
+    poll.start();
+    return () => poll.stop();
   });
 </script>
 
