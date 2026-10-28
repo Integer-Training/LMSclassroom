@@ -25,8 +25,9 @@ const migrationsFolder = resolve(packageRoot, 'src/migrations');
 // reader behind its ACCESS EXCLUSIVE request and crash-looping the API) and a runaway statement is cut off.
 // Both are session-level on the migrator connection only — never ALTER ROLE (that would hit the whole app).
 // Override per run for a one-off heavy migration, e.g. MIGRATION_STATEMENT_TIMEOUT=10min.
-const MIGRATION_LOCK_TIMEOUT = process.env.MIGRATION_LOCK_TIMEOUT ?? '5s';
-const MIGRATION_STATEMENT_TIMEOUT = process.env.MIGRATION_STATEMENT_TIMEOUT ?? '60s';
+// `||` not `??`: compose passes an unset variable through as an empty string, which Postgres rejects.
+const MIGRATION_LOCK_TIMEOUT = process.env.MIGRATION_LOCK_TIMEOUT?.trim() || '5s';
+const MIGRATION_STATEMENT_TIMEOUT = process.env.MIGRATION_STATEMENT_TIMEOUT?.trim() || '60s';
 
 if (!connectionString) {
   console.error('DIRECT_DATABASE_URL (or DATABASE_URL/PRIVATE_DATABASE_URL) environment variable is required');

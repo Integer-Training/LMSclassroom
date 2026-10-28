@@ -49,8 +49,8 @@ services:
       NODE_ENV: production
       DATABASE_URL: ${DATABASE_URL:?set the Supabase transaction-pooler URL (6543)}
       DIRECT_DATABASE_URL: ${DIRECT_DATABASE_URL:?set the Supabase direct/session URL (5432) for migrations}
-      MIGRATION_LOCK_TIMEOUT: ${MIGRATION_LOCK_TIMEOUT:-}
-      MIGRATION_STATEMENT_TIMEOUT: ${MIGRATION_STATEMENT_TIMEOUT:-}
+      MIGRATION_LOCK_TIMEOUT: ${MIGRATION_LOCK_TIMEOUT:-5s}
+      MIGRATION_STATEMENT_TIMEOUT: ${MIGRATION_STATEMENT_TIMEOUT:-60s}
     logging: *logging
     restart: 'no'
 

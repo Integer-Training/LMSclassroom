@@ -41,6 +41,17 @@ describe('docker-compose.deploy.yaml', () => {
     expect(service('migrate')).not.toContain('SKIP_DB_SETUP');
   });
 
+  it('never passes empty migration timeouts (Postgres rejects an empty lock_timeout, so the deploy would never start)', () => {
+    const migrate = service('migrate');
+    expect(migrate).toContain('MIGRATION_LOCK_TIMEOUT: ${MIGRATION_LOCK_TIMEOUT:-5s}');
+    expect(migrate).toContain('MIGRATION_STATEMENT_TIMEOUT: ${MIGRATION_STATEMENT_TIMEOUT:-60s}');
+    expect(migrate).not.toMatch(/MIGRATION_\w+: \$\{MIGRATION_\w+:-\}/);
+    // and db-setup itself treats an empty value as unset (`||`, not `??`)
+    const dbSetup = read('packages/db/src/scripts/db-setup.ts');
+    expect(dbSetup).toMatch(/MIGRATION_LOCK_TIMEOUT\?\.trim\(\) \|\| '5s'/);
+    expect(dbSetup).toMatch(/MIGRATION_STATEMENT_TIMEOUT\?\.trim\(\) \|\| '60s'/);
+  });
+
   it('gives the dashboard a healthcheck and makes caddy wait for it', () => {
     expect(service('dashboard')).toContain('healthcheck:');
     expect(service('caddy')).toMatch(/dashboard:\n\s+condition: service_healthy/);
