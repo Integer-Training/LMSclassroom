@@ -129,6 +129,12 @@ describe('submitRegistration — writes a pending row, never an account', () => 
     expect(mInsert).not.toHaveBeenCalled();
   });
 
+  it('a racing double-submit (insert hits the pending-email unique index) → 409, no staff notification', async () => {
+    mInsert.mockResolvedValue(null as never);
+    expect(await code(submitRegistration({ fullName: 'Ada', email: 'ada@x.test', clientIp: '8.8.8.8' }))).toBe(409);
+    expect(mEmit).not.toHaveBeenCalled();
+  });
+
   it('a notification failure does NOT fail the submission (best-effort)', async () => {
     mEmit.mockRejectedValue(new Error('redis down') as never);
     const res = await submitRegistration({ fullName: 'Ada', email: 'ada@x.test', clientIp: '7.7.7.7' });

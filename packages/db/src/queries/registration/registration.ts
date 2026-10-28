@@ -24,8 +24,15 @@ export interface RegistrationRow {
   createdAt: string;
 }
 
-/** Insert a pending registration (status defaults to 'pending', created_at = submitted_at). */
-export async function insertRegistration(input: NewRegistration, client: DbOrTxClient = db): Promise<RegistrationRow> {
+/**
+ * Insert a pending registration (status defaults to 'pending', created_at = submitted_at). Returns null when an
+ * open (pending) application for this email already exists in the org — the partial unique index
+ * uq_registration_pending_org_email makes a racing double-submit a no-op instead of a second row.
+ */
+export async function insertRegistration(
+  input: NewRegistration,
+  client: DbOrTxClient = db
+): Promise<RegistrationRow | null> {
   const [row] = await client
     .insert(schema.registration)
     .values({
@@ -34,7 +41,9 @@ export async function insertRegistration(input: NewRegistration, client: DbOrTxC
       email: input.email,
       requestedCourseId: input.requestedCourseId ?? null
     })
+    .onConflictDoNothing()
     .returning();
+  if (!row) return null;
   return {
     id: row.id,
     organizationId: row.organizationId,

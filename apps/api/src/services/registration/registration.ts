@@ -44,6 +44,16 @@ async function resolveTargetOrg(): Promise<{ id: string }> {
   return { id: org.id };
 }
 
+/** The neutral duplicate refusal (no enumeration of which of member/pending matched). */
+function duplicateRegistrationError(): AppError {
+  return new AppError(
+    'If you already have an account or a pending application, please sign in or contact us.',
+    ErrorCodes.CONFLICT,
+    409,
+    'email'
+  );
+}
+
 export async function submitRegistration(input: SubmitRegistrationInput): Promise<SubmitRegistrationResult> {
   // 1. Honeypot — a bot filled the hidden field. Silently drop: look successful, write nothing, notify no one.
   if (input.honeypot != null && input.honeypot.trim() !== '') {
@@ -93,14 +103,7 @@ export async function submitRegistration(input: SubmitRegistrationInput): Promis
     checkEmailExistsInOrg(org.id, email),
     hasOpenRegistrationForEmail(org.id, email)
   ]);
-  if (alreadyMember || alreadyPending) {
-    throw new AppError(
-      'If you already have an account or a pending application, please sign in or contact us.',
-      ErrorCodes.CONFLICT,
-      409,
-      'email'
-    );
-  }
+  if (alreadyMember || alreadyPending) throw duplicateRegistrationError();
 
   // 7. Write the pending row (the ONLY write — no auth records).
   const row = await insertRegistration({
@@ -109,6 +112,9 @@ export async function submitRegistration(input: SubmitRegistrationInput): Promis
     email,
     requestedCourseId: requestedCourseId ?? null
   });
+  // A racing double-submit passed the check above; the pending-email unique index turned the second insert into a
+  // no-op. Same neutral refusal as the check-then-insert path.
+  if (!row) throw duplicateRegistrationError();
 
   // 8. Notify Managers + Admins through the Phase-6 framework (in-app always + email per pref). Best-effort:
   //    a notification failure must never fail the applicant's submission. Content-light — no applicant PII.

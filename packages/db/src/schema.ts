@@ -110,62 +110,86 @@ export const ssoProvider = pgTable('sso_provider', {
   domain: text('domain').notNull()
 });
 
-export const session = pgTable('session', {
-  id: uuid()
-    .default(sql`gen_random_uuid()`)
-    .primaryKey()
-    .notNull(),
-  expiresAt: timestamp('expires_at').notNull(),
-  token: text('token').notNull().unique(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at')
-    .$onUpdate(() => /* @__PURE__ */ new Date())
-    .notNull(),
-  ipAddress: text('ip_address'),
-  userAgent: text('user_agent'),
-  userId: uuid('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  impersonatedBy: text('impersonated_by')
-});
+export const session = pgTable(
+  'session',
+  {
+    id: uuid()
+      .default(sql`gen_random_uuid()`)
+      .primaryKey()
+      .notNull(),
+    expiresAt: timestamp('expires_at').notNull(),
+    token: text('token').notNull().unique(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at')
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+    ipAddress: text('ip_address'),
+    userAgent: text('user_agent'),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    impersonatedBy: text('impersonated_by')
+  },
+  (table) => [
+    // Phase B: last-seen / deleteSessionsByUserId / FK cascade, and the expiry purge. NOT session.updated_at
+    // (the heartbeat rewrites it constantly; indexing it would disable HOT updates).
+    index('idx_session_user_id').on(table.userId),
+    index('idx_session_expires_at').on(table.expiresAt)
+  ]
+);
 
-export const account = pgTable('account', {
-  id: uuid('id')
-    .default(sql`gen_random_uuid()`)
-    .primaryKey()
-    .notNull(),
-  accountId: text('account_id').notNull(),
-  providerId: text('provider_id').notNull(),
-  userId: uuid('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  accessToken: text('access_token'),
-  refreshToken: text('refresh_token'),
-  idToken: text('id_token'),
-  accessTokenExpiresAt: timestamp('access_token_expires_at'),
-  refreshTokenExpiresAt: timestamp('refresh_token_expires_at'),
-  scope: text('scope'),
-  password: text('password'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at')
-    .$onUpdate(() => /* @__PURE__ */ new Date())
-    .notNull()
-});
+export const account = pgTable(
+  'account',
+  {
+    id: uuid('id')
+      .default(sql`gen_random_uuid()`)
+      .primaryKey()
+      .notNull(),
+    accountId: text('account_id').notNull(),
+    providerId: text('provider_id').notNull(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    accessToken: text('access_token'),
+    refreshToken: text('refresh_token'),
+    idToken: text('id_token'),
+    accessTokenExpiresAt: timestamp('access_token_expires_at'),
+    refreshTokenExpiresAt: timestamp('refresh_token_expires_at'),
+    scope: text('scope'),
+    password: text('password'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at')
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull()
+  },
+  (table) => [
+    // Phase B: better-auth sign-in / password change / user delete look accounts up by user.
+    index('idx_account_user_id').on(table.userId)
+  ]
+);
 
-export const verification = pgTable('verification', {
-  id: uuid('id')
-    .default(sql`gen_random_uuid()`)
-    .primaryKey()
-    .notNull(),
-  identifier: text('identifier').notNull(),
-  value: text('value').notNull(),
-  expiresAt: timestamp('expires_at').notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at')
-    .defaultNow()
-    .$onUpdate(() => /* @__PURE__ */ new Date())
-    .notNull()
-});
+export const verification = pgTable(
+  'verification',
+  {
+    id: uuid('id')
+      .default(sql`gen_random_uuid()`)
+      .primaryKey()
+      .notNull(),
+    identifier: text('identifier').notNull(),
+    value: text('value').notNull(),
+    expiresAt: timestamp('expires_at').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at')
+      .defaultNow()
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull()
+  },
+  (table) => [
+    // Phase B: token lookup by identifier, and the expired-verification purge.
+    index('idx_verification_identifier').on(table.identifier),
+    index('idx_verification_expires_at').on(table.expiresAt)
+  ]
+);
 
 export const analyticsLoginEvents = pgTable(
   'analytics_login_events',
@@ -285,18 +309,25 @@ export const analyticsCountryDaily = pgTable(
   ]
 );
 
-export const courseSection = pgTable('course_section', {
-  id: uuid().defaultRandom().primaryKey().notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
-  title: varchar(),
-  // You can use { mode: "bigint" } if numbers are exceeding js number limitations
-  order: bigint({ mode: 'number' }).default(sql`'0'`),
-  courseId: uuid('course_id').references(() => course.id, {
-    onDelete: 'cascade',
-    onUpdate: 'cascade'
-  })
-});
+export const courseSection = pgTable(
+  'course_section',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+    title: varchar(),
+    // You can use { mode: "bigint" } if numbers are exceeding js number limitations
+    order: bigint({ mode: 'number' }).default(sql`'0'`),
+    courseId: uuid('course_id').references(() => course.id, {
+      onDelete: 'cascade',
+      onUpdate: 'cascade'
+    })
+  },
+  (table) => [
+    // Phase B: every course/outline load and the course->section cascade delete.
+    index('idx_course_section_course_id').on(table.courseId)
+  ]
+);
 
 export const group = pgTable(
   'group',
@@ -1064,7 +1095,9 @@ export const lesson = pgTable(
       foreignColumns: [profile.id],
       name: 'lesson_teacher_id_fkey'
     }),
-    index('idx_lesson_course_slug').on(table.courseId, table.slug)
+    index('idx_lesson_course_slug').on(table.courseId, table.slug),
+    // Phase B: section -> lesson joins and the section cascade delete.
+    index('idx_lesson_section_id').on(table.sectionId)
   ]
 );
 
@@ -1319,7 +1352,13 @@ export const groupmember = pgTable(
     }),
     unique('unique_entries').on(table.groupId, table.profileId, table.email),
     unique('unique_group_email').on(table.groupId, table.email),
-    unique('unique_group_profile').on(table.groupId, table.profileId)
+    unique('unique_group_profile').on(table.groupId, table.profileId),
+    // Phase B: "which groups is this profile in, as role X" (tutor/enrolment lookups, profile-delete FK scans)
+    // and "who is in this group as role X" (per-course student lists and counts). The migration adds
+    // INCLUDE (group_id) / INCLUDE (profile_id) for index-only scans; drizzle can't express INCLUDE, so the
+    // key columns here match the DB and `drizzle-kit generate` stays diff-free.
+    index('idx_groupmember_profile_role').on(table.profileId, table.roleId),
+    index('idx_groupmember_group_role').on(table.groupId, table.roleId)
   ]
 );
 
@@ -4033,7 +4072,9 @@ export const courseworkSubmission = pgTable(
       .on(table.learnerId, table.lessonId, table.assessmentKey, table.version)
       .nullsNotDistinct(),
     index('idx_coursework_submission_learner_lesson').on(table.learnerId, table.lessonId),
-    index('idx_coursework_submission_course').on(table.courseId)
+    index('idx_coursework_submission_course').on(table.courseId),
+    // Phase B: file-key ownership lookups (`files @> '[{"key": ...}]'`) on every coursework download.
+    index('idx_coursework_submission_files_gin').using('gin', table.files.op('jsonb_path_ops'))
   ]
 );
 
@@ -4075,7 +4116,9 @@ export const courseworkResult = pgTable(
       name: 'coursework_result_recorded_by_fkey'
     }).onDelete('set null'),
     unique('coursework_result_submission_unique').on(table.submissionId),
-    index('idx_coursework_result_submission').on(table.submissionId)
+    index('idx_coursework_result_submission').on(table.submissionId),
+    // Phase B: feedback-file key lookups (`feedback_files @> ...`); this table has no learner column.
+    index('idx_coursework_result_feedback_files_gin').using('gin', table.feedbackFiles.op('jsonb_path_ops'))
   ]
 );
 
@@ -4201,7 +4244,9 @@ export const notification = pgTable(
       name: 'notification_user_id_fkey'
     }).onDelete('cascade'),
     index('idx_notification_user').on(table.userId),
-    index('idx_notification_user_unread').on(table.userId, table.readAt)
+    index('idx_notification_user_unread').on(table.userId, table.readAt),
+    // Phase B: the bell list (newest first per user).
+    index('idx_notification_user_created').on(table.userId, table.createdAt.desc())
   ]
 );
 
@@ -4455,7 +4500,12 @@ export const registration = pgTable(
       foreignColumns: [profile.id],
       name: 'registration_decided_by_fkey'
     }).onDelete('set null'),
-    index('idx_registration_org_status_created').on(table.organizationId, table.status, table.createdAt)
+    index('idx_registration_org_status_created').on(table.organizationId, table.status, table.createdAt),
+    // Phase B: at most one OPEN application per email per org (emails are stored lowercased). Makes the
+    // public form's check-then-insert race-safe; insertRegistration uses ON CONFLICT DO NOTHING.
+    uniqueIndex('uq_registration_pending_org_email')
+      .on(table.organizationId, table.email)
+      .where(sql`${table.status} = 'pending'`)
   ]
 );
 

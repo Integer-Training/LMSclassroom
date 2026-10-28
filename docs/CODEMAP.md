@@ -101,7 +101,7 @@ dashboard:3082, jobs) and `docker-compose.images.yaml` (same topology from Docke
 - **`db:setup`** (`packages/db/src/scripts/db-setup.ts`) is the real apply path: creates
   `authenticated`/`anon` PG roles (used by RLS policies) → advisory lock `4242424242` →
   `baselineMigrationsIfNeeded` (adopts pre-existing DBs into drizzle's journal by hashing each
-  migration, `src/scripts/baseline.ts:51`) → `drizzle-kit migrate` → seeds reference data
+  migration, `src/scripts/baseline.ts:51`) → in-process drizzle migrator with `lock_timeout=5s` / `statement_timeout=60s` (same journal as `drizzle-kit migrate`) → seeds reference data
   (roles/submissions/question-types); `--seed` adds demo data.
 - **Doc drift**: `packages/db/README.md` still describes a `db pull`/`db push` loop and claims
   `db:setup` runs `drizzle-kit push` — **wrong; the code runs committed migrations** (`migrate`).

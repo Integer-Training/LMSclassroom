@@ -1,6 +1,8 @@
 import 'dotenv/config';
 
 import { spawn } from 'node:child_process';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
@@ -17,6 +19,14 @@ const shouldSyncSchema = !process.argv.includes('--skip-schema-sync');
 const scriptPath = fileURLToPath(import.meta.url);
 const packageRoot = resolve(dirname(scriptPath), '../..');
 const pnpmBinary = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
+const migrationsFolder = resolve(packageRoot, 'src/migrations');
+
+// Migrator session guards: a migration blocked behind a long-held lock fails fast (instead of queueing every
+// reader behind its ACCESS EXCLUSIVE request and crash-looping the API) and a runaway statement is cut off.
+// Both are session-level on the migrator connection only — never ALTER ROLE (that would hit the whole app).
+// Override per run for a one-off heavy migration, e.g. MIGRATION_STATEMENT_TIMEOUT=10min.
+const MIGRATION_LOCK_TIMEOUT = process.env.MIGRATION_LOCK_TIMEOUT ?? '5s';
+const MIGRATION_STATEMENT_TIMEOUT = process.env.MIGRATION_STATEMENT_TIMEOUT ?? '60s';
 
 if (!connectionString) {
   console.error('DIRECT_DATABASE_URL (or DATABASE_URL/PRIVATE_DATABASE_URL) environment variable is required');
@@ -50,8 +60,20 @@ async function runPnpmCommand(commandLabel: string, args: string[]) {
 }
 
 async function runMigrations() {
-  console.log('Applying database migrations with drizzle-kit migrate...');
-  await runPnpmCommand('Migrate', ['db:migrate']);
+  console.log(
+    `Applying database migrations (lock_timeout=${MIGRATION_LOCK_TIMEOUT}, statement_timeout=${MIGRATION_STATEMENT_TIMEOUT})...`
+  );
+  // Same journal + __drizzle_migrations table as `drizzle-kit migrate`, run in-process so the session settings below hit the
+  // very connection that executes the DDL (a startup parameter is not reliably forwarded by the session pooler).
+  // onnotice: drop NOTICEs (e.g. identifier truncation) like drizzle-kit did.
+  const migrator = postgres(connectionString, { max: 1, ssl, onnotice: () => {} });
+  try {
+    await migrator`SELECT set_config('lock_timeout', ${MIGRATION_LOCK_TIMEOUT}, false)`;
+    await migrator`SELECT set_config('statement_timeout', ${MIGRATION_STATEMENT_TIMEOUT}, false)`;
+    await migrate(drizzle(migrator), { migrationsFolder });
+  } finally {
+    await migrator.end();
+  }
 }
 
 async function runSeedEssential() {

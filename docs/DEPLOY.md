@@ -63,7 +63,7 @@ docker compose -f docker-compose.deploy.yaml up -d --build
 ```
 
 - The **api entrypoint auto-runs `db:setup`** (migrations over `DIRECT_DATABASE_URL`),
-  then starts. No new migrations are expected since Step 5 (baseline `0000…0005`); the
+  then starts. Pending migrations are applied in order (see the safety notes below); the
   baseline logic no-ops on the already-migrated Supabase DB.
 - Caddy obtains a Let's Encrypt cert for `APP_DOMAIN` on first request (needs port 80/443
   reachable + DNS resolving).
@@ -72,6 +72,35 @@ docker compose -f docker-compose.deploy.yaml up -d --build
 docker compose -f docker-compose.deploy.yaml ps          # all healthy?
 docker compose -f docker-compose.deploy.yaml logs -f api  # watch startup / migrations
 ```
+
+### Migration safety and index changes on large tables
+
+- The migrator runs in-process (`packages/db/src/scripts/db-setup.ts`) with session `lock_timeout=5s` and
+  `statement_timeout=60s`, so a migration blocked behind a long transaction fails fast and the container exits
+  with a clear `canceling statement due to lock timeout` instead of queueing every reader behind it. The failed
+  migration is rolled back; fix the cause (or wait for the blocker) and restart. Override for one run with
+  `MIGRATION_LOCK_TIMEOUT` / `MIGRATION_STATEMENT_TIMEOUT` (e.g. `10min`) — never `ALTER ROLE ... SET`.
+- While a table is small (Phase B indexes, 2026-10) a plain `CREATE INDEX IF NOT EXISTS` inside a drizzle
+  migration is fine. `CREATE INDEX CONCURRENTLY` **errors inside a drizzle migration** (it runs in a
+  transaction) — never put it there.
+- **Once a table passes about 100k rows**, add indexes by hand first, then commit the migration:
+  1. Connect through the **5432 session pooler / direct URL** (not the 6543 transaction pooler), with no wrapping
+     transaction. Run **one statement per call**:
+     ```sql
+     SET lock_timeout = '5s';
+     CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_name ON some_table (col);
+     ```
+  2. A failed or cancelled concurrent build leaves an INVALID index. Check and, if invalid, drop it and retry:
+     ```sql
+     SELECT indexrelid::regclass, indisvalid FROM pg_index WHERE indexrelid = 'idx_name'::regclass;
+     DROP INDEX CONCURRENTLY IF EXISTS idx_name;
+     ```
+  3. Declare the index in `packages/db/src/schema.ts` with the **same name**, generate the migration with
+     `drizzle-kit generate`, and edit it to `CREATE INDEX IF NOT EXISTS`. On deploy it is a no-op where the
+     index already exists, and it builds normally on fresh databases.
+  4. Confirm `drizzle-kit generate` then reports no diff.
+- A new UNIQUE index (e.g. `uq_registration_pending_org_email`) fails to build if duplicates exist — check with a
+  `GROUP BY ... HAVING count(*) > 1` first; removing duplicates is a data change that needs explicit approval.
 
 ## 5. Smoke test (on the live https URL)
 
