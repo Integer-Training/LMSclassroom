@@ -9,6 +9,7 @@ import {
   getOrgLearnerIds,
   getOrgTutorIds,
   getProfileNamesByIds,
+  hasRecentDuplicateAnnouncement,
   insertAnnouncement,
   listAnnouncementsForCourse,
   listAnnouncementsForLearner,
@@ -30,7 +31,7 @@ import {
 } from '@cio/db/queries/onboarding';
 import { isEnrolledLearner } from '@api/middlewares/guards';
 import { getOrganizationById } from '@cio/db/queries/organization';
-import { emitNotification } from '@api/services/comms/notify';
+import { emitNotificationBatch } from '@api/services/comms/notify';
 import { buildEmailBranding } from '@cio/email';
 import { getAppBaseUrl } from '@cio/core/config/dashboard-url';
 
@@ -50,6 +51,9 @@ function assertAdmin(actor: Extract<Actor, { authenticated: true }>): void {
     throw new AppError('Only an admin can broadcast', ErrorCodes.FORBIDDEN, 403);
   }
 }
+
+/** Same author/audience/title/body inside this window is treated as a duplicate publish. */
+const DUPLICATE_PUBLISH_WINDOW_SECONDS = 30;
 
 const AUDIENCE_TYPES: AnnouncementAudience[] = ['all_learners', 'all_tutors', 'course', 'learner', 'tutor'];
 
@@ -170,7 +174,7 @@ export async function publishAnnouncement(actor: Actor, input: PublishAnnounceme
     targetUserId = input.targetUserId;
   }
 
-  const row = await insertAnnouncement({
+  const values = {
     organizationId: actor.orgId,
     authorId: actor.userId,
     audienceType: input.audienceType,
@@ -178,7 +182,17 @@ export async function publishAnnouncement(actor: Actor, input: PublishAnnounceme
     targetUserId,
     title,
     body
-  });
+  };
+  // Double-publish guard (Phase G): a double-click / retried request with the identical broadcast inside the
+  // window is rejected rather than creating a second announcement + a second fan-out.
+  if (await hasRecentDuplicateAnnouncement(values, DUPLICATE_PUBLISH_WINDOW_SECONDS)) {
+    throw new AppError(
+      'This broadcast was just published. Wait a moment before sending the same message again.',
+      ErrorCodes.CONFLICT,
+      409
+    );
+  }
+  const row = await insertAnnouncement(values);
 
   // Notify the scoped recipients. In-app always; email only if the recipient opted the announcement category
   // in (default OFF). Fire-and-forget — a notification failure must not fail the publish.
@@ -191,7 +205,7 @@ export async function publishAnnouncement(actor: Actor, input: PublishAnnounceme
         announcementsUrl: `${getAppBaseUrl()}/lms`,
         branding: buildEmailBranding({ name: org?.name ?? '', avatarUrl: org?.avatarUrl, theme: org?.theme })
       };
-      await emitNotification({
+      await emitNotificationBatch({
         type: 'announcement.published',
         recipients: unique.map((userId) => ({ userId, emailFields })),
         entityType: 'announcement',

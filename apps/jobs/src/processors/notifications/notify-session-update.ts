@@ -77,6 +77,11 @@ export async function processNotifyCourseSessionUpdate(rawPayload: unknown): Pro
 
   let notified = 0;
   const preferenceCache = new EmailPreferenceLookupCache();
+  // One query for every recipient's personal settings (was two per recipient); same values, same decisions.
+  await preferenceCache.prefetchPersonalSettings(
+    recipients.flatMap((recipient) => (recipient.profileId ? [recipient.profileId] : [])),
+    orgData.orgId
+  );
 
   for (const recipient of recipients) {
     try {

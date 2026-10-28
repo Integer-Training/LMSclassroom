@@ -11,7 +11,7 @@ import type { TMemberEmailNotificationPreferencesUpdate } from '@cio/utils/valid
 import { getOrganizationMemberIdByOrgAndProfile } from '../organization/organization';
 import { db } from '@db/drizzle';
 import * as schema from '@db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 
 function rowFromRecord(
   record: typeof schema.organizationmemberEmailNotifications.$inferSelect | undefined
@@ -60,6 +60,51 @@ export async function getOrganizationMemberEmailNotifications(
     console.error('getOrganizationMemberEmailNotifications error:', error);
     throw new Error('Failed to get organization member email notification preferences');
   }
+}
+
+/**
+ * Batch form of getPersonalEmailNotificationSettingsForOrg for many profiles of ONE org: a single
+ * organizationmember LEFT JOIN preferences query (chunked). Every requested profile id is present in the
+ * result; a profile with no org membership or no preference row maps to exactly what the single lookup
+ * returns for it (settings derived from a null row).
+ */
+export async function getPersonalEmailNotificationSettingsForOrgBatch(
+  profileIds: string[],
+  organizationId: string
+): Promise<Map<string, PersonalEmailNotificationSettings | undefined>> {
+  const result = new Map<string, PersonalEmailNotificationSettings | undefined>();
+  const unique = [...new Set(profileIds)];
+  const rowByProfile = new Map<string, MemberEmailNotificationRow | null>();
+
+  for (let i = 0; i < unique.length; i += 500) {
+    const rows = await db
+      .select({
+        profileId: schema.organizationmember.profileId,
+        prefs: schema.organizationmemberEmailNotifications
+      })
+      .from(schema.organizationmember)
+      .leftJoin(
+        schema.organizationmemberEmailNotifications,
+        eq(schema.organizationmemberEmailNotifications.organizationMemberId, schema.organizationmember.id)
+      )
+      .where(
+        and(
+          eq(schema.organizationmember.organizationId, organizationId),
+          inArray(schema.organizationmember.profileId, unique.slice(i, i + 500))
+        )
+      );
+
+    for (const row of rows) {
+      if (row.profileId && !rowByProfile.has(row.profileId)) {
+        rowByProfile.set(row.profileId, rowFromRecord(row.prefs ?? undefined));
+      }
+    }
+  }
+
+  for (const profileId of unique) {
+    result.set(profileId, memberEmailNotificationRowToPersonalSettings(rowByProfile.get(profileId) ?? null));
+  }
+  return result;
 }
 
 export async function getOrganizationMemberEmailNotificationsForApi(profileId: string, organizationId: string) {

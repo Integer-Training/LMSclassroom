@@ -13,6 +13,7 @@ import {
 import {
   addCourseToCohort,
   addCohortMember,
+  addCohortMembersBulk,
   createCohortWithCreatorMembership,
   createCohortNewsfeed as createCohortNewsfeedQuery,
   createCohortNewsfeedComment as createCohortNewsfeedCommentQuery,
@@ -22,6 +23,7 @@ import {
   getEnrolledCohortsByProfile,
   getCohortById,
   getCohortMemberByProfileId,
+  getExistingCohortMembers,
   getCohortMembers,
   getCohortNewsfeed,
   getCohortNewsfeedById,
@@ -41,7 +43,7 @@ import {
 } from '@cio/db/queries/cohort';
 import { getCourseGroupIds } from '@cio/db/queries/course';
 import { insertGroupMembersOnConflictDoNothing } from '@cio/db/queries/group';
-import { getProfileByEmail } from '@cio/db/queries/auth';
+import { getProfilesByEmails } from '@cio/db/queries/auth';
 import {
   getOrgMembersByProfileIds,
   getOrganizationMemberIdByOrgAndProfile,
@@ -210,6 +212,154 @@ export async function listCohortMembers(cohortId: string) {
   }
 }
 
+/** Members processed per transaction / multi-row INSERT in addCohortMembers. */
+const COHORT_ADD_CHUNK = 500;
+
+type CohortAddMemberInput = TAddCohortMembers['members'][number];
+type CohortAddCandidate = {
+  /** Position in the request, so `added` / `errors` keep the request order. */
+  index: number;
+  profileId: string | null;
+  normalizedEmail: string | null;
+  roleId: number;
+};
+type CohortRow = NonNullable<Awaited<ReturnType<typeof getCohortById>>>;
+
+/**
+ * The original one-member path (own transaction, per-member capacity check). Kept as the failure-isolation
+ * fallback: if a whole chunk's transaction fails (e.g. the plan's student limit is hit part-way through), the
+ * chunk is rolled back and replayed one member at a time so each member gets its own result exactly as before.
+ */
+async function addCandidateOneByOne(cohort: CohortRow, courseGroupIds: string[], candidate: CohortAddCandidate) {
+  const { profileId, normalizedEmail, roleId } = candidate;
+  return db.transaction(async (tx) => {
+    const member = await addCohortMember(
+      { cohortId: cohort.id, profileId, roleId, email: normalizedEmail ?? undefined },
+      tx
+    );
+
+    if (member && member.roleId === ROLE.STUDENT && member.profileId && courseGroupIds.length > 0) {
+      const existingOrgMemberId = await getOrganizationMemberIdByOrgAndProfile(
+        cohort.organizationId,
+        member.profileId,
+        tx
+      );
+      if (!existingOrgMemberId) {
+        await assertStudentCapacityOrThrow(cohort.organizationId, 1, tx);
+      }
+
+      await insertOrganizationMembersOnConflictDoNothing(
+        [
+          {
+            organizationId: cohort.organizationId,
+            roleId: ROLE.STUDENT,
+            profileId: member.profileId,
+            email: normalizedEmail ?? undefined,
+            verified: true
+          }
+        ],
+        tx
+      );
+
+      await insertGroupMembersOnConflictDoNothing(
+        courseGroupIds.map((groupId) => ({
+          groupId,
+          roleId: ROLE.STUDENT,
+          profileId: member.profileId,
+          email: normalizedEmail ?? undefined
+        })),
+        tx
+      );
+    }
+
+    return member;
+  });
+}
+
+/**
+ * Fast path for one chunk: ONE transaction with a multi-row cohort_member INSERT (ON CONFLICT DO NOTHING),
+ * one org-member lookup + one capacity check for the chunk's new students, then multi-row org-member and
+ * group-member inserts. Candidates that lost a concurrent-add race are reported as "already a member".
+ */
+async function addCandidateChunk(
+  cohort: CohortRow,
+  courseGroupIds: string[],
+  chunk: CohortAddCandidate[],
+  emailByIndex: Map<number, string | undefined>
+): Promise<Map<number, unknown>> {
+  const outcomes = new Map<number, unknown>();
+
+  await db.transaction(async (tx) => {
+    const inserted = await addCohortMembersBulk(
+      chunk.map((c) => ({
+        cohortId: cohort.id,
+        profileId: c.profileId,
+        roleId: c.roleId,
+        email: c.normalizedEmail ?? undefined
+      })),
+      tx
+    );
+    const insertedByProfile = new Map(inserted.filter((m) => m.profileId).map((m) => [m.profileId!, m]));
+    const insertedNoProfile = inserted.filter((m) => !m.profileId);
+
+    const students: Array<{ candidate: CohortAddCandidate; profileId: string }> = [];
+    let noProfileCursor = 0;
+    for (const candidate of chunk) {
+      const member = candidate.profileId
+        ? insertedByProfile.get(candidate.profileId)
+        : insertedNoProfile[noProfileCursor++];
+      if (!member) {
+        outcomes.set(
+          candidate.index,
+          new AppError(
+            `${emailByIndex.get(candidate.index)} is already a member of this cohort`,
+            ErrorCodes.MEMBER_ALREADY_IN_COHORT,
+            409
+          )
+        );
+        continue;
+      }
+      outcomes.set(candidate.index, member);
+      if (member.roleId === ROLE.STUDENT && member.profileId && courseGroupIds.length > 0) {
+        students.push({ candidate, profileId: member.profileId });
+      }
+    }
+
+    if (students.length === 0) return;
+
+    const profileIds = students.map((s) => s.profileId);
+    const existingOrg = new Set(
+      (await getOrgMembersByProfileIds(cohort.organizationId, profileIds, tx)).map((m) => m.profileId)
+    );
+    const missing = students.filter((s) => !existingOrg.has(s.profileId));
+    await assertStudentCapacityOrThrow(cohort.organizationId, missing.length, tx);
+
+    await insertOrganizationMembersOnConflictDoNothing(
+      missing.map((s) => ({
+        organizationId: cohort.organizationId,
+        roleId: ROLE.STUDENT,
+        profileId: s.profileId,
+        email: s.candidate.normalizedEmail ?? undefined,
+        verified: true
+      })),
+      tx
+    );
+    await insertGroupMembersOnConflictDoNothing(
+      students.flatMap((s) =>
+        courseGroupIds.map((groupId) => ({
+          groupId,
+          roleId: ROLE.STUDENT,
+          profileId: s.profileId,
+          email: s.candidate.normalizedEmail ?? undefined
+        }))
+      ),
+      tx
+    );
+  });
+
+  return outcomes;
+}
+
 export async function addCohortMembers(cohortId: string, data: TAddCohortMembers) {
   try {
     const cohort = await getCohortById(cohortId);
@@ -218,89 +368,89 @@ export async function addCohortMembers(cohortId: string, data: TAddCohortMembers
     }
 
     const cohortCourses = await getCoursesByCohort(cohortId);
-    const courseGroupIds = (await getCourseGroupIds(cohortCourses.map((course) => course.course.id))).map(
-      (courseGroup) => courseGroup.groupId
+    const courseGroupIds = (await getCourseGroupIds(cohortCourses.map((course) => course.course.id)))
+      .map((courseGroup) => courseGroup.groupId)
+      .filter((groupId): groupId is string => Boolean(groupId));
+
+    // Phase G: ONE email lookup and ONE membership lookup for the whole request (was two queries per member,
+    // all members in parallel, each holding a pooled connection). The lookup is the same exact-match one
+    // getProfileByEmail did, applied to the raw email as given.
+    const members: CohortAddMemberInput[] = data.members;
+    const emailsToResolve = [...new Set(members.filter((m) => !m.profileId && m.email).map((m) => m.email as string))];
+    const profileByEmail = new Map<string, { id: string; email: string | null }>();
+    for (let i = 0; i < emailsToResolve.length; i += COHORT_ADD_CHUNK) {
+      for (const p of await getProfilesByEmails(emailsToResolve.slice(i, i + COHORT_ADD_CHUNK))) {
+        if (p.email && !profileByEmail.has(p.email)) profileByEmail.set(p.email, p);
+      }
+    }
+
+    const resolved = members.map((m, index) => {
+      const profile = !m.profileId && m.email ? (profileByEmail.get(m.email) ?? null) : null;
+      return {
+        index,
+        profileId: m.profileId ?? profile?.id ?? null,
+        normalizedEmail: m.email?.toLowerCase().trim() ?? profile?.email ?? null,
+        roleId: m.roleId
+      } satisfies CohortAddCandidate;
+    });
+
+    const existing = await getExistingCohortMembers(
+      resolved.filter((c) => c.profileId).map((c) => ({ cohortId, profileId: c.profileId! }))
     );
 
-    const results = await Promise.allSettled(
-      data.members.map(async ({ profileId: providedProfileId, email, roleId }) => {
-        const profile = !providedProfileId && email ? await getProfileByEmail(email) : null;
-        const profileId = providedProfileId ?? profile?.id ?? null;
-        const normalizedEmail = email?.toLowerCase().trim() ?? profile?.email ?? null;
+    const outcomes = new Map<number, unknown>();
+    const emailByIndex = new Map(members.map((m, index) => [index, m.email] as const));
+    const alreadyMember = (index: number) =>
+      new AppError(
+        `${emailByIndex.get(index)} is already a member of this cohort`,
+        ErrorCodes.MEMBER_ALREADY_IN_COHORT,
+        409
+      );
 
-        if (profileId) {
-          const existing = await getCohortMemberByProfileId(cohortId, profileId);
-          if (existing) {
-            throw new AppError(`${email} is already a member of this cohort`, ErrorCodes.MEMBER_ALREADY_IN_COHORT, 409);
+    const candidates: CohortAddCandidate[] = [];
+    const seenProfiles = new Set<string>();
+    for (const c of resolved) {
+      if (c.profileId && (existing.has(`${cohortId}:${c.profileId}`) || seenProfiles.has(c.profileId))) {
+        outcomes.set(c.index, alreadyMember(c.index));
+        continue;
+      }
+      if (!c.profileId && !members[c.index].email) {
+        outcomes.set(
+          c.index,
+          new AppError('Either profileId or email must be provided for each member', ErrorCodes.VALIDATION_ERROR, 400)
+        );
+        continue;
+      }
+      if (c.profileId) seenProfiles.add(c.profileId);
+      candidates.push(c);
+    }
+
+    for (let i = 0; i < candidates.length; i += COHORT_ADD_CHUNK) {
+      const chunk = candidates.slice(i, i + COHORT_ADD_CHUNK);
+      try {
+        const chunkOutcomes = await addCandidateChunk(cohort, courseGroupIds, chunk, emailByIndex);
+        for (const [index, outcome] of chunkOutcomes) outcomes.set(index, outcome);
+      } catch (chunkError) {
+        console.error('addCohortMembers chunk failed, replaying one member at a time:', chunkError);
+        // Sequential on purpose: each replay opens its own short transaction, so only one connection is held.
+        for (const candidate of chunk) {
+          try {
+            outcomes.set(candidate.index, await addCandidateOneByOne(cohort, courseGroupIds, candidate));
+          } catch (memberError) {
+            outcomes.set(candidate.index, memberError instanceof Error ? memberError : new Error(String(memberError)));
           }
         }
+      }
+    }
 
-        if (!profileId && !email) {
-          throw new AppError(
-            'Either profileId or email must be provided for each member',
-            ErrorCodes.VALIDATION_ERROR,
-            400
-          );
-        }
-
-        return db.transaction(async (tx) => {
-          const member = await addCohortMember(
-            {
-              cohortId,
-              profileId,
-              roleId,
-              email: normalizedEmail ?? undefined
-            },
-            tx
-          );
-
-          if (member && member.roleId === ROLE.STUDENT && member.profileId && courseGroupIds.length > 0) {
-            const validCourseGroupIds = courseGroupIds.filter((groupId): groupId is string => Boolean(groupId));
-
-            const existingOrgMemberId = await getOrganizationMemberIdByOrgAndProfile(
-              cohort.organizationId,
-              member.profileId,
-              tx
-            );
-            if (!existingOrgMemberId) {
-              await assertStudentCapacityOrThrow(cohort.organizationId, 1, tx);
-            }
-
-            await insertOrganizationMembersOnConflictDoNothing(
-              [
-                {
-                  organizationId: cohort.organizationId,
-                  roleId: ROLE.STUDENT,
-                  profileId: member.profileId,
-                  email: normalizedEmail ?? undefined,
-                  verified: true
-                }
-              ],
-              tx
-            );
-
-            await insertGroupMembersOnConflictDoNothing(
-              validCourseGroupIds.map((groupId) => ({
-                groupId,
-                roleId: ROLE.STUDENT,
-                profileId: member.profileId,
-                email: normalizedEmail ?? undefined
-              })),
-              tx
-            );
-          }
-
-          return member;
-        });
-      })
-    );
-
-    const added = results
-      .filter((r) => r.status === 'fulfilled')
-      .map((r) => (r as PromiseFulfilledResult<unknown>).value);
-    const errors = results
-      .filter((r) => r.status === 'rejected')
-      .map((r) => (r as PromiseRejectedResult).reason?.message || 'Unknown error');
+    // Same result shape as before: successful rows and error messages, each in request order.
+    const added: unknown[] = [];
+    const errors: string[] = [];
+    for (let index = 0; index < members.length; index++) {
+      const outcome = outcomes.get(index);
+      if (outcome instanceof Error) errors.push(outcome.message || 'Unknown error');
+      else if (outcome !== undefined) added.push(outcome);
+    }
 
     return { added, errors };
   } catch (error) {

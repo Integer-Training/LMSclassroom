@@ -7,7 +7,7 @@ import type {
 import { addGroupMembers, enrollUsersInCourseGroups, getExistingGroupMembers } from '@cio/db/queries/group';
 import { buildEmailFromName, buildEmailBranding } from '@cio/email';
 import { enqueueTransactionalEmail } from '@api/services/jobs';
-import { addCohortMember, getExistingCohortMembers, getCohortsByOrg } from '@cio/db/queries/cohort';
+import { addCohortMembersBulk, getExistingCohortMembers, getCohortsByOrg } from '@cio/db/queries/cohort';
 import {
   createOrganizationInvite,
   createOrganizationInviteAudits,
@@ -183,18 +183,24 @@ async function enrollAudienceStudentProfilesInCourses(
   const existingSet = await getExistingGroupMembers(pairs);
 
   const toInsert = pairs.filter((p) => !existingSet.has(`${p.groupId}:${p.profileId}`));
-  const alreadyEnrolled = pairs.length - toInsert.length;
 
-  if (toInsert.length > 0) {
-    await addGroupMembers(
-      toInsert.map((p) => ({
-        groupId: p.groupId,
-        roleId: ROLE.STUDENT,
-        profileId: p.profileId,
-        email: profileEmailMap.get(p.profileId) || undefined
-      }))
-    );
-  }
+  // One chunked, transactional, ON CONFLICT DO NOTHING insert. The counts come from RETURNING, so a learner
+  // enrolled concurrently (between the lookup above and this insert) is reported as already enrolled, not
+  // assigned, and never fails the import.
+  const insertedGroupMembers =
+    toInsert.length > 0
+      ? await addGroupMembers(
+          toInsert.map((p) => ({
+            groupId: p.groupId,
+            roleId: ROLE.STUDENT,
+            profileId: p.profileId,
+            email: profileEmailMap.get(p.profileId) || undefined
+          }))
+        )
+      : [];
+  const insertedKeys = new Set(insertedGroupMembers.map((m) => `${m.groupId}:${m.profileId}`));
+  const newlyEnrolled = toInsert.filter((p) => insertedKeys.has(`${p.groupId}:${p.profileId}`));
+  const alreadyEnrolled = pairs.length - newlyEnrolled.length;
 
   if (validProfiles.length > 0) {
     await ensureComplianceEnrollmentRecordsForProfiles(courseIds, validProfiles);
@@ -203,14 +209,16 @@ async function enrollAudienceStudentProfilesInCourses(
   let emailsSent = 0;
   const loginUrl = getDashboardBaseUrl(organization);
 
-  if (shouldSendEmail && toInsert.length > 0) {
+  if (shouldSendEmail && newlyEnrolled.length > 0) {
     const icsByGroupId = new Map(
       await Promise.all(courseGroups.map(async (cg) => [cg.groupId, await getWelcomeSessionIcs(cg.courseId)] as const))
     );
 
-    const emailPromises = toInsert
-      .filter((p) => profileEmailMap.get(p.profileId))
-      .map(async (p) => {
+    // Bounded concurrency: a big import must not fire thousands of enqueues at once.
+    await mapWithConcurrency(
+      newlyEnrolled.filter((p) => profileEmailMap.get(p.profileId)),
+      EMAIL_SEND_CONCURRENCY,
+      async (p) => {
         const email = profileEmailMap.get(p.profileId)!;
         try {
           await enqueueTransactionalEmail('studentCourseWelcome', {
@@ -234,13 +242,12 @@ async function enrollAudienceStudentProfilesInCourses(
             emailError
           );
         }
-      });
-
-    await Promise.all(emailPromises);
+      }
+    );
   }
 
   return {
-    assigned: toInsert.length,
+    assigned: newlyEnrolled.length,
     alreadyEnrolled,
     emailsSent
   };
@@ -277,51 +284,51 @@ async function enrollAudienceStudentProfilesInCohorts(
   const pairs = validProfiles.flatMap((profileId) => validCohortIds.map((cohortId) => ({ cohortId, profileId })));
   const existingSet = await getExistingCohortMembers(pairs);
   const toInsert = pairs.filter((pair) => !existingSet.has(`${pair.cohortId}:${pair.profileId}`));
-  const alreadyEnrolled = pairs.length - toInsert.length;
 
-  if (toInsert.length > 0) {
-    await Promise.all(
-      toInsert.map((pair) =>
-        addCohortMember({
-          cohortId: pair.cohortId,
-          roleId: ROLE.STUDENT,
-          profileId: pair.profileId,
-          email: profileEmailMap.get(pair.profileId) || undefined
-        })
-      )
-    );
-  }
+  // One chunked ON CONFLICT DO NOTHING insert instead of an unbounded Promise.all of single inserts; counts
+  // come from RETURNING so a concurrent add is reported as already enrolled.
+  const insertedCohortMembers = await addCohortMembersBulk(
+    toInsert.map((pair) => ({
+      cohortId: pair.cohortId,
+      roleId: ROLE.STUDENT,
+      profileId: pair.profileId,
+      email: profileEmailMap.get(pair.profileId) || undefined
+    }))
+  );
+  const insertedKeys = new Set(insertedCohortMembers.map((m) => `${m.cohortId}:${m.profileId}`));
+  const newlyEnrolled = toInsert.filter((pair) => insertedKeys.has(`${pair.cohortId}:${pair.profileId}`));
+  const alreadyEnrolled = pairs.length - newlyEnrolled.length;
 
   let emailsSent = 0;
 
-  if (shouldSendEmail && toInsert.length > 0) {
-    await Promise.all(
-      toInsert
-        .filter((pair) => profileEmailMap.get(pair.profileId))
-        .map(async (pair) => {
-          const email = profileEmailMap.get(pair.profileId)!;
+  if (shouldSendEmail && newlyEnrolled.length > 0) {
+    await mapWithConcurrency(
+      newlyEnrolled.filter((pair) => profileEmailMap.get(pair.profileId)),
+      EMAIL_SEND_CONCURRENCY,
+      async (pair) => {
+        const email = profileEmailMap.get(pair.profileId)!;
 
-          try {
-            await enqueueTransactionalEmail('studentCohortWelcome', {
-              to: email,
-              fields: {
-                orgName: organization.name,
-                cohortName: cohortNameById.get(pair.cohortId) || 'Cohort',
-                loginUrl,
-                branding: buildEmailBranding(organization)
-              },
-              from: buildEmailFromName(`${organization.name} (via Integer Training LMS)`),
-              idempotencyKey: `audience-cohort-welcome:${pair.cohortId}:${pair.profileId}`,
-              preference: { organizationId: orgId, recipientProfileId: pair.profileId }
-            });
-            emailsSent++;
-          } catch (emailError) {
-            console.error(
-              'enrollAudienceStudentProfilesInCohorts enqueue error (recipient redacted, HP/LOG-1):',
-              emailError
-            );
-          }
-        })
+        try {
+          await enqueueTransactionalEmail('studentCohortWelcome', {
+            to: email,
+            fields: {
+              orgName: organization.name,
+              cohortName: cohortNameById.get(pair.cohortId) || 'Cohort',
+              loginUrl,
+              branding: buildEmailBranding(organization)
+            },
+            from: buildEmailFromName(`${organization.name} (via Integer Training LMS)`),
+            idempotencyKey: `audience-cohort-welcome:${pair.cohortId}:${pair.profileId}`,
+            preference: { organizationId: orgId, recipientProfileId: pair.profileId }
+          });
+          emailsSent++;
+        } catch (emailError) {
+          console.error(
+            'enrollAudienceStudentProfilesInCohorts enqueue error (recipient redacted, HP/LOG-1):',
+            emailError
+          );
+        }
+      }
     );
   }
 

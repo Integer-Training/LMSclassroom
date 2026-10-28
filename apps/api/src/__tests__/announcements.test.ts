@@ -24,6 +24,7 @@ const ROW = (over: Record<string, unknown> = {}) => ({
 
 vi.mock('@cio/db/queries/comms', () => ({
   insertAnnouncement: vi.fn(async () => ROW()),
+  hasRecentDuplicateAnnouncement: vi.fn(async () => false),
   getAnnouncementById: vi.fn(async () => ROW()),
   listAnnouncementsForLearner: vi.fn(async () => []),
   listAnnouncementsForTutor: vi.fn(async () => []),
@@ -51,13 +52,14 @@ vi.mock('@cio/db/queries/onboarding', () => ({
 }));
 vi.mock('@api/middlewares/guards', () => ({ isEnrolledLearner: vi.fn(async () => false) }));
 vi.mock('@cio/db/queries/organization', () => ({ getOrganizationById: vi.fn(async () => ({ name: 'Org' })) }));
-vi.mock('@api/services/comms/notify', () => ({ emitNotification: vi.fn(async () => {}) }));
+vi.mock('@api/services/comms/notify', () => ({ emitNotificationBatch: vi.fn(async () => {}) }));
 vi.mock('@cio/db/audit', async (orig) => ({ ...(await orig<typeof import('@cio/db/audit')>()), recordAudit: vi.fn() }));
 vi.mock('@cio/email', () => ({ buildEmailBranding: vi.fn(() => ({})) }));
 vi.mock('@cio/core/config/dashboard-url', () => ({ getAppBaseUrl: vi.fn(() => 'http://app') }));
 
 import {
   insertAnnouncement,
+  hasRecentDuplicateAnnouncement,
   getEnrolledLearnerIds,
   getOrgLearnerIds,
   getOrgTutorIds,
@@ -70,7 +72,7 @@ import {
 import { getOrgMemberRoleId, listLearnersForTutor } from '@cio/db/queries/allocation';
 import { getCourseEnrolmentTarget } from '@cio/db/queries/onboarding';
 import { isEnrolledLearner } from '@api/middlewares/guards';
-import { emitNotification } from '@api/services/comms/notify';
+import { emitNotificationBatch } from '@api/services/comms/notify';
 import { recordAudit } from '@cio/db/audit';
 import {
   publishAnnouncement,
@@ -91,7 +93,7 @@ const mRoleId = vi.mocked(getOrgMemberRoleId);
 const mLearnersForTutor = vi.mocked(listLearnersForTutor);
 const mTarget = vi.mocked(getCourseEnrolmentTarget);
 const mEnrolled = vi.mocked(isEnrolledLearner);
-const mEmit = vi.mocked(emitNotification);
+const mEmit = vi.mocked(emitNotificationBatch);
 const mAudit = vi.mocked(recordAudit);
 const mArchive = vi.mocked(setAnnouncementArchived);
 const mDelete = vi.mocked(softDeleteAnnouncement);
@@ -252,5 +254,33 @@ describe('archive / delete — Admin only', () => {
   it('missing row → 404', async () => {
     mArchive.mockResolvedValue(null as never);
     expect(await code(archiveAnnouncement(admin, 'nope', true))).toBe(404);
+  });
+});
+
+describe('publishAnnouncement — double-publish guard (Phase G)', () => {
+  it('rejects an identical broadcast inside the window with 409 and writes nothing', async () => {
+    vi.mocked(hasRecentDuplicateAnnouncement).mockResolvedValueOnce(true);
+    const status = await code(
+      publishAnnouncement(admin, { ...base, audienceType: 'all_learners', title: 'Notice', body: 'Hello all' })
+    );
+    expect(status).toBe(409);
+    expect(mInsert).not.toHaveBeenCalled();
+    expect(mEmit).not.toHaveBeenCalled();
+    expect(mAudit).not.toHaveBeenCalled();
+  });
+
+  it('checks the duplicate against the trimmed author/audience/title/body within 30s', async () => {
+    await publishAnnouncement(admin, { ...base, audienceType: 'all_learners', title: '  Notice ', body: ' Hello ' });
+    expect(vi.mocked(hasRecentDuplicateAnnouncement)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: 'o1',
+        authorId: 'adm',
+        audienceType: 'all_learners',
+        title: 'Notice',
+        body: 'Hello'
+      }),
+      30
+    );
+    expect(mInsert).toHaveBeenCalledTimes(1);
   });
 });

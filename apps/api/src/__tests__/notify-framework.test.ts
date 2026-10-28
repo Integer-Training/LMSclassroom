@@ -7,14 +7,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@cio/db/queries/comms', () => ({
   insertNotification: vi.fn(async () => ({ id: 'n1' })),
+  insertNotificationsBatch: vi.fn(async () => []),
   getNotificationPreference: vi.fn(async () => null),
   hasRecentUnreadForEntity: vi.fn(async () => false)
 }));
 vi.mock('@api/services/jobs', () => ({ enqueueTransactionalEmail: vi.fn(async () => ({ jobIds: ['j1'] })) }));
 
-import { insertNotification, getNotificationPreference, hasRecentUnreadForEntity } from '@cio/db/queries/comms';
+import {
+  insertNotification,
+  insertNotificationsBatch,
+  getNotificationPreference,
+  hasRecentUnreadForEntity
+} from '@cio/db/queries/comms';
 import { enqueueTransactionalEmail } from '@api/services/jobs';
-import { emitNotification, getCategoryEmailEnabled } from '@api/services/comms/notify';
+import {
+  emitNotification,
+  emitNotificationBatch,
+  getCategoryEmailEnabled,
+  NOTIFY_BATCH_CHUNK
+} from '@api/services/comms/notify';
 import { NOTIFICATION_EMAIL_DEFAULTS, categoryForNotificationType } from '@cio/utils/constants';
 
 const mInsert = vi.mocked(insertNotification);
@@ -164,5 +175,85 @@ describe('emitNotification — failure isolation (never throws to the caller)', 
       emitNotification({ type: 'result.recorded', recipients: [recip], emailTemplateId: 'courseworkResulted' })
     ).resolves.toBeUndefined();
     expect(mInsert).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('emitNotificationBatch — chunked in-app fan-out (Phase G)', () => {
+  const mBatch = vi.mocked(insertNotificationsBatch);
+  const many = (n: number) => Array.from({ length: n }, (_, i) => ({ userId: `u${i}` }));
+  const echo = (inputs: Array<{ userId: string }>) => inputs.map((i) => ({ id: `n-${i.userId}`, userId: i.userId }));
+
+  beforeEach(() => {
+    mEnqueue.mockResolvedValue({ jobIds: ['j1'] } as never);
+    mBatch.mockReset();
+    mBatch.mockImplementation((async (inputs: Array<{ userId: string }>) => echo(inputs)) as never);
+  });
+
+  it('writes 1,200 recipients as 3 multi-row inserts (500/500/200), one row per learner, no per-row insert', async () => {
+    await emitNotificationBatch({
+      type: 'announcement.published',
+      recipients: many(1200),
+      entityType: 'announcement',
+      entityId: 'a1'
+    });
+    expect(NOTIFY_BATCH_CHUNK).toBe(500);
+    expect(mBatch.mock.calls.map((c) => c[0].length)).toEqual([500, 500, 200]);
+    const ids = mBatch.mock.calls.flatMap((c) => c[0].map((r) => r.userId));
+    expect(new Set(ids).size).toBe(1200);
+    expect(mBatch.mock.calls[0][0][0]).toMatchObject({
+      type: 'announcement.published',
+      entityType: 'announcement',
+      entityId: 'a1'
+    });
+    expect(mInsert).not.toHaveBeenCalled();
+    expect(mEnqueue).not.toHaveBeenCalled();
+  });
+
+  it('de-duplicates a repeated recipient id', async () => {
+    await emitNotificationBatch({
+      type: 'announcement.published',
+      recipients: [{ userId: 'a' }, { userId: 'a' }, { userId: 'b' }]
+    });
+    expect(mBatch.mock.calls[0][0].map((r) => r.userId)).toEqual(['a', 'b']);
+  });
+
+  it('a failing chunk falls back to per-row inserts; one bad row does not drop the rest, and it never throws', async () => {
+    mBatch.mockRejectedValueOnce(new Error('chunk boom') as never);
+    mInsert.mockImplementation((async (input: { userId: string }) => {
+      if (input.userId === 'u1') throw new Error('row boom');
+      return { id: `n-${input.userId}` };
+    }) as never);
+    await expect(
+      emitNotificationBatch({ type: 'announcement.published', recipients: many(3) })
+    ).resolves.toBeUndefined();
+    expect(mInsert.mock.calls.map((c) => c[0].userId)).toEqual(['u0', 'u1', 'u2']);
+  });
+
+  it('only a failing chunk is retried per row; the other chunks stay batched', async () => {
+    mBatch.mockRejectedValueOnce(new Error('first chunk boom') as never);
+    await emitNotificationBatch({ type: 'announcement.published', recipients: many(NOTIFY_BATCH_CHUNK + 5) });
+    expect(mBatch).toHaveBeenCalledTimes(2);
+    expect(mInsert).toHaveBeenCalledTimes(NOTIFY_BATCH_CHUNK);
+  });
+
+  it('email leg is unchanged: no template or no recipient email means no mail, even with the preference on', async () => {
+    mPref.mockResolvedValue({ emailEnabled: true } as never);
+    await emitNotificationBatch({
+      type: 'announcement.published',
+      recipients: many(3),
+      emailTemplateId: 'announcementPublished'
+    });
+    expect(mEnqueue).not.toHaveBeenCalled();
+    expect(mPref).not.toHaveBeenCalled();
+  });
+
+  it('email leg with an email + preference on still goes through the same gate as emitNotification', async () => {
+    mPref.mockResolvedValue({ emailEnabled: true } as never);
+    await emitNotificationBatch({
+      type: 'announcement.published',
+      recipients: [{ userId: 'u1', email: 'u1@x.test', emailFields: {} }],
+      emailTemplateId: 'announcementPublished'
+    });
+    expect(mEnqueue).toHaveBeenCalledTimes(1);
   });
 });

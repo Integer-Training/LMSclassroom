@@ -4,11 +4,20 @@ import { TNewGroup, TNewGroupmember } from '@db/types';
 import { and, asc, eq, inArray, isNotNull, or } from 'drizzle-orm';
 
 import { ROLE } from '@cio/utils/constants';
-import { db, type DbOrTxClient } from '@db/drizzle';
+import { db, runInTransaction, type DbOrTxClient } from '@db/drizzle';
+
+/** Rows per multi-row INSERT / ANY(...) lookup in the bulk-enrol helpers (keeps statements and params bounded). */
+const BULK_CHUNK_SIZE = 500;
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
 
 export async function createGroup(values: TNewGroup, dbClient: DbOrTxClient = db) {
   try {
-    return dbClient.insert(schema.group).values(values).returning();
+    return await dbClient.insert(schema.group).values(values).returning();
   } catch (error) {
     console.error('createGroup error:', error);
     throw new Error(`Failed to create group: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -17,17 +26,33 @@ export async function createGroup(values: TNewGroup, dbClient: DbOrTxClient = db
 
 export async function addGroupMember(values: TNewGroupmember, dbClient: DbOrTxClient = db) {
   try {
-    return dbClient.insert(schema.groupmember).values(values).returning();
+    return await dbClient.insert(schema.groupmember).values(values).returning();
   } catch (error) {
     console.error('addGroupMember error:', error);
     throw new Error(`Failed to add group member: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
+/**
+ * Bulk-add group members. Chunked multi-row INSERTs, all inside ONE transaction (all-or-nothing per call), with
+ * ON CONFLICT (group_id, profile_id) DO NOTHING so a concurrent enrolment can never fail the batch or have its
+ * role overwritten. Returns ONLY the rows actually inserted (RETURNING) — callers derive "skipped" from the diff.
+ */
 export async function addGroupMembers(values: TNewGroupmember[]) {
   if (values.length === 0) return [];
   try {
-    return db.insert(schema.groupmember).values(values).returning();
+    return await runInTransaction(async (tx) => {
+      const inserted: Array<typeof schema.groupmember.$inferSelect> = [];
+      for (const chunk of chunkArray(values, BULK_CHUNK_SIZE)) {
+        const rows = await tx
+          .insert(schema.groupmember)
+          .values(chunk)
+          .onConflictDoNothing({ target: [schema.groupmember.groupId, schema.groupmember.profileId] })
+          .returning();
+        inserted.push(...rows);
+      }
+      return inserted;
+    });
   } catch (error) {
     console.error('addGroupMembers error:', error);
     throw new Error(`Failed to bulk add group members: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -43,12 +68,17 @@ export async function getExistingGroupMembers(
     const groupIds = [...new Set(pairs.map((p) => p.groupId))];
     const profileIds = [...new Set(pairs.map((p) => p.profileId))];
 
-    const rows = await db
-      .select({ groupId: schema.groupmember.groupId, profileId: schema.groupmember.profileId })
-      .from(schema.groupmember)
-      .where(and(inArray(schema.groupmember.groupId, groupIds), inArray(schema.groupmember.profileId, profileIds)));
-
-    return new Set(rows.map((r) => `${r.groupId}:${r.profileId}`));
+    // Chunk on profile ids so a big import never builds one enormous IN (...) list. The group x profile
+    // cross product is a superset of the requested pairs, which is fine for set membership lookups.
+    const existing = new Set<string>();
+    for (const profileChunk of chunkArray(profileIds, BULK_CHUNK_SIZE)) {
+      const rows = await db
+        .select({ groupId: schema.groupmember.groupId, profileId: schema.groupmember.profileId })
+        .from(schema.groupmember)
+        .where(and(inArray(schema.groupmember.groupId, groupIds), inArray(schema.groupmember.profileId, profileChunk)));
+      for (const r of rows) existing.add(`${r.groupId}:${r.profileId}`);
+    }
+    return existing;
   } catch (error) {
     console.error('getExistingGroupMembers error:', error);
     throw new Error(
@@ -59,7 +89,8 @@ export async function getExistingGroupMembers(
 
 /**
  * Enroll users in course groups, skipping any existing memberships.
- * Returns the count of newly inserted memberships.
+ * Returns the count of newly inserted memberships (from RETURNING — a membership created concurrently between
+ * the lookup and the insert is skipped, not double-counted).
  */
 export async function enrollUsersInCourseGroups(
   groupIds: string[],
@@ -81,11 +112,9 @@ export async function enrollUsersInCourseGroups(
       email: emailByProfile.get(p.profileId) ?? undefined
     }));
 
-  if (toInsert.length > 0) {
-    await addGroupMembers(toInsert);
-  }
-
-  return toInsert.length;
+  if (toInsert.length === 0) return 0;
+  const inserted = await addGroupMembers(toInsert);
+  return inserted.length;
 }
 
 /**

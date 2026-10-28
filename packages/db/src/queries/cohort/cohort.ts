@@ -5,6 +5,9 @@ import { and, asc, desc, eq, ilike, inArray, ne, or, sql } from 'drizzle-orm';
 import { ROLE } from '@cio/utils/constants';
 import { db, type DbOrTxClient } from '@db/drizzle';
 
+/** Rows per multi-row INSERT / IN (...) lookup in the bulk cohort helpers. */
+const BULK_CHUNK_SIZE = 500;
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type TCohort = typeof schema.cohort.$inferSelect;
@@ -198,16 +201,21 @@ export async function getExistingCohortMembers(
     const cohortIds = [...new Set(pairs.map((pair) => pair.cohortId))];
     const profileIds = [...new Set(pairs.map((pair) => pair.profileId))];
 
-    const rows = await db
-      .select({ cohortId: schema.cohortMember.cohortId, profileId: schema.cohortMember.profileId })
-      .from(schema.cohortMember)
-      .where(and(inArray(schema.cohortMember.cohortId, cohortIds), inArray(schema.cohortMember.profileId, profileIds)));
-
-    return new Set(
-      rows
-        .filter((row): row is { cohortId: string; profileId: string } => Boolean(row.cohortId && row.profileId))
-        .map((row) => `${row.cohortId}:${row.profileId}`)
-    );
+    // Chunk on profile ids so a big import never builds one enormous IN (...) list.
+    const existing = new Set<string>();
+    for (let i = 0; i < profileIds.length; i += BULK_CHUNK_SIZE) {
+      const profileChunk = profileIds.slice(i, i + BULK_CHUNK_SIZE);
+      const rows = await db
+        .select({ cohortId: schema.cohortMember.cohortId, profileId: schema.cohortMember.profileId })
+        .from(schema.cohortMember)
+        .where(
+          and(inArray(schema.cohortMember.cohortId, cohortIds), inArray(schema.cohortMember.profileId, profileChunk))
+        );
+      for (const row of rows) {
+        if (row.cohortId && row.profileId) existing.add(`${row.cohortId}:${row.profileId}`);
+      }
+    }
+    return existing;
   } catch (error) {
     console.error('getExistingCohortMembers error:', error);
     throw new Error(
@@ -310,6 +318,33 @@ export async function addCohortMember(data: TNewCohortMember, dbClient: DbOrTxCl
   } catch (error) {
     console.error('addCohortMember error:', error);
     throw new Error(`Failed to add cohort member: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Bulk-add cohort members: chunked multi-row INSERTs with ON CONFLICT DO NOTHING (the cohort/profile unique
+ * constraint), returning ONLY the rows actually inserted — a concurrent add is skipped, never an error. Pass a
+ * `tx` to make the whole call atomic with the caller's other writes.
+ */
+export async function addCohortMembersBulk(
+  values: TNewCohortMember[],
+  dbClient: DbOrTxClient = db
+): Promise<TCohortMember[]> {
+  if (values.length === 0) return [];
+  try {
+    const inserted: TCohortMember[] = [];
+    for (let i = 0; i < values.length; i += BULK_CHUNK_SIZE) {
+      const rows = await dbClient
+        .insert(schema.cohortMember)
+        .values(values.slice(i, i + BULK_CHUNK_SIZE))
+        .onConflictDoNothing()
+        .returning();
+      inserted.push(...rows);
+    }
+    return inserted;
+  } catch (error) {
+    console.error('addCohortMembersBulk error:', error);
+    throw new Error(`Failed to bulk add cohort members: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 

@@ -43,6 +43,38 @@ export async function insertAnnouncement(
   return row as AnnouncementRow;
 }
 
+/**
+ * Phase G double-publish guard: has this author already published the SAME broadcast (org, author, audience,
+ * target, title, body) within the last `windowSeconds`? A double-click / retried request then gets a clear
+ * error instead of a second announcement and a second fan-out.
+ */
+export async function hasRecentDuplicateAnnouncement(
+  input: InsertAnnouncementInput,
+  windowSeconds: number,
+  client: DbOrTxClient = db
+): Promise<boolean> {
+  const [row] = await client
+    .select({ id: schema.announcement.id })
+    .from(schema.announcement)
+    .where(
+      and(
+        eq(schema.announcement.organizationId, input.organizationId),
+        eq(schema.announcement.authorId, input.authorId),
+        eq(schema.announcement.audienceType, input.audienceType),
+        input.courseId ? eq(schema.announcement.courseId, input.courseId) : isNull(schema.announcement.courseId),
+        input.targetUserId
+          ? eq(schema.announcement.targetUserId, input.targetUserId)
+          : isNull(schema.announcement.targetUserId),
+        eq(schema.announcement.title, input.title),
+        eq(schema.announcement.body, input.body),
+        isNull(schema.announcement.deletedAt),
+        sql`${schema.announcement.publishedAt} > now() - make_interval(secs => ${windowSeconds})`
+      )
+    )
+    .limit(1);
+  return !!row;
+}
+
 export async function getAnnouncementById(id: string, client: DbOrTxClient = db): Promise<AnnouncementRow | null> {
   const [row] = await client.select().from(schema.announcement).where(eq(schema.announcement.id, id)).limit(1);
   return (row as AnnouncementRow) ?? null;

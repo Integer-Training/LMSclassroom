@@ -39,6 +39,28 @@ export async function insertNotification(
   return row as NotificationRow;
 }
 
+/**
+ * Write many in-app rows in ONE multi-row INSERT (Phase G broadcast fan-out). Callers chunk (see
+ * emitNotificationBatch) and fall back to per-row inserts if a chunk fails.
+ */
+export async function insertNotificationsBatch(
+  inputs: InsertNotificationInput[],
+  client: DbOrTxClient = db
+): Promise<Array<{ id: string; userId: string }>> {
+  if (inputs.length === 0) return [];
+  return client
+    .insert(schema.notification)
+    .values(
+      inputs.map((input) => ({
+        userId: input.userId,
+        type: input.type,
+        entityType: input.entityType ?? null,
+        entityId: input.entityId ?? null
+      }))
+    )
+    .returning({ id: schema.notification.id, userId: schema.notification.userId });
+}
+
 /** A user's own notifications, newest first (self-scoped — caller passes the actor's own id). */
 export async function listNotificationsForUser(
   userId: string,

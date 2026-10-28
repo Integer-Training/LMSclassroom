@@ -5,7 +5,10 @@ import {
 } from '@cio/utils/notifications';
 
 import { getOrganizationEmailNotificationSettings } from './email-preferences-org';
-import { getPersonalEmailNotificationSettingsForOrg } from './organizationmember-email-notifications';
+import {
+  getPersonalEmailNotificationSettingsForOrg,
+  getPersonalEmailNotificationSettingsForOrgBatch
+} from './organizationmember-email-notifications';
 import { getProfileByEmail } from '../auth/profile';
 import type { EmailId } from '@cio/email';
 
@@ -44,6 +47,21 @@ export class EmailPreferenceLookupCache {
       profileId && input.organizationId ? await this.getPersonalSettings(profileId, input.organizationId) : undefined;
 
     return resolveEmailDelivery(input.emailId, orgSettings, personalSettings);
+  }
+
+  /**
+   * Optional warm-up for a batch processor: load the personal settings of many recipients of one org in a single
+   * query instead of two per recipient. Purely read batching: the values cached are exactly what the lazy
+   * per-recipient lookup would have produced, so delivery decisions are unchanged.
+   */
+  async prefetchPersonalSettings(profileIds: string[], organizationId: string): Promise<void> {
+    const missing = profileIds.filter((id) => !this.personalSettingsByOrgMember.has(`${id}:${organizationId}`));
+    if (missing.length === 0) return;
+
+    const settingsByProfile = await getPersonalEmailNotificationSettingsForOrgBatch(missing, organizationId);
+    for (const [profileId, settings] of settingsByProfile) {
+      this.personalSettingsByOrgMember.set(`${profileId}:${organizationId}`, settings);
+    }
   }
 
   private async getOrganizationSettings(orgId: string): Promise<EmailNotificationSettings | undefined> {

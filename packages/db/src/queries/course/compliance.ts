@@ -314,6 +314,98 @@ export async function createCourseCompletionRecordIfAbsent(
   }
 }
 
+/** Rows per multi-row INSERT / IN (...) in the bulk compliance helpers. */
+const BULK_CHUNK_SIZE = 500;
+
+/**
+ * Bulk-create completion records (chunked multi-row INSERT). Plain insert on purpose: same failure semantics
+ * as createCourseCompletionRecord (a duplicate raises and rolls back the caller's transaction); pass the `tx`.
+ */
+export async function createCourseCompletionRecordsBulk(
+  values: TNewCourseCompletionRecord[],
+  dbClient: DbOrTxClient = db
+): Promise<TCourseCompletionRecord[]> {
+  if (values.length === 0) return [];
+  try {
+    const created: TCourseCompletionRecord[] = [];
+    for (let i = 0; i < values.length; i += BULK_CHUNK_SIZE) {
+      created.push(
+        ...(await dbClient
+          .insert(schema.courseCompletionRecord)
+          .values(values.slice(i, i + BULK_CHUNK_SIZE))
+          .returning())
+      );
+    }
+    return created;
+  } catch (error) {
+    console.error('createCourseCompletionRecordsBulk error:', error);
+    throw new Error(
+      `Failed to create course completion records: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
+}
+
+/**
+ * Bulk variant of createCourseCompletionRecordIfAbsent: chunked INSERT ... ON CONFLICT (course, profile, cycle)
+ * DO NOTHING, returning only the rows actually created.
+ */
+export async function createCourseCompletionRecordsIfAbsentBulk(
+  values: TNewCourseCompletionRecord[],
+  dbClient: DbOrTxClient = db
+): Promise<TCourseCompletionRecord[]> {
+  if (values.length === 0) return [];
+  try {
+    const created: TCourseCompletionRecord[] = [];
+    for (let i = 0; i < values.length; i += BULK_CHUNK_SIZE) {
+      created.push(
+        ...(await dbClient
+          .insert(schema.courseCompletionRecord)
+          .values(values.slice(i, i + BULK_CHUNK_SIZE))
+          .onConflictDoNothing({
+            target: [
+              schema.courseCompletionRecord.courseId,
+              schema.courseCompletionRecord.profileId,
+              schema.courseCompletionRecord.cycleNumber
+            ]
+          })
+          .returning())
+      );
+    }
+    return created;
+  } catch (error) {
+    console.error('createCourseCompletionRecordsIfAbsentBulk error:', error);
+    throw new Error(
+      `Failed to create course completion records: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
+}
+
+/** Apply the SAME values to many records in one UPDATE ... WHERE id IN (...) (chunked). Returns rows updated. */
+export async function updateCourseCompletionRecordsByIds(
+  recordIds: string[],
+  values: Partial<TNewCourseCompletionRecord>,
+  dbClient: DbOrTxClient = db
+): Promise<number> {
+  if (recordIds.length === 0) return 0;
+  try {
+    let updated = 0;
+    for (let i = 0; i < recordIds.length; i += BULK_CHUNK_SIZE) {
+      const rows = await dbClient
+        .update(schema.courseCompletionRecord)
+        .set({ ...values, updatedAt: new Date().toISOString() })
+        .where(inArray(schema.courseCompletionRecord.id, recordIds.slice(i, i + BULK_CHUNK_SIZE)))
+        .returning({ id: schema.courseCompletionRecord.id });
+      updated += rows.length;
+    }
+    return updated;
+  } catch (error) {
+    console.error('updateCourseCompletionRecordsByIds error:', error);
+    throw new Error(
+      `Failed to update course completion records: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
+}
+
 export async function updateCourseCompletionRecord(
   recordId: string,
   values: Partial<TNewCourseCompletionRecord>,

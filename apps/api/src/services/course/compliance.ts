@@ -6,6 +6,8 @@ import {
   createCourseCompletionNotificationEvent,
   createCourseCompletionRecord,
   createCourseCompletionRecordIfAbsent,
+  createCourseCompletionRecordsBulk,
+  createCourseCompletionRecordsIfAbsentBulk,
   getCourseComplianceHistoryRows,
   getCourseCurrentComplianceRows,
   getLatestComplianceRecordsByProfiles,
@@ -15,6 +17,7 @@ import {
   listLatestComplianceRecordsForReminderScan,
   updateCourseCertificateIssueStatusByRecordId,
   updateCourseCompletionRecord,
+  updateCourseCompletionRecordsByIds,
   type OrgComplianceLearnerRow
 } from '@cio/db/queries/course/compliance';
 import { db } from '@cio/db/drizzle';
@@ -252,23 +255,32 @@ export async function ensureComplianceEnrollmentRecordsForProfiles(courseIds: st
       continue;
     }
 
-    resolveComplianceInitialDueDate(await getComplianceCourseOrThrow(courseId));
+    const dueDate = resolveComplianceInitialDueDate(await getComplianceCourseOrThrow(courseId));
 
+    // Set-based: ONE latest-record lookup for all learners and ONE ON CONFLICT DO NOTHING insert of the missing
+    // first-cycle records (was 3-4 round trips per learner). createdCount counts rows actually created.
     const learners = await getStudentCourseMembersForCompliance(courseId, profileIds);
-    for (const learner of learners) {
+    const learnerProfileIds = learners.flatMap((l) => (l.member.profileId ? [l.member.profileId] : []));
+    const existingProfileIds = new Set(
+      (await getLatestComplianceRecordsByProfiles(courseId, learnerProfileIds)).map((r) => r.profileId)
+    );
+    const missing = learners.flatMap((learner) => {
       const profileId = learner.member.profileId;
-      if (!profileId) {
-        continue;
-      }
-
-      const [existingRecord] = await getLatestComplianceRecordsByProfiles(courseId, [profileId]);
-      if (existingRecord) {
-        continue;
-      }
-
-      await ensureComplianceEnrollmentRecordForLearner(courseId, learner.member.id, profileId);
-      createdCount += 1;
-    }
+      if (!profileId || existingProfileIds.has(profileId)) return [];
+      return [
+        {
+          courseId,
+          groupMemberId: learner.member.id,
+          profileId,
+          cycleNumber: 1,
+          status: 'not_started' as const,
+          dueDate,
+          attempts: 0,
+          timeSpentMinutes: 0
+        }
+      ];
+    });
+    createdCount += (await createCourseCompletionRecordsIfAbsentBulk(missing)).length;
   }
 
   return {
@@ -433,52 +445,53 @@ export async function resetCourseCompliance(courseId: string, payload: TCourseCo
   let createdCount = 0;
   let updatedCount = 0;
 
-  await db.transaction(async (tx) => {
-    for (const student of students) {
-      const profileId = student.member.profileId;
-      if (!profileId) {
-        continue;
-      }
-
-      const existingRecord = recordByProfileId.get(profileId);
-      if (!existingRecord) {
-        await createCourseCompletionRecord(
-          {
-            courseId,
-            groupMemberId: student.member.id,
-            profileId,
-            cycleNumber: 1,
-            status: 'not_started',
-            dueDate: payload.dueDate,
-            attempts: 0,
-            timeSpentMinutes: 0
-          },
-          tx
-        );
-        createdCount += 1;
-        continue;
-      }
-
-      await updateCourseCompletionRecord(
-        existingRecord.id,
-        {
-          status: 'not_started',
-          dueDate: payload.dueDate,
-          startedAt: null,
-          completedAt: null,
-          validUntil: null,
-          expiredAt: null,
-          score: null,
-          attempts: 0,
-          timeSpentMinutes: 0,
-          waivedBy: null,
-          waiverReason: null,
-          waiverExpiresAt: null
-        },
-        tx
-      );
-      updatedCount += 1;
+  // Set-based: every existing record gets the SAME reset values (one UPDATE ... IN), every missing record is
+  // created in one multi-row INSERT, both inside one transaction so the call stays all-or-nothing.
+  const toCreate: Parameters<typeof createCourseCompletionRecordsBulk>[0] = [];
+  const toResetIds: string[] = [];
+  for (const student of students) {
+    const profileId = student.member.profileId;
+    if (!profileId) {
+      continue;
     }
+
+    const existingRecord = recordByProfileId.get(profileId);
+    if (!existingRecord) {
+      toCreate.push({
+        courseId,
+        groupMemberId: student.member.id,
+        profileId,
+        cycleNumber: 1,
+        status: 'not_started',
+        dueDate: payload.dueDate,
+        attempts: 0,
+        timeSpentMinutes: 0
+      });
+    } else {
+      toResetIds.push(existingRecord.id);
+    }
+  }
+
+  await db.transaction(async (tx) => {
+    createdCount = (await createCourseCompletionRecordsBulk(toCreate, tx)).length;
+    updatedCount = await updateCourseCompletionRecordsByIds(
+      toResetIds,
+      {
+        status: 'not_started',
+        dueDate: payload.dueDate,
+        startedAt: null,
+        completedAt: null,
+        validUntil: null,
+        expiredAt: null,
+        score: null,
+        attempts: 0,
+        timeSpentMinutes: 0,
+        waivedBy: null,
+        waiverReason: null,
+        waiverExpiresAt: null
+      },
+      tx
+    );
   });
 
   return {
@@ -502,47 +515,42 @@ export async function extendCourseCompliance(courseId: string, payload: TCourseC
   let updatedCount = 0;
   let skippedCount = 0;
 
-  await db.transaction(async (tx) => {
-    for (const student of students) {
-      const profileId = student.member.profileId;
-      if (!profileId) {
-        continue;
-      }
-
-      const existingRecord = getCurrentIncompleteRecord(recordByProfileId.get(profileId));
-      if (!existingRecord) {
-        const latestRecord = recordByProfileId.get(profileId);
-        if (latestRecord?.completedAt) {
-          skippedCount += 1;
-          continue;
-        }
-
-        await createCourseCompletionRecord(
-          {
-            courseId,
-            groupMemberId: student.member.id,
-            profileId,
-            cycleNumber: latestRecord ? latestRecord.cycleNumber + 1 : 1,
-            status: 'not_started',
-            dueDate: payload.dueDate,
-            attempts: 0,
-            timeSpentMinutes: 0
-          },
-          tx
-        );
-        createdCount += 1;
-        continue;
-      }
-
-      await updateCourseCompletionRecord(
-        existingRecord.id,
-        {
-          dueDate: payload.dueDate
-        },
-        tx
-      );
-      updatedCount += 1;
+  // Set-based, as in resetCourseCompliance: one multi-row INSERT for new cycles and one UPDATE ... IN for the
+  // due-date extension, in one transaction.
+  const toCreate: Parameters<typeof createCourseCompletionRecordsBulk>[0] = [];
+  const toExtendIds: string[] = [];
+  for (const student of students) {
+    const profileId = student.member.profileId;
+    if (!profileId) {
+      continue;
     }
+
+    const existingRecord = getCurrentIncompleteRecord(recordByProfileId.get(profileId));
+    if (!existingRecord) {
+      const latestRecord = recordByProfileId.get(profileId);
+      if (latestRecord?.completedAt) {
+        skippedCount += 1;
+        continue;
+      }
+
+      toCreate.push({
+        courseId,
+        groupMemberId: student.member.id,
+        profileId,
+        cycleNumber: latestRecord ? latestRecord.cycleNumber + 1 : 1,
+        status: 'not_started',
+        dueDate: payload.dueDate,
+        attempts: 0,
+        timeSpentMinutes: 0
+      });
+    } else {
+      toExtendIds.push(existingRecord.id);
+    }
+  }
+
+  await db.transaction(async (tx) => {
+    createdCount = (await createCourseCompletionRecordsBulk(toCreate, tx)).length;
+    updatedCount = await updateCourseCompletionRecordsByIds(toExtendIds, { dueDate: payload.dueDate }, tx);
   });
 
   return {
@@ -569,31 +577,33 @@ export async function waiveCourseCompliance(courseId: string, actorProfileId: st
   let updatedCount = 0;
   let skippedCount = 0;
 
-  await db.transaction(async (tx) => {
-    for (const student of students) {
-      const profileId = student.member.profileId;
-      if (!profileId) {
-        continue;
-      }
-
-      const existingRecord = getCurrentIncompleteRecord(recordByProfileId.get(profileId));
-      if (!existingRecord) {
-        skippedCount += 1;
-        continue;
-      }
-
-      await updateCourseCompletionRecord(
-        existingRecord.id,
-        {
-          status: 'waived',
-          waivedBy: actorProfileId,
-          waiverReason: payload.waiverReason ?? null,
-          waiverExpiresAt: payload.waiverExpiresAt ?? null
-        },
-        tx
-      );
-      updatedCount += 1;
+  const toWaiveIds: string[] = [];
+  for (const student of students) {
+    const profileId = student.member.profileId;
+    if (!profileId) {
+      continue;
     }
+
+    const existingRecord = getCurrentIncompleteRecord(recordByProfileId.get(profileId));
+    if (!existingRecord) {
+      skippedCount += 1;
+      continue;
+    }
+    toWaiveIds.push(existingRecord.id);
+  }
+
+  // Set-based: every waived record gets the same values, so one UPDATE ... IN instead of one per learner.
+  await db.transaction(async (tx) => {
+    updatedCount = await updateCourseCompletionRecordsByIds(
+      toWaiveIds,
+      {
+        status: 'waived',
+        waivedBy: actorProfileId,
+        waiverReason: payload.waiverReason ?? null,
+        waiverExpiresAt: payload.waiverExpiresAt ?? null
+      },
+      tx
+    );
   });
 
   return {
