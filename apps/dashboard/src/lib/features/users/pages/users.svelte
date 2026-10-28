@@ -63,7 +63,7 @@
     { key: 'notes', label: 'Notes', type: 'textarea' }
   ];
 
-  onMount(() => usersApi.list());
+  onMount(() => usersApi.list({ search: '', page: 1 }));
 
   $effect(() => {
     const v = searchValue;
