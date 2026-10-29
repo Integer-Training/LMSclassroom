@@ -18,6 +18,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    setupFiles: ['./src/__tests__/setup/block-remote-db.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

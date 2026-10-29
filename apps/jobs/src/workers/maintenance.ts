@@ -42,8 +42,9 @@ const SYSTEM_EVENT_RETENTION_DAYS = 90;
 // Scheduler job template opts: BullMQ keeps every scheduler run forever unless told otherwise.
 const SCHEDULED_JOB_RETENTION = { removeOnComplete: { count: 50 }, removeOnFail: { count: 200 } } as const;
 
-// Retention purges (owner decision 5). Each is ON by default and has its own env flag (`=false` turns it off);
-// RETENTION_PURGES_ENABLED=false is the master switch. audit_event is NEVER purged and has no flag because it has no purge.
+// Retention purges (owner decision 5). OFF unless RETENTION_PURGES_ENABLED=true (owner: never delete existing data
+// without explicit approval). Once on, each table also has its own env flag (`=false` turns that one off);
+// RETENTION_PURGES_ENABLED is the master switch. audit_event is NEVER purged and has no flag because it has no purge.
 const RETENTION_DEFAULT_DAYS = {
   notification: 90,
   deadLetterJob: 90,
@@ -55,7 +56,7 @@ const RETENTION_DEFAULT_DAYS = {
 type RetentionWindows = Partial<Record<keyof typeof RETENTION_DEFAULT_DAYS, number>>;
 
 async function runRetentionPurges(windows: RetentionWindows = {}) {
-  if (!isFlagEnabled(process.env.RETENTION_PURGES_ENABLED, true)) {
+  if (!isFlagEnabled(process.env.RETENTION_PURGES_ENABLED, false)) {
     log.info('retention-purges-disabled', { flag: 'RETENTION_PURGES_ENABLED' });
     return { disabled: true };
   }
@@ -267,8 +268,9 @@ async function registerSchedulers(): Promise<void> {
     );
     log.info('retention-compact-scheduler-registered', { pattern: '30 3 * * *' });
 
-    // Compliance expiry scan (owner decision 11): daily 02:00 UTC. COMPLIANCE_EXPIRY_SCAN_ENABLED=false unschedules it.
-    if (isFlagEnabled(process.env.COMPLIANCE_EXPIRY_SCAN_ENABLED, true)) {
+    // Compliance expiry scan (owner decision 11): daily 02:00 UTC, OFF unless COMPLIANCE_EXPIRY_SCAN_ENABLED=true
+    // (it rolls lapsed compliance cycles, which changes existing data, so it needs an explicit owner go-ahead).
+    if (isFlagEnabled(process.env.COMPLIANCE_EXPIRY_SCAN_ENABLED, false)) {
       await maintenanceQueue.upsertJobScheduler(
         'compliance-expiry-scan-scheduler',
         { pattern: '0 2 * * *' },

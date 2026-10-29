@@ -255,13 +255,13 @@ All optional; unset = the default shown. Flags read `false`, `0`, `off` or `no` 
 | `REPORT_STATEMENT_TIMEOUT_MS` | `20000` | Transaction-local `statement_timeout` on the known heavy org report reads only (`0` = off). Never set on the shared role. | `packages/db/src/drizzle.ts` |
 | `SYSTEM_EVENT_THROTTLE_WINDOW_MS` | `60000` | One `api.error` / `client.error` row per (type, path, status) per window, with a suppressed count (`0` = off). Security events are never throttled. | `packages/db/src/system-events.ts` |
 | `FFMPEG_TIMEOUT_MS` | 30 min + 10 min/GiB, max 60 min | Hard ceiling for one ffmpeg run. | `apps/jobs/src/utils/ffmpeg.ts` |
-| `RETENTION_PURGES_ENABLED` | `true` | Master switch for the nightly (03:30 UTC) batched purges. `audit_event` is never purged. | `apps/jobs/src/workers/maintenance.ts` |
+| `RETENTION_PURGES_ENABLED` | `false` | Master switch for the nightly (03:30 UTC) batched purges. OFF until the owner explicitly approves deleting existing data; the per-table flags below only apply once this is `true`. `audit_event` is never purged. | `apps/jobs/src/workers/maintenance.ts` |
 | `RETENTION_SESSIONS_ENABLED` | `true` | Delete sessions expired for more than 1 day, keeping each user's newest session unless a login event is at least as recent (so "last seen" never changes). | same |
 | `RETENTION_VERIFICATIONS_ENABLED` | `true` | Delete expired verification tokens. | same |
 | `RETENTION_NOTIFICATIONS_ENABLED` | `true` | Delete READ notifications older than 90 days (unread are kept forever). | same |
 | `RETENTION_DEAD_LETTER_ENABLED` | `true` | Delete `dead_letter_job` rows older than 90 days. | same |
 | `RETENTION_ANALYTICS_EVENTS_ENABLED` | `true` | Delete raw `analytics_page_event` rows older than 180 days AND already rolled up. | same |
 | `RETENTION_JOB_RECORDS_ENABLED` | `true` | Delete finished `job_step` / `media_job` rows older than 90 days (the newest media job per asset is kept). | same |
-| `COMPLIANCE_EXPIRY_SCAN_ENABLED` | `true` | Schedule the daily (02:00 UTC) compliance expiry scan in the jobs worker. | same |
+| `COMPLIANCE_EXPIRY_SCAN_ENABLED` | `false` | Schedule the daily (02:00 UTC) compliance expiry scan in the jobs worker. OFF until the owner approves it (it rolls lapsed compliance cycles, changing existing data). | same |
 | `COMPLIANCE_REMINDER_SCAN_ENABLED` | `false` | Schedule the daily (02:30 UTC) compliance status/reminder-event scan. Changes learner compliance statuses, so it needs an explicit go-ahead. | same |
 | `COHORT_GOAL_REMINDER_EMAILS_ENABLED` | `false` | Lets `POST /internal/compliance/send-cohort-goal-reminders` actually enqueue emails. | `apps/api/src/utils/feature-flags.ts` |
