@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { goto } from '$app/navigation';
   import * as Sidebar from '@cio/ui/base/sidebar';
   import { Empty } from '@cio/ui/custom/empty';
@@ -65,12 +65,16 @@
     } else {
       courseApi.ensureCourse(data.courseId, $profile.id);
     }
+  });
 
-    // PearlLMS Phase 4: load the sequential-unlock map for the outline + lesson lock states (authoritative
-    // server computation; staff / toggle-off courses come back all-unlocked).
-    // Reload on every (re)entry of the course layout (and each lesson open, below) — a tutor may have passed the
-    // previous unit since the map was cached, and the singleton otherwise keeps the stale lock until F5.
-    courseUnlockApi.load(data.courseId);
+  // PearlLMS Phase 4: load the sequential-unlock map for the outline + lesson lock states (authoritative
+  // server computation; staff / toggle-off courses come back all-unlocked). Reloaded on each entry to the course and
+  // each unit open — a tutor may have passed the previous unit since the map was cached, and the singleton otherwise
+  // keeps the stale lock until F5. Depends only on the course and unit ids, so it fires once per visit.
+  $effect(() => {
+    const courseId = data.courseId;
+    void page.params.lessonId;
+    if (courseId) untrack(() => courseUnlockApi.load(courseId));
   });
 
   const isCourseReady = $derived.by(() => {
@@ -106,11 +110,6 @@
   const isExercisePage = $derived(!!data.exerciseId);
 
   const lessonId = $derived(page.params.lessonId as string | undefined);
-
-  // Opening a unit re-checks its lock against the server, so a pass recorded since the map was cached unlocks it.
-  $effect(() => {
-    if (lessonId && data.courseId) courseUnlockApi.load(data.courseId);
-  });
   const exerciseId = $derived((page.params.exerciseId as string | undefined) ?? data.exerciseId);
   const isLessonOrExercisePage = $derived(Boolean(lessonId || exerciseId));
   const isLessonEditMode = $derived(page.url.searchParams.get('mode') === 'edit');

@@ -41,6 +41,8 @@
 
   let isFetching: boolean = $state(false);
   let hasHandledNext = $state(false);
+  // True from the moment Continue starts resolving until it navigates, so the outline doesn't flash meanwhile.
+  let isResolvingNext = $state(false);
 
   const isCourseLoadedForThisPage = $derived(courseApi.course?.id === courseId);
   const canResolveNext = $derived(isCourseLoadedForThisPage && navigableContentItems.length > 0 && !hasHandledNext);
@@ -63,6 +65,7 @@
     if (!canResolveNext || isFetching || query.get('next') !== 'true') return;
 
     hasHandledNext = true;
+    isResolvingNext = true;
     void (async () => {
       const incompleteContent = $isCourseLearnerView ? await findLearnerContinueTarget() : findFirstIncompleteContent();
       openContinueTarget(incompleteContent);
@@ -84,7 +87,8 @@
   // `query` is a mount-time snapshot, so the placeholder must end by itself: only while the target is still being
   // resolved. A loaded course with nothing to resume falls through to the normal list / empty state.
   const shouldShowNextPlaceholder = $derived(
-    query.get('next') === 'true' && !hasHandledNext && (!isCourseLoadedForThisPage || navigableContentItems.length > 0)
+    query.get('next') === 'true' &&
+      (isResolvingNext || (!hasHandledNext && (!isCourseLoadedForThisPage || navigableContentItems.length > 0)))
   );
 </script>
 

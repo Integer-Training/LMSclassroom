@@ -92,6 +92,7 @@ class MessagingApi extends BaseApi {
 
   async open(counterpartId: string) {
     this.loadError = null;
+    this.sendError = null;
     return this.execute<(typeof classroomio.messages)['open']['$post']>({
       requestFn: () => classroomio.messages.open.$post({ json: { counterpartId } }),
       logContext: 'opening conversation',
@@ -106,6 +107,7 @@ class MessagingApi extends BaseApi {
 
   async loadThread(threadId: string) {
     this.loadError = null;
+    this.sendError = null;
     return this.execute<(typeof classroomio.messages.threads)[':threadId']['$get']>({
       requestFn: () => classroomio.messages.threads[':threadId'].$get({ param: { threadId } }),
       logContext: 'loading conversation',

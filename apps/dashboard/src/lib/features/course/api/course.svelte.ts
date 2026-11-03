@@ -227,9 +227,10 @@ export class CourseApi extends BaseApiWithErrors {
         if (typeof result === 'string') {
           snackbar.error('Failed to fetch course');
         }
-        // A JSON error body is the API's own rejection (403 not a member / 404); a string is a network/server failure.
+        // Only the API's explicit "not a member" / "no such course" codes mean forbidden; anything else (a 500
+        // INTERNAL_ERROR, the membership check failing, a network error) is a failure the learner can retry.
         const code = typeof result === 'object' && result ? (result as { code?: string }).code : undefined;
-        const rejected = typeof result === 'object' && !!result && code !== 'COURSE_MEMBER_CHECK_FAILED';
+        const rejected = code === 'ORG_TEAM_NOT_AUTHORIZED' || code === 'COURSE_NOT_FOUND' || code === 'NOT_FOUND';
         this.loadFailure = { courseId, reason: rejected ? 'forbidden' : 'failed' };
       }
     });

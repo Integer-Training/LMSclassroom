@@ -262,9 +262,17 @@
       return;
     }
 
+    // Open the tab now, inside the click, so Safari doesn't block it as a popup; point it at the link once any
+    // stale signed URL has been re-signed.
+    const tab = window.open('', '_blank');
     await lessonApi.refreshStaleDocumentLinks(courseApi.course?.id ?? '', lessonApi.lesson?.id ?? '');
     const link = lessonApi.lesson?.documents?.find((d) => d.key === doc.key)?.link ?? doc.link;
-    window.open(link, '_blank', 'noopener,noreferrer');
+    if (tab) {
+      tab.opener = null;
+      tab.location.href = link;
+    } else {
+      window.open(link, '_blank', 'noopener,noreferrer');
+    }
   }
 
   function reorderDocuments(documents: LessonDocument[]) {
