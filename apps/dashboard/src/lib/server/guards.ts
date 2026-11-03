@@ -23,11 +23,16 @@ export function requireActor(locals: GuardLocals): Extract<Actor, { authenticate
   return actor;
 }
 
-/** Authenticated AND holding one of the given roles. Wrong role -> 403. */
+/**
+ * Authenticated AND holding one of the given roles. Wrong role -> redirect to `/`, which the root load sends on
+ * to the caller's own role home (learner /lms, tutor /caseload, manager /reports). A learner who follows a
+ * staff link (e.g. a copied /org/{slug}/learners URL, often via /login?redirect=) lands on their own home
+ * instead of an error page that reads as a failed login. Every role home passes its own guard, so this can't loop.
+ */
 export function requireRole(locals: GuardLocals, ...roles: Role[]): Extract<Actor, { authenticated: true }> {
   const actor = requireActor(locals);
   if (!isRole(actor, ...roles)) {
-    throw error(403, 'You do not have permission to view this page');
+    throw redirect(303, '/');
   }
   return actor;
 }

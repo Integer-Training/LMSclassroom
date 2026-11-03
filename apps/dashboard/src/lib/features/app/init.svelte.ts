@@ -23,6 +23,7 @@ import { identifyUserJotUser } from '$lib/utils/services/userjot';
 import { isOrgStudent, globalStore } from '$lib/utils/store/app';
 import { isPublicRoute } from '$lib/utils/functions/routes/isPublicRoute';
 import { homeForRole } from '$lib/utils/functions/routes/homeForRole';
+import { safeRedirectPath } from '$lib/utils/functions/routes/safeRedirect';
 import { licenseApi } from '$features/license/api/license.svelte';
 import { logout } from '$lib/utils/functions/logout';
 import { page } from '$app/state';
@@ -398,7 +399,7 @@ class AppInitApi extends BaseApi {
     if (redirect) {
       console.log('redirecting to', redirect);
       // goto redirect won't accept dynamic url so we need to use window.location.href
-      window.location.href = redirect;
+      window.location.href = safeRedirectPath(redirect);
       return;
     }
 

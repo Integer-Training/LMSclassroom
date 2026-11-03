@@ -3,6 +3,7 @@ import { dev } from '$app/environment';
 import { env } from '$env/dynamic/public';
 import { handleErrorWithSentry } from '@sentry/sveltekit';
 import { installGlobalClientErrorListeners, reportClientError } from '$lib/utils/functions/client-error-log';
+import { installStaleChunkReload, isStaleChunkError, reloadForNewBuild } from '$lib/utils/functions/stale-chunk-reload';
 
 const dsn = env.PUBLIC_SENTRY_DSN?.trim();
 // K6 — disabled by default: needs PUBLIC_SENTRY_DSN plus the explicit opt-in PUBLIC_SENTRY_ENABLED=true (self-hosting
@@ -28,7 +29,10 @@ if (dsn && sentryOptedIn && !dev) {
 }
 
 installGlobalClientErrorListeners();
+installStaleChunkReload();
 
 export const handleError = handleErrorWithSentry((input) => {
+  // An old tab after a deploy: load the page they were going to fresh instead of showing the error page.
+  if (isStaleChunkError(input.error) && reloadForNewBuild(input.event?.url?.href)) return;
   reportClientError(input.error);
 });

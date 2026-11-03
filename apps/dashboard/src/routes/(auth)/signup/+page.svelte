@@ -16,6 +16,7 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
+  import { safeRedirectPath } from '$lib/utils/functions/routes/safeRedirect';
   import { ssoApi } from '$features/org/api/sso.svelte';
   import ShieldIcon from '@lucide/svelte/icons/shield';
   import { buildSsoRedirectUrl, createSsoEmailChecker, type SsoAuthState } from '$features/auth/utils/auth-sso';
@@ -146,8 +147,7 @@
               });
             }
 
-            const redirect = redirectUrl || '/';
-            window.location.href = redirect.startsWith('/') ? redirect : `/?redirect=${encodeURIComponent(redirect)}`;
+            window.location.href = safeRedirectPath(redirectUrl);
           }
         }
       );
