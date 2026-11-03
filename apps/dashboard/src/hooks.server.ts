@@ -7,6 +7,7 @@ import { proxyRequestToApi, shouldForwardToApi } from '$lib/utils/proxy-api-requ
 import { type Handle, type HandleServerError, type RequestEvent, redirect } from '@sveltejs/kit';
 import { isPublicApiRoute, isPublicRoute } from '$lib/utils/functions/routes/isPublicRoute';
 import { ROUTE } from '$lib/utils/constants/routes';
+import { isLegacyMoodlePath } from '$lib/utils/functions/routes/legacyMoodlePath';
 
 // PearlLMS Phase 10 — fire-and-forget POST to the API's /log/client endpoint (server-to-server, PRIVATE_SERVER_KEY).
 // Best-effort: never awaited by callers, never throws, short timeout. The API masks the IP and caps fields.
@@ -100,6 +101,12 @@ function ensureAnalyticsSessionCookie(cookies: Parameters<Handle>[0]['event']['c
 
 export const handle: Handle = async (args) => {
   const { event } = args;
+
+  // Learners still open old Moodle links and bookmarks (/login/index.php, /my/, /course/view.php?id=…). Nothing in
+  // this app ends in .php, so send them to / (signed in -> their role home, signed out -> /login) instead of a 404.
+  if (isLegacyMoodlePath(event.url.pathname)) {
+    return new Response(null, { status: 302, headers: { location: '/' } });
+  }
 
   if (shouldForwardToApi(event.url.pathname)) {
     // Sign-in / sign-out change what these cookies mean: drop any memoised session for them (SSR_SESSION_MEMO_TTL_MS).

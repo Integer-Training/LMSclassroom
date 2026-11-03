@@ -19,11 +19,20 @@ export async function loginAsMember(memberId: number): Promise<string | null> {
 }
 
 export async function stopImpersonating(): Promise<void> {
-  const res = await classroomio.account['stop-impersonating'].$post();
-  const body = (await res.json()) as LinkResult;
-  if (res.ok && body.success && body.data?.loginLinkPath) {
-    window.location.href = body.data.loginLinkPath;
+  try {
+    const res = await classroomio.account['stop-impersonating'].$post();
+    const body = (await res.json()) as LinkResult;
+    if (res.ok && body.success && body.data?.loginLinkPath) {
+      window.location.href = body.data.loginLinkPath;
+      return;
+    }
+  } catch {
+    // Fall through: the signed admin cookie is gone (1h expiry, or ended in another tab).
   }
+  // The return-to-admin proof has expired, so the banner can no longer work. Drop its cookie (or it shows forever)
+  // and sign out; the admin signs back in as themselves.
+  document.cookie = 'impersonating=; Max-Age=0; path=/; secure; samesite=lax';
+  window.location.href = '/logout';
 }
 
 /** The target's name (or '' when unknown) if the current session is an impersonation, else null. */

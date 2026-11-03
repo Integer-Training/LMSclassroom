@@ -5,7 +5,7 @@ import { ZUpdateProfile } from '@cio/utils/validation/account';
 import { accountWorkspacesRouter } from '@api/routes/account/workspaces';
 import { authMiddleware } from '@api/middlewares/auth';
 import { getProfileById, updateProfile } from '@cio/db/queries/auth';
-import { touchSession } from '@cio/db/queries/organization';
+import { setCredentialPassword, touchSession } from '@cio/db/queries/organization';
 import { auth } from '@cio/db/auth';
 import { AppError, ErrorCodes, handleError } from '@api/utils/errors';
 import { zValidator } from '@hono/zod-validator';
@@ -85,26 +85,42 @@ export const accountRouter = new Hono()
   })
   // Self-service password change. Clears the mustChangePassword flag (force-change-on-first-login) on
   // success. Used both by the forced first-login gate and normal settings.
+  //
+  // Forced first-login change: the user signed in with the temporary password moments ago (an admin reset
+  // deletes every older session), so asking them to type it again only proves the same thing twice — and
+  // learners got stuck there, retrying a 12-character temp password dozens of times. While the flag is set,
+  // the new password is written directly, no current password needed. Never for an impersonated session: an
+  // admin "viewing as" a learner must not be able to set that learner's password.
   .post(
     '/change-password',
     authMiddleware,
-    zValidator('json', z.object({ currentPassword: z.string().min(1), newPassword: z.string().min(8).max(128) })),
+    zValidator('json', z.object({ currentPassword: z.string().optional(), newPassword: z.string().min(8).max(128) })),
     async (c) => {
       const user = c.get('user')!;
+      const session = c.get('session') as { impersonatedBy?: string | null } | undefined;
       const { currentPassword, newPassword } = c.req.valid('json');
-      try {
-        await changePasswordApi.changePassword({
-          body: { currentPassword, newPassword, revokeOtherSessions: false },
-          headers: c.req.raw.headers
-        });
-      } catch {
-        // better-auth throws when the current password is wrong or the new one fails policy.
-        throw new AppError(
-          'Could not change password. Check your current password and that the new one is at least 8 characters.',
-          ErrorCodes.VALIDATION_ERROR,
-          400
-        );
+
+      const profileRow = await getProfileById(user.id);
+      const mustChangePassword = !!(profileRow?.settings as Record<string, unknown> | null | undefined)
+        ?.mustChangePassword;
+
+      if (mustChangePassword && !session?.impersonatedBy) {
+        await setCredentialPassword(user.id, newPassword);
+      } else {
+        if (!currentPassword) {
+          throw new AppError('Enter your current password.', ErrorCodes.VALIDATION_ERROR, 400);
+        }
+        try {
+          await changePasswordApi.changePassword({
+            body: { currentPassword, newPassword, revokeOtherSessions: false },
+            headers: c.req.raw.headers
+          });
+        } catch {
+          // The new password already passed length validation above, so a failure here is the current password.
+          throw new AppError('Your current password is incorrect.', ErrorCodes.VALIDATION_ERROR, 400);
+        }
       }
+
       await updateProfile(user.id, { settings: { mustChangePassword: false } });
       return c.json({ success: true }, 200);
     }
