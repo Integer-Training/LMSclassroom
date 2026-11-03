@@ -58,6 +58,11 @@
     }
   });
 
+  // Drop a field's validation error as soon as the learner edits it.
+  $effect(() => {
+    if (fields.password) errors.password = '';
+  });
+
   async function handleSsoLogin() {
     const url = buildSsoRedirectUrl(ssoState.redirectUrl);
 
@@ -82,8 +87,11 @@
     const validationRes = authValidation(fields);
     console.log('validationRes', validationRes);
 
+    // Start each attempt clean so corrected fields don't keep showing their old error.
+    errors = Object.assign({}, LOGIN_FIELDS, validationRes);
+    submitError = undefined;
+
     if (Object.keys(validationRes).length) {
-      errors = Object.assign(errors, validationRes);
       return;
     }
 

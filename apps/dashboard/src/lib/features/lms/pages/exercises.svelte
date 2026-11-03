@@ -3,6 +3,7 @@
   import LockIcon from '@lucide/svelte/icons/lock';
   import { profile } from '$lib/utils/store/user';
   import { currentOrg } from '$lib/utils/store/org';
+  import { dueDayDate, daysUntilDue } from '$lib/utils/functions/due-date';
   import { lmsAssignmentsApi, type LearnerAssignment } from '$features/lms/api/assignments.svelte';
   import { MATERIAL_KIND_LABELS, RESULT_LABELS, type MaterialKind } from '@cio/utils/constants';
 
@@ -61,12 +62,12 @@
   }
   function dueInfo(iso: string | null): DueInfo | null {
     if (!iso) return null;
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return null;
-    const ms = d.getTime() - Date.now();
-    const days = Math.ceil(ms / 86_400_000);
+    const d = dueDayDate(iso);
+    const days = daysUntilDue(iso);
+    if (!d || days === null) return null;
     const label = d.toLocaleDateString();
-    if (ms < 0) return { label, tone: 'overdue' };
+    // The due date counts as the whole of that day, so it is only overdue once the day has passed.
+    if (days < 0) return { label, tone: 'overdue' };
     if (days <= 3) return { label, tone: 'soon' };
     return { label, tone: 'muted' };
   }
@@ -145,7 +146,8 @@
                         ? 'font-medium text-amber-600 dark:text-amber-400'
                         : 'text-gray-500 dark:text-neutral-400'}"
                   >
-                    {due.tone === 'overdue' ? 'Overdue' : 'Due'} {due.label}
+                    {due.tone === 'overdue' ? 'Overdue' : 'Due'}
+                    {due.label}
                   </p>
                 {/if}
 
@@ -177,15 +179,10 @@
                     </p>
                   {/if}
                 {:else if item.state === 'draft'}
-                  <p class="mt-1 text-xs text-gray-500 dark:text-neutral-400">
-                    Draft submitted — awaiting feedback
-                  </p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-neutral-400">Draft submitted — awaiting feedback</p>
                 {/if}
 
-                <a
-                  href={lessonURL(item)}
-                  class="ui:text-primary mt-2 inline-block text-xs font-medium hover:underline"
-                >
+                <a href={lessonURL(item)} class="ui:text-primary mt-2 inline-block text-xs font-medium hover:underline">
                   {item.state === 'not_started' ? 'Start →' : 'Open →'}
                 </a>
               {/if}

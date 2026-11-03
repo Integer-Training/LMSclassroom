@@ -85,6 +85,37 @@ export class LessonApi extends BaseApiWithErrors {
   translations = $state<Record<string, Record<TLocale, string>>>({});
   note = $state('');
 
+  // Document / workbook links are presigned for 1h when the lesson is loaded; refreshed lazily on open once stale.
+  linksSignedAt = Date.now();
+  private static LINK_MAX_AGE_MS = 40 * 60 * 1000;
+
+  /**
+   * Re-signs the current lesson's document links if they are older than ~40 min. Silent: only the `link` values are
+   * swapped (matched by document key), so nothing remounts and note/video state is untouched.
+   */
+  async refreshStaleDocumentLinks(courseId: string, lessonId: string) {
+    if (Date.now() - this.linksSignedAt < LessonApi.LINK_MAX_AGE_MS) return;
+    if (!courseId || this.lesson?.id !== lessonId) return;
+
+    try {
+      const res = await classroomio.course[':courseId'].lesson[':lessonId'].$get({ param: { courseId, lessonId } });
+      const body = (await res.json()) as {
+        success?: boolean;
+        data?: { documents?: { key?: string; link?: string }[] };
+      };
+      const fresh = body?.success ? body.data?.documents : undefined;
+      if (!fresh || this.lesson?.id !== lessonId) return;
+
+      const links = new Map(fresh.filter((d) => d.key && d.link).map((d) => [d.key, d.link]));
+      this.lesson.documents = (this.lesson.documents ?? []).map((d) =>
+        d.key && links.has(d.key) ? { ...d, link: links.get(d.key) as string } : d
+      );
+      this.linksSignedAt = Date.now();
+    } catch {
+      // Keep the existing links; the open action will surface its own error if they are dead.
+    }
+  }
+
   /**
    * Gets a lesson by ID
    */
@@ -98,6 +129,7 @@ export class LessonApi extends BaseApiWithErrors {
       onSuccess: (response) => {
         if (response.data) {
           this.lesson = response.data;
+          this.linksSignedAt = Date.now();
 
           if (this.lesson.lessonLanguages) {
             this.setTranslations();

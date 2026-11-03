@@ -77,6 +77,18 @@
     return courseApi.course?.id === data.courseId && !!courseApi.group.id;
   });
 
+  const loadFailure = $derived(
+    courseApi.loadFailure?.courseId === data.courseId && courseApi.course?.id !== data.courseId
+      ? courseApi.loadFailure
+      : null
+  );
+
+  function retryCourseLoad() {
+    if (!$profile.id) return;
+    courseApi.invalidateCourse();
+    courseApi.ensureCourse(data.courseId, $profile.id);
+  }
+
   const user: CourseMember | undefined = $derived(
     courseApi.group.people.find((person) => person.profileId === $profile.id)
   );
@@ -218,7 +230,26 @@
     <ContentCreateModal />
     <CourseCompletionModal />
 
-    {#if !isCourseReady}
+    {#if !isCourseReady && loadFailure}
+      <div class="mx-auto flex h-[calc(100vh-56px)] w-full items-center justify-center">
+        <Empty
+          title={loadFailure.reason === 'forbidden'
+            ? "You're not enrolled in this course"
+            : "Couldn't load this course"}
+          description={loadFailure.reason === 'forbidden'
+            ? 'Your account does not have access to this course. If you think this is a mistake, contact your tutor.'
+            : 'Something went wrong while loading the course. Check your connection and try again.'}
+          variant="page"
+        >
+          <div class="flex gap-2">
+            {#if loadFailure.reason === 'failed'}
+              <Button onclick={retryCourseLoad}>Retry</Button>
+            {/if}
+            <Button variant="outline" onclick={() => goto('/lms')}>Go to my dashboard</Button>
+          </div>
+        </Empty>
+      </div>
+    {:else if !isCourseReady}
       <div class="mx-auto flex h-[calc(100vh-56px)] w-full items-center justify-center">
         <Empty
           title="Loading course…"

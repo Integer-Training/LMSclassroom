@@ -9,6 +9,7 @@ import {
 } from '$lib/utils/store/org';
 import { defaultProfileState, defaultUserState, profile, user } from '$lib/utils/store/user';
 
+import { fetchAccountWithRetry } from './account-fetch';
 import type { AccountResponse, AccountSuccess } from './types';
 import { type AppOrgParams } from './resolve-app-org-params';
 import type { PendingOrgInvite } from '$features/lms/utils/types';
@@ -168,23 +169,17 @@ class AppInitApi extends BaseApi {
   }
 
   private async fetchAccountData(): Promise<AccountSuccess | undefined> {
-    try {
+    const outcome = await fetchAccountWithRetry<AccountSuccess>(async () => {
       const response = await classroomio.account.$get();
-      const result = (await response.json()) as AccountResponse;
+      return { status: response.status, body: (await response.json()) as AccountResponse };
+    });
 
-      if (!result?.success) {
-        this.error = JSON.stringify(result);
-        logout();
-        return undefined;
-      }
+    if (outcome.kind === 'ok') return outcome.result;
 
-      return result;
-    } catch (error) {
-      console.error('Error fetching account:', error);
-      this.error = error instanceof Error ? error.message : 'Error fetching account';
-      logout();
-      return undefined;
-    }
+    this.error = outcome.detail;
+    // Only a definite auth rejection ends the session; a flaky network or 5xx must not log the learner out.
+    if (outcome.kind === 'unauthenticated') logout();
+    return undefined;
   }
 
   private showPendingOrgInvite(pendingInvite: PendingOrgInvite) {

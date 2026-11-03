@@ -10,10 +10,10 @@
  * feeds the api limiter (`windowMs`). Each field documents its unit.
  */
 
-/** Sign-in attempts per IP — O3: 10 per 15 minutes. `window` in SECONDS (better-auth). */
+/** FAILED sign-in attempts per IP: 30 per 15 minutes (was 10; raised so learners sharing one classroom/employer IP are not locked out). Successful sign-ins do not count — see packages/db/src/auth/login-throttle.ts. `window` in SECONDS. */
 export const LOGIN_RATE_LIMIT = {
   window: 15 * 60,
-  max: 10
+  max: 30
 } as const;
 
 /** Password-reset requests per IP — O3: 5 per hour. `window` in SECONDS (better-auth). */

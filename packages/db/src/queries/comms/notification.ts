@@ -98,6 +98,31 @@ export async function markNotificationRead(id: string, userId: string, client: D
   return rows.length;
 }
 
+/**
+ * Mark a user's unread notifications about ONE subject (entity_type, entity_id) read — e.g. the bell's
+ * "New message" rows once the thread itself has been read elsewhere. Self-scoped by user_id.
+ */
+export async function markNotificationsReadForEntity(
+  userId: string,
+  entityType: string,
+  entityId: string,
+  client: DbOrTxClient = db
+): Promise<number> {
+  const rows = await client
+    .update(schema.notification)
+    .set({ readAt: sql`now()` })
+    .where(
+      and(
+        eq(schema.notification.userId, userId),
+        eq(schema.notification.entityType, entityType),
+        eq(schema.notification.entityId, entityId),
+        isNull(schema.notification.readAt)
+      )
+    )
+    .returning({ id: schema.notification.id });
+  return rows.length;
+}
+
 /** Mark ALL of a user's unread notifications read. */
 export async function markAllNotificationsRead(userId: string, client: DbOrTxClient = db): Promise<number> {
   const rows = await client

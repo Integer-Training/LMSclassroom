@@ -43,9 +43,11 @@
       </Page.HeaderContent>
       <Page.Action>
         <div class="flex items-center gap-2">
-          <Button onmouseenter={() => preloadTextEditor()} onclick={() => newsfeedApi.openNewFeedModal()}>
-            {$t('course.navItem.news_feed.heading_button.title')}
-          </Button>
+          <RoleBasedSecurity allowedRoles={[1, 2]}>
+            <Button onmouseenter={() => preloadTextEditor()} onclick={() => newsfeedApi.openNewFeedModal()}>
+              {$t('course.navItem.news_feed.heading_button.title')}
+            </Button>
+          </RoleBasedSecurity>
           <RefreshPageData onRefresh={() => newsfeedApi.list(data.courseId)} />
         </div>
       </Page.Action>

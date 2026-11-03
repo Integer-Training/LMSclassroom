@@ -20,7 +20,8 @@ vi.mock('@cio/db/queries/comms', () => ({
   ensureActiveThread: vi.fn(),
   insertMessage: vi.fn(async () => ({ id: 'm1', threadId: 'th1', senderId: 't1', body: 'hi', createdAt: 't' })),
   listMessagesPage: vi.fn(async () => ({ messages: [], hasMore: false })),
-  markThreadRead: vi.fn(async () => {})
+  markThreadRead: vi.fn(async () => {}),
+  markNotificationsReadForEntity: vi.fn(async () => 1)
 }));
 vi.mock('@api/services/comms/notify', () => ({ emitNotification: vi.fn(async () => {}) }));
 vi.mock('@cio/email', () => ({ buildEmailBranding: vi.fn(() => ({})) }));
@@ -32,10 +33,11 @@ import {
   ensureActiveThread,
   insertMessage,
   listMessagesPage,
+  markNotificationsReadForEntity,
   markThreadRead
 } from '@cio/db/queries/comms';
 import { emitNotification } from '@api/services/comms/notify';
-import { getMyTutor, getThreadView, openThread, sendMessage } from '@api/services/comms/messaging';
+import { getMyTutor, getMyTutors, getThreadView, openThread, sendMessage } from '@api/services/comms/messaging';
 
 const mAllocated = vi.mocked(isTutorAllocatedToLearner);
 const mTutors = vi.mocked(listTutorsForLearner);
@@ -45,6 +47,7 @@ const mInsert = vi.mocked(insertMessage);
 const mEmit = vi.mocked(emitNotification);
 const mPage = vi.mocked(listMessagesPage);
 const mMarkRead = vi.mocked(markThreadRead);
+const mClearNotif = vi.mocked(markNotificationsReadForEntity);
 
 const A = (id: string, role: string): Actor =>
   ({ authenticated: true, userId: id, role, status: 'ACTIVE', orgId: 'o1' }) as Actor;
@@ -205,5 +208,46 @@ describe('getMyTutor — the learner entry point / empty state', () => {
   it('no allocated tutor → null (empty state)', async () => {
     mTutors.mockResolvedValue([] as never);
     expect(await getMyTutor(learnerA)).toBeNull();
+  });
+});
+
+describe('getMyTutors — a learner with several allocated tutors', () => {
+  it('lists every allocated tutor in a stable (name, id) order', async () => {
+    mTutors.mockResolvedValue([
+      { tutorId: 't2', email: null },
+      { tutorId: 't1', email: null }
+    ] as never);
+    const names: Record<string, string> = { t1: 'Zed', t2: 'Amy' };
+    const { getProfileById } = await import('@cio/db/queries/auth');
+    vi.mocked(getProfileById).mockImplementation((async (id: string) => ({ fullname: names[id] })) as never);
+    expect(await getMyTutors(learnerA)).toEqual([
+      { tutorId: 't2', name: 'Amy' },
+      { tutorId: 't1', name: 'Zed' }
+    ]);
+    expect((await getMyTutor(learnerA))?.tutorId).toBe('t2');
+  });
+  it('a learner can still only open a thread with an allocated tutor', async () => {
+    mAllocated.mockResolvedValue(false);
+    expect(await code(openThread(learnerA, 'tOther'))).toBe(403);
+  });
+});
+
+describe('reading a thread clears its bell notifications', () => {
+  it('opening a thread marks the participant message_thread notifications read', async () => {
+    mAllocated.mockResolvedValue(true);
+    mEnsure.mockResolvedValue({ ...THREAD } as never);
+    await openThread(learnerA, 't1');
+    expect(mClearNotif).toHaveBeenCalledWith('lA', 'message_thread', 'th1');
+  });
+  it('paging back with a before cursor does not touch notifications', async () => {
+    mGetThread.mockResolvedValue({ ...THREAD } as never);
+    mClearNotif.mockClear();
+    await getThreadView(learnerA, 'th1', { before: 'x' });
+    expect(mClearNotif).not.toHaveBeenCalled();
+  });
+  it('a notification-clearing failure never blocks reading the thread', async () => {
+    mGetThread.mockResolvedValue({ ...THREAD } as never);
+    mClearNotif.mockRejectedValueOnce(new Error('db down'));
+    await expect(getThreadView(learnerA, 'th1')).resolves.toBeTruthy();
   });
 });

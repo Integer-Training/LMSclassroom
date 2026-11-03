@@ -10,6 +10,7 @@ import {
   insertMessage,
   listConversationsForParticipant,
   listMessagesPage,
+  markNotificationsReadForEntity,
   markThreadRead as markThreadReadQuery,
   type MessageThreadRow
 } from '@cio/db/queries/comms';
@@ -32,6 +33,16 @@ function assertAuthed(actor: Actor): asserts actor is Extract<Actor, { authentic
 
 function isParticipant(actor: Extract<Actor, { authenticated: true }>, thread: MessageThreadRow): boolean {
   return actor.userId === thread.tutorId || actor.userId === thread.learnerId;
+}
+
+/** Advance the read cursor AND clear the bell's "New message" rows for the thread (best-effort). */
+async function markThreadAndNotificationsRead(threadId: string, userId: string): Promise<void> {
+  await markThreadReadQuery(threadId, userId);
+  try {
+    await markNotificationsReadForEntity(userId, 'message_thread', threadId);
+  } catch (error) {
+    console.error('[messaging] clearing thread notifications failed (thread still marked read):', error);
+  }
 }
 
 export interface MessageView {
@@ -117,14 +128,25 @@ export async function listConversations(actor: Actor): Promise<ConversationSumma
   }));
 }
 
-/** The learner's allocated tutor (for the "Message your tutor" entry point), or null → empty state. */
-export async function getMyTutor(actor: Actor): Promise<{ tutorId: string; name: string } | null> {
+/**
+ * Every tutor allocated to the learner (so a learner with several can choose whom to message), ordered by
+ * name then id so the list — and the default pick — is stable between visits. Empty → empty state.
+ */
+export async function getMyTutors(actor: Actor): Promise<{ tutorId: string; name: string }[]> {
   assertAuthed(actor);
   const tutors = await listTutorsForLearner(actor.userId);
-  const first = tutors[0];
-  if (!first) return null;
-  const profile = await getProfileById(first.tutorId);
-  return { tutorId: first.tutorId, name: profile?.fullname ?? 'Your tutor' };
+  const named = await Promise.all(
+    tutors.map(async (t) => {
+      const profile = await getProfileById(t.tutorId);
+      return { tutorId: t.tutorId, name: profile?.fullname ?? 'Your tutor' };
+    })
+  );
+  return named.sort((a, b) => a.name.localeCompare(b.name) || a.tutorId.localeCompare(b.tutorId));
+}
+
+/** The learner's default allocated tutor (first of {@link getMyTutors}), or null → empty state. */
+export async function getMyTutor(actor: Actor): Promise<{ tutorId: string; name: string } | null> {
+  return (await getMyTutors(actor))[0] ?? null;
 }
 
 /** Open/ensure the thread for an allocated pair (reactivates an archived same-pair thread). Returns the view. */
@@ -148,7 +170,7 @@ export async function openThread(actor: Actor, counterpartId: string): Promise<T
   }
 
   const thread = await ensureActiveThread(actor.orgId, tutorId, learnerId);
-  await markThreadReadQuery(thread.id, actor.userId);
+  await markThreadAndNotificationsRead(thread.id, actor.userId);
   return buildView(actor, thread);
 }
 
@@ -170,7 +192,7 @@ export async function getThreadView(
   if (!participant && !isAdmin) {
     throw new AppError('You do not have access to this conversation', ErrorCodes.FORBIDDEN, 403);
   }
-  if (participant && !page.before) await markThreadReadQuery(thread.id, actor.userId);
+  if (participant && !page.before) await markThreadAndNotificationsRead(thread.id, actor.userId);
   return buildView(actor, thread, page);
 }
 
@@ -181,7 +203,7 @@ export async function markThreadRead(actor: Actor, threadId: string): Promise<vo
   if (!thread || !isParticipant(actor, thread)) {
     throw new AppError('You do not have access to this conversation', ErrorCodes.FORBIDDEN, 403);
   }
-  await markThreadReadQuery(threadId, actor.userId);
+  await markThreadAndNotificationsRead(threadId, actor.userId);
 }
 
 /** Send a text message. Participant of an active, still-allocated pair only. Emits message.received. */

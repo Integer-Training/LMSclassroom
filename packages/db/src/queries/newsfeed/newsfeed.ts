@@ -446,6 +446,8 @@ export async function getNewsfeedForEmail(
     id: string;
     name: string | null;
     siteName: string | null;
+    customDomain: string | null;
+    isCustomDomainVerified: boolean | null;
     avatarUrl: string | null;
     theme: string | null;
   } | null;
@@ -510,6 +512,8 @@ export async function getNewsfeedForEmail(
         id: row.organization.id,
         name: row.organization.name,
         siteName: row.organization.siteName,
+        customDomain: row.organization.customDomain,
+        isCustomDomainVerified: row.organization.isCustomDomainVerified,
         avatarUrl: row.organization.avatarUrl,
         theme: row.organization.theme
       },

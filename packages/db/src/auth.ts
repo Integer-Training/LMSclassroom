@@ -5,6 +5,7 @@ import { LOGIN_RATE_LIMIT, PASSWORD_RESET_RATE_LIMIT } from '@cio/utils/constant
 
 import { admin } from 'better-auth/plugins';
 import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api';
+import { createLoginThrottle, isLoginFailureStatus } from './auth/login-throttle';
 import { sendChangeEmailConfirmation, sendVerificationEmail } from './auth/email-verification';
 
 import { betterAuth } from 'better-auth/minimal';
@@ -133,7 +134,9 @@ const baseAuth: ReturnType<typeof betterAuth> = betterAuth({
     customRules: {
       // Internal SSR session check cannot resolve a client IP and shares one bucket; exempt it entirely.
       '/get-session': false,
-      '/sign-in/email': { window: LOGIN_RATE_LIMIT.window, max: LOGIN_RATE_LIMIT.max },
+      // Off here: sign-in is throttled on FAILED attempts only by loginThrottle in the handler wrapper below, because
+      // better-auth's limiter would also count successful logins (a whole classroom behind one IP got locked out).
+      '/sign-in/email': false,
       '/forget-password': { window: PASSWORD_RESET_RATE_LIMIT.window, max: PASSWORD_RESET_RATE_LIMIT.max },
       '/request-password-reset': { window: PASSWORD_RESET_RATE_LIMIT.window, max: PASSWORD_RESET_RATE_LIMIT.max }
     }
@@ -313,6 +316,7 @@ const baseAuth: ReturnType<typeof betterAuth> = betterAuth({
  * untouched; the request body is read from a clone only on that path.
  */
 const baseHandler = baseAuth.handler;
+const loginThrottle = createLoginThrottle({ max: LOGIN_RATE_LIMIT.max, windowMs: LOGIN_RATE_LIMIT.window * 1000 });
 baseAuth.handler = async (request: Request) => {
   let email: string | null = null;
   let isSignIn = false;
@@ -324,7 +328,19 @@ baseAuth.handler = async (request: Request) => {
   } catch {
     /* body unreadable — email stays null */
   }
-  const response = await baseHandler(request);
+  const throttleKey = isSignIn ? (getClientIp(request.headers) ?? 'no-trusted-ip') : null;
+  const retryAfter = throttleKey ? loginThrottle.check(throttleKey) : null;
+  const response =
+    retryAfter !== null
+      ? new Response(JSON.stringify({ message: 'Too many requests. Please try again later.' }), {
+          status: 429,
+          statusText: 'Too Many Requests',
+          headers: { 'X-Retry-After': String(retryAfter) }
+        })
+      : await baseHandler(request);
+  if (throttleKey && retryAfter === null && isLoginFailureStatus(response.status)) {
+    loginThrottle.recordFailure(throttleKey);
+  }
   try {
     if (isSignIn && response.status === 429) {
       recordLoginFailure('rate_limited', {

@@ -15,7 +15,7 @@
   import formatDate from '$lib/utils/functions/formatDate';
   import { t } from '$lib/utils/functions/translations';
   import { isOrgStudent } from '$lib/utils/store/app';
-  import { contentApi, courseApi, exerciseApi, lessonApi } from '$features/course/api';
+  import { contentApi, courseApi, courseUnlockApi, exerciseApi, lessonApi } from '$features/course/api';
   import { snackbar } from '$features/ui/snackbar/store';
   import { profile } from '$lib/utils/store/user';
   import DeleteLessonConfirmation from '$features/course/components/lesson/delete-lesson-confirmation.svelte';
@@ -379,6 +379,8 @@
   function isLockedForStudent(item: ContentDndItem) {
     if (!isStudentView) return false;
     if ((item.isUnlocked ?? true) === false) return true;
+    // PearlLMS sequential unlock (server-computed map) — same source the sidebar tree uses.
+    if (courseUnlockApi.isLocked(item.contentId)) return true;
 
     return item.accessible === false;
   }

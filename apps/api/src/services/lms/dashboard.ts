@@ -184,14 +184,15 @@ export async function getLearnerDashboard(actor: Actor): Promise<LearnerDashboar
       kind: i.kind,
       dueAt: i.dueAt as string,
       state: i.state,
-      overdue: new Date(i.dueAt as string).getTime() < now
+      // Due dates are stored as the picked day's UTC midnight; the due day lasts until that day ends.
+      overdue: new Date(i.dueAt as string).getTime() + 86_400_000 <= now
     }));
 
   // Soonest FUTURE due date among actionable items (for the countdown KPI).
   const nextDueAt =
     dueItems
       .map((i) => i.dueAt as string)
-      .filter((d) => new Date(d).getTime() >= now)
+      .filter((d) => new Date(d).getTime() + 86_400_000 > now)
       .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0] ?? null;
 
   // Tutor (name + email). listTutorsForLearner gives id+email; name comes from the profile.

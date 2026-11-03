@@ -13,6 +13,7 @@
   import { getResolvedUploadLimits } from '$lib/utils/config/upload-limits-context';
   import { RESULT_LABELS, MATERIAL_KIND_LABELS, isPassingResult, type MaterialKind } from '@cio/utils/constants';
   import { courseworkApi, type CourseworkFile } from '$features/course/api/coursework.svelte';
+  import { dueDayDate } from '$lib/utils/functions/due-date';
   import { DocumentUploader } from '$lib/utils/services/courses/presign';
 
   // PearlLMS Phase 8 — a single ASSESSMENT item's card: download the brief, upload a Draft (feedback-only)
@@ -45,14 +46,18 @@
     courseworkApi.ensureLoaded(courseId, lessonId);
   });
 
+  const isUploading = $derived(courseworkApi.isUploadingFor(lessonId, assessment.key));
+  const uploadError = $derived(courseworkApi.uploadErrorFor(lessonId, assessment.key));
+
   // This assessment's submissions (the shared unit list is newest-version first).
   const mySubs = $derived(courseworkApi.submissions.filter((s) => s.assessmentKey === assessment.key));
   const latestFinal = $derived(mySubs.find((s) => s.submissionType === 'final') ?? null);
-  const passed = $derived(
-    !!latestFinal && latestFinal.resultKind === 'verdict' && isPassingResult(latestFinal.result)
-  );
+  const passed = $derived(!!latestFinal && latestFinal.resultKind === 'verdict' && isPassingResult(latestFinal.result));
   const referred = $derived(
-    !!latestFinal && latestFinal.resultKind === 'verdict' && !!latestFinal.result && !isPassingResult(latestFinal.result)
+    !!latestFinal &&
+      latestFinal.resultKind === 'verdict' &&
+      !!latestFinal.result &&
+      !isPassingResult(latestFinal.result)
   );
 
   function resultLabel(result: string | null): string {
@@ -73,8 +78,8 @@
   }
   function dueLabel(iso: string | null): string {
     if (!iso) return '';
-    const d = new Date(iso);
-    return isNaN(d.getTime()) ? '' : d.toLocaleDateString();
+    const d = dueDayDate(iso);
+    return d ? d.toLocaleDateString() : '';
   }
 
   function addFiles(files: File[]) {
@@ -211,9 +216,9 @@
       </FileDropZone.Root>
     {/if}
 
-    {#if courseworkApi.uploadError}
+    {#if uploadError}
       <div class="mt-3 rounded-md border border-red-200 bg-red-50 p-3">
-        <p class="text-sm text-red-600">{courseworkApi.uploadError}</p>
+        <p class="text-sm text-red-600">{uploadError}</p>
       </div>
     {/if}
 
@@ -233,8 +238,8 @@
       </div>
 
       <div class="mt-3 flex justify-end gap-2">
-        <Button variant="outline" onclick={() => (selected = [])} disabled={courseworkApi.isUploading}>Clear</Button>
-        <Button onclick={submit} loading={courseworkApi.isUploading} disabled={courseworkApi.isUploading}>
+        <Button variant="outline" onclick={() => (selected = [])} disabled={isUploading}>Clear</Button>
+        <Button onclick={submit} loading={isUploading} disabled={isUploading}>
           {assessment.allowDrafts && mode === 'draft' ? 'Submit draft' : 'Submit final'}
         </Button>
       </div>
@@ -304,7 +309,8 @@
                         >
                           <DownloadIcon class="size-4 shrink-0" />
                           <span class="truncate">{file.name}</span>
-                          {#if file.size}<span class="text-muted-foreground text-xs">({formatSize(file.size)})</span>{/if}
+                          {#if file.size}<span class="text-muted-foreground text-xs">({formatSize(file.size)})</span
+                            >{/if}
                         </button>
                       </li>
                     {/each}

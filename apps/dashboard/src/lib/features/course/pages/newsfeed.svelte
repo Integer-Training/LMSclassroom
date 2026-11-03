@@ -14,6 +14,7 @@
   import { onMount } from 'svelte';
   import type { AccountOrg } from '$features/app/types';
   import Empty from '@cio/ui/custom/empty/empty.svelte';
+  import { Button } from '@cio/ui/base/button';
   import { BookIcon } from '@lucide/svelte';
   import { ROLE } from '@cio/utils/constants';
   import { buildNextNewsfeedReaction, type NewsfeedReactionType } from '@cio/ui/custom/newsfeed-reactions';
@@ -78,8 +79,11 @@
     await newsfeedApi.createComment(courseId, feedId, comment, author, parentId, replyTo);
 
     if (!newsfeedApi.success) {
-      return snackbar.error('snackbar.course.error.commenting_error');
+      snackbar.error('snackbar.course.error.commenting_error');
+      return false;
     }
+
+    return true;
   };
 
   const onPin = async (feedId: string, isPinned: boolean) => {
@@ -134,7 +138,8 @@
     goto(`/courses/${courseId}/lessons?next=true`);
   }}
 >
-  <RoleBasedSecurity allowedRoles={getPageRoles($currentOrg)}>
+  <!-- Staff post; learners read, react and comment. -->
+  <RoleBasedSecurity allowedRoles={[ROLE.ADMIN, ROLE.TUTOR]}>
     <NewFeedModal {courseId} bind:edit bind:editFeed />
   </RoleBasedSecurity>
   {#if isListing}
@@ -202,6 +207,17 @@
           isReacting={Boolean(isReactingByFeedId[feed.id])}
         />
       {/each}
+    {/if}
+
+    {#if newsfeedApi.hasMore}
+      <Button
+        variant="outline"
+        class="mb-7 self-center"
+        loading={newsfeedApi.isLoadingMore}
+        onclick={() => newsfeedApi.loadMore(courseId)}
+      >
+        Load older posts
+      </Button>
     {/if}
   {/if}
 </RoleBasedSecurity>

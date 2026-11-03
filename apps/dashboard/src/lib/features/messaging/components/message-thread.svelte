@@ -29,11 +29,24 @@
   async function submit() {
     const body = draft.trim();
     if (!body || !view.canWrite || messagingApi.sending) return;
-    draft = '';
-    await messagingApi.send(view.threadId, body);
+    // Keep the text in the box until the server confirms; a failure leaves it there with an error + retry.
+    const res = await messagingApi.send(view.threadId, body);
+    if (res) {
+      if (draft.trim() === body) draft = '';
+    }
     await tick();
     listEl?.scrollTo({ top: listEl.scrollHeight });
   }
+
+  // Open on the newest message, and follow new ones — but not when older history is prepended.
+  let lastKey = '';
+  $effect(() => {
+    const newest = view.messages[view.messages.length - 1]?.id ?? '';
+    const key = `${view.threadId}:${newest}`;
+    if (key === lastKey) return;
+    lastKey = key;
+    void tick().then(() => listEl?.scrollTo({ top: listEl.scrollHeight }));
+  });
 
   function onKeydown(e: KeyboardEvent) {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -99,6 +112,14 @@
         <SendIcon size={16} />
       </Button>
     </div>
+    {#if messagingApi.sendError}
+      <div class="flex items-center justify-between gap-2 px-4 pb-2 text-xs text-red-600" role="alert">
+        <span>{messagingApi.sendError}</span>
+        <Button variant="ghost" size="sm" onclick={submit} disabled={!draft.trim() || messagingApi.sending}>
+          Retry
+        </Button>
+      </div>
+    {/if}
   {:else}
     <div class="ui:border-border ui:text-muted-foreground border-t px-4 py-3 text-center text-xs">
       {view.archived

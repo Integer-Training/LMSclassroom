@@ -8,6 +8,7 @@ import { MESSAGE_MAX_LENGTH, MESSAGE_SEND_RATE_LIMIT } from '@cio/utils/constant
 import { createRateLimiter } from '@api/middlewares/rate-limiter';
 import {
   getMyTutor,
+  getMyTutors,
   getThreadView,
   listConversations,
   markThreadRead,
@@ -47,6 +48,15 @@ export const messagesRouter = new Hono()
       return c.json({ success: true, data: { tutor } }, 200);
     } catch (error) {
       return handleError(c, error, 'Failed to load tutor');
+    }
+  })
+  // Learner: ALL their allocated tutors (a learner with several picks whom to message).
+  .get('/my-tutors', requireActor(), async (c) => {
+    try {
+      const tutors = await getMyTutors(c.get('actor') as Actor);
+      return c.json({ success: true, data: { tutors } }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to load tutors');
     }
   })
   // The actor's conversation list (inbox) — tutor sees their learners, learner sees their tutors.

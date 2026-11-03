@@ -46,6 +46,12 @@ export class NewsfeedApi extends BaseApiWithErrors {
 
   repliesByParentId = $state<Record<number, NewsfeedCommentsByFeedId>>({});
 
+  hasMore = $state(false);
+
+  nextCursor = $state<string | null>(null);
+
+  isLoadingMore = $state(false);
+
   isNewFeedModalOpen = $state(false);
 
   /**
@@ -76,6 +82,8 @@ export class NewsfeedApi extends BaseApiWithErrors {
       onSuccess: (response) => {
         if (response.data) {
           this.feeds = Array.isArray(response.data) ? response.data : response.data.items || [];
+          this.hasMore = Array.isArray(response.data) ? false : Boolean(response.data.hasMore);
+          this.nextCursor = Array.isArray(response.data) ? null : (response.data.nextCursor ?? null);
           for (const feed of this.feeds) {
             this.initComments(feed.id, feed.commentCount || 0);
           }
@@ -87,6 +95,39 @@ export class NewsfeedApi extends BaseApiWithErrors {
         }
       }
     });
+  }
+
+  /**
+   * Appends the next page of older newsfeed items (cursor pagination)
+   */
+  async loadMore(courseId: string) {
+    const cursor = this.nextCursor;
+    if (!cursor || this.isLoadingMore) return;
+    this.isLoadingMore = true;
+    try {
+      const res = await classroomio.course[':courseId'].newsfeed.$get({
+        param: { courseId },
+        query: { cursor }
+      });
+      const result = await res.json();
+      if (result.success && result.data) {
+        const shown = new Set(this.feeds.map((f) => f.id));
+        const older = result.data.items.filter((f) => !shown.has(f.id));
+        this.feeds = [...this.feeds, ...older];
+        this.hasMore = Boolean(result.data.hasMore);
+        this.nextCursor = result.data.nextCursor ?? null;
+        for (const feed of older) {
+          this.initComments(feed.id, feed.commentCount || 0);
+        }
+      } else {
+        snackbar.error('Failed to list newsfeed');
+      }
+    } catch (error) {
+      console.error('Error loading older newsfeed items:', error);
+      snackbar.error('Failed to list newsfeed');
+    } finally {
+      this.isLoadingMore = false;
+    }
   }
 
   /**

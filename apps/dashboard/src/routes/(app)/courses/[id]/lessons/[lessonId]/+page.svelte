@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
+  import { page } from '$app/state';
   import { LessonPage } from '$features/course/pages';
   import { lessonApi } from '$features/course/api';
   import { profile } from '$lib/utils/store/user';
@@ -15,6 +17,10 @@
 
   let { data }: Props = $props();
 
+  // Fresh loads carry freshly signed document URLs; the singleton would otherwise keep expired ones on revisit.
+  // Edit mode keeps the in-memory lesson so unsaved changes aren't overwritten.
+  let appliedLesson: Lesson | null = null;
+
   $effect(() => {
     if (!data.lessonId) return;
 
@@ -27,7 +33,10 @@
     }
 
     const lesson = data.lesson;
-    if (lessonApi.lesson?.id === lesson.id) return;
+    const alreadyLoaded = untrack(() => lessonApi.lesson?.id === lesson.id);
+    if (alreadyLoaded && (page.url.searchParams.get('mode') === 'edit' || appliedLesson === lesson)) return;
+    appliedLesson = lesson;
+    lessonApi.linksSignedAt = Date.now();
 
     // Set lesson data
     lessonApi.lesson = lesson;

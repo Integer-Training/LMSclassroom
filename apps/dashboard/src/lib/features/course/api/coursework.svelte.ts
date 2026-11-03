@@ -53,11 +53,24 @@ const ALLOWED_TYPES = [
 class CourseworkApi extends BaseApi {
   submissions = $state<CourseworkSubmission[]>([]);
   canSubmit = $state(true);
-  isUploading = $state(false);
-  uploadError = $state<string | null>(null);
+  // Upload state is per assessment item (lessonId:assessmentKey) — one card's failure must not show on the others.
+  uploading = $state<Record<string, boolean>>({});
+  uploadErrors = $state<Record<string, string>>({});
   lastSubmitted = $state<CourseworkSubmission | null>(null);
   loadedLessonId = $state<string | null>(null);
   private inflight: { lessonId: string; promise: Promise<unknown> } | null = null;
+
+  private itemKey(lessonId: string, assessmentKey: string) {
+    return `${lessonId}:${assessmentKey}`;
+  }
+
+  isUploadingFor(lessonId: string, assessmentKey: string) {
+    return !!this.uploading[this.itemKey(lessonId, assessmentKey)];
+  }
+
+  uploadErrorFor(lessonId: string, assessmentKey: string) {
+    return this.uploadErrors[this.itemKey(lessonId, assessmentKey)] ?? null;
+  }
 
   private base(courseId: string, lessonId: string) {
     return classroomio.course[':courseId'].lesson[':lessonId'].coursework;
@@ -147,8 +160,14 @@ class CourseworkApi extends BaseApi {
     files: File[],
     comment?: string
   ): Promise<boolean> {
-    this.isUploading = true;
-    this.uploadError = null;
+    const itemKey = this.itemKey(lessonId, assessmentKey);
+    this.uploading[itemKey] = true;
+    delete this.uploadErrors[itemKey];
+    const fail = (message: string) => {
+      this.uploadErrors[itemKey] = message;
+      snackbar.error(message);
+      return false;
+    };
 
     try {
       // 1. Presigned upload URLs (server validates type/size, computes version + keys).
@@ -167,9 +186,7 @@ class CourseworkApi extends BaseApi {
           }
         | { success: false; error?: string };
       if (!presign.success) {
-        this.uploadError = presign.error ?? 'Could not prepare the upload.';
-        snackbar.error(this.uploadError);
-        return false;
+        return fail(presign.error ?? 'Could not prepare the upload.');
       }
 
       // 2. PUT each file straight to storage.
@@ -199,9 +216,7 @@ class CourseworkApi extends BaseApi {
         | { success: true; data: CourseworkSubmission }
         | { success: false; error?: string };
       if (!created.success) {
-        this.uploadError = created.error ?? 'Could not record the submission.';
-        snackbar.error(this.uploadError);
-        return false;
+        return fail(created.error ?? 'Could not record the submission.');
       }
 
       this.lastSubmitted = created.data;
@@ -209,11 +224,9 @@ class CourseworkApi extends BaseApi {
       await this.list(courseId, lessonId);
       return true;
     } catch (error) {
-      this.uploadError = error instanceof Error ? error.message : 'Upload failed. Please try again.';
-      snackbar.error(this.uploadError);
-      return false;
+      return fail(error instanceof Error ? error.message : 'Upload failed. Please try again.');
     } finally {
-      this.isUploading = false;
+      this.uploading[itemKey] = false;
     }
   }
 

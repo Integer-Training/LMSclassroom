@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { ROUTE } from '$lib/utils/constants/routes';
   import { AuthUI } from '$features/ui';
@@ -11,6 +12,9 @@
   import * as Card from '@cio/ui/base/card';
 
   let fields: TForgotPasswordForm = $state({ email: '' });
+
+  // forgotApi is a module singleton: clear a previous 'Email Sent!' so revisiting shows the form again.
+  onMount(() => forgotApi.reset());
 </script>
 
 <svelte:head>

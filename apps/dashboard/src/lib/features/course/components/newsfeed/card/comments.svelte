@@ -28,7 +28,7 @@
       content: string,
       parentId?: number,
       replyTo?: { commentId: number; authorFullname: string }
-    ) => Promise<void> | void;
+    ) => Promise<boolean | void> | boolean | void;
     onDeleteComment: (commentId: string | number, parentId?: number) => void;
   }
 
@@ -151,7 +151,9 @@
         ? { commentId: activeReplyTarget.commentId, authorFullname: activeReplyTarget.fullname }
         : undefined;
 
-      await onAddComment(text, parentId, replyTo);
+      const ok = await onAddComment(text, parentId, replyTo);
+      // A failed post keeps the reply target and (via the input) the typed text.
+      if (ok === false) return false;
       if (parentId) {
         expandedRepliesMap[parentId] = true;
       }

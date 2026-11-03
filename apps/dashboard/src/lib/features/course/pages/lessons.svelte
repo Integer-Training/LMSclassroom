@@ -2,6 +2,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { Empty } from '@cio/ui/custom/empty';
+  import { Spinner } from '@cio/ui/base/spinner';
   import BookOpenIcon from '@lucide/svelte/icons/book-open';
   import ContentList from '$features/course/components/lesson/content-list.svelte';
   import ContentSectionList from '$features/course/components/lesson/content-section-list.svelte';
@@ -80,10 +81,16 @@
     }
   }
 
-  const shouldShowNextPlaceholder = $derived(query.get('next') === 'true');
+  // `query` is a mount-time snapshot, so the placeholder must end by itself: only while the target is still being
+  // resolved. A loaded course with nothing to resume falls through to the normal list / empty state.
+  const shouldShowNextPlaceholder = $derived(
+    query.get('next') === 'true' && !hasHandledNext && (!isCourseLoadedForThisPage || navigableContentItems.length > 0)
+  );
 </script>
 
-{#if shouldShowNextPlaceholder}
+{#if shouldShowNextPlaceholder && $isCourseLearnerView}
+  <Empty title="Loading…" icon={Spinner} iconClass="h-8 w-8" variant="page" />
+{:else if shouldShowNextPlaceholder}
   <Empty
     title={$t('course.navItem.lessons.no_lesson')}
     description={$t('course.navItem.lessons.share_your_knowledge')}
@@ -130,6 +137,13 @@
   {:else}
     <ContentList {reorder} />
   {/if}
+{:else if $isCourseLearnerView}
+  <Empty
+    title={$t('course.navItem.lessons.no_lesson')}
+    description="Your tutor hasn't added any units to this course yet. Check back soon."
+    icon={BookOpenIcon}
+    variant="page"
+  />
 {:else}
   <Empty
     title={$t('course.navItem.lessons.body_header')}

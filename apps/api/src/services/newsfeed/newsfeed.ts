@@ -1,6 +1,5 @@
 import { AppError, ErrorCodes } from '@api/utils/errors';
 import { sanitizeHtml } from '@cio/core/utils/sanitize-html';
-import { TENANT_ROOT_DOMAIN } from '@cio/utils/constants/domains';
 import type { TCourseNewsfeed, TNewCourseNewsfeed, TNewCourseNewsfeedComment } from '@cio/db/types';
 import type { TNewsfeedCreate, TNewsfeedUpdate } from '@cio/utils/validation/newsfeed';
 import {
@@ -20,6 +19,7 @@ import {
 } from '@cio/db/queries/newsfeed';
 
 import { env } from '@cio/core/config/env';
+import { getDashboardBaseUrl } from '@cio/core/config/dashboard-url';
 import { buildEmailFromName, buildEmailBranding } from '@cio/email';
 import { enqueueTransactionalEmail } from '@api/services/jobs';
 
@@ -432,13 +432,12 @@ async function sendNewsfeedPostEmail(feedId: string, authorId: string) {
     }
 
     const orgName = feedData.organization?.name || 'Integer Training LMS';
-    const orgSiteName = feedData.organization?.siteName || 'app';
     const branding = buildEmailBranding({
       name: feedData.organization?.name,
       avatarUrl: feedData.organization?.avatarUrl,
       theme: feedData.organization?.theme
     });
-    const postLink = `https://${orgSiteName}.${TENANT_ROOT_DOMAIN}/courses/${feedData.courseId}?feedId=${feedData.feedId}`;
+    const postLink = `${getDashboardBaseUrl(feedData.organization)}/courses/${feedData.courseId}?feedId=${feedData.feedId}`;
 
     const recipients = feedData.courseMembers
       .map((member) => member.email)
@@ -483,13 +482,12 @@ async function sendNewsfeedCommentEmail(feedId: string, commentContent: string) 
     }
 
     const orgName = feedData.organization?.name || 'Integer Training LMS';
-    const orgSiteName = feedData.organization?.siteName || 'app';
     const branding = buildEmailBranding({
       name: feedData.organization?.name,
       avatarUrl: feedData.organization?.avatarUrl,
       theme: feedData.organization?.theme
     });
-    const postLink = `https://${orgSiteName}.${TENANT_ROOT_DOMAIN}/courses/${feedData.courseId}?feedId=${feedData.feedId}`;
+    const postLink = `${getDashboardBaseUrl(feedData.organization)}/courses/${feedData.courseId}?feedId=${feedData.feedId}`;
 
     await enqueueTransactionalEmail('newsfeedComment', {
       to: feedData.author.email,

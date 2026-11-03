@@ -12,7 +12,8 @@
     replyingToSnippet?: string | null;
     onCancelReply?: () => void;
     cancelLabel?: string;
-    onSubmit: (content: string) => Promise<void> | void;
+    // Resolve to false when the post failed, so the typed text is kept for a retry.
+    onSubmit: (content: string) => Promise<boolean | void> | boolean | void;
     isSubmitting?: boolean;
     class?: string;
   }
@@ -34,11 +35,11 @@
   async function handleSend() {
     if (!value.trim() || isSubmitting) return;
     const text = value.trim();
-    value = '';
     try {
-      await onSubmit(text);
+      const ok = await onSubmit(text);
+      if (ok !== false) value = '';
     } catch {
-      value = text;
+      // keep the text so the user can retry
     }
   }
 

@@ -61,6 +61,9 @@ export class CourseApi extends BaseApiWithErrors {
     memberId: ''
   });
 
+  // Terminal outcome of the last failed course load, so the layout can show a message instead of an endless spinner.
+  loadFailure = $state<{ courseId: string; reason: 'forbidden' | 'failed' } | null>(null);
+
   private loadedCourseId = $state<string | null>(null);
   private isCourseDirty = $state(false);
   private inFlightCourseRequest: Promise<Course | null> | null = null;
@@ -205,6 +208,7 @@ export class CourseApi extends BaseApiWithErrors {
    * @returns The course data or null on error
    */
   async get(courseId: string) {
+    this.loadFailure = null;
     await this.execute<GetCourseRequest>({
       requestFn: () =>
         classroomio.course[':courseId'].$get({
@@ -223,6 +227,10 @@ export class CourseApi extends BaseApiWithErrors {
         if (typeof result === 'string') {
           snackbar.error('Failed to fetch course');
         }
+        // A JSON error body is the API's own rejection (403 not a member / 404); a string is a network/server failure.
+        const code = typeof result === 'object' && result ? (result as { code?: string }).code : undefined;
+        const rejected = typeof result === 'object' && !!result && code !== 'COURSE_MEMBER_CHECK_FAILED';
+        this.loadFailure = { courseId, reason: rejected ? 'forbidden' : 'failed' };
       }
     });
     return this.course;

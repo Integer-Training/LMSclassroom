@@ -113,7 +113,7 @@
     {author}
     {comments}
     onAddComment={async (content, parentId, replyTo) => {
-      await addNewComment(content, feed.id, parentId, replyTo);
+      return await addNewComment(content, feed.id, parentId, replyTo);
     }}
     onDeleteComment={(commentId, parentId) => {
       if (courseId) deleteComment(feed.id, String(commentId), parentId);

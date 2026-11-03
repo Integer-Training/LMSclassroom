@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { lessonApi } from '$features/course/api';
+  import { courseApi, lessonApi } from '$features/course/api';
   import { CloseButton, DeleteModal } from '$features/ui';
   import { lessonDocUpload } from '$features/course/components/lesson/store';
   import MODES from '$lib/utils/constants/mode';
@@ -91,7 +91,8 @@
     }
 
     try {
-      const response = await fetch(doc.link);
+      await lessonApi.refreshStaleDocumentLinks(courseApi.course?.id ?? '', lessonApi.lesson?.id ?? '');
+      const response = await fetch(lessonApi.lesson?.documents?.find((d) => d.key === doc.key)?.link ?? doc.link);
       if (!response.ok) {
         throw new Error('Failed to fetch document');
       }
@@ -157,7 +158,10 @@
         return;
       }
 
-      const response = await fetch(document.link);
+      await lessonApi.refreshStaleDocumentLinks(courseApi.course?.id ?? '', lessonApi.lesson?.id ?? '');
+      const response = await fetch(
+        lessonApi.lesson?.documents?.find((d) => d.key === document.key)?.link ?? document.link
+      );
 
       if (!response.ok) {
         throw new Error('Failed to fetch PDF');
@@ -252,13 +256,15 @@
     viewPDF(doc);
   }
 
-  function handleViewDocument(doc: LessonDocument) {
+  async function handleViewDocument(doc: LessonDocument) {
     if (doc.type === 'pdf') {
       handleViewPDF(doc);
       return;
     }
 
-    window.open(doc.link, '_blank', 'noopener,noreferrer');
+    await lessonApi.refreshStaleDocumentLinks(courseApi.course?.id ?? '', lessonApi.lesson?.id ?? '');
+    const link = lessonApi.lesson?.documents?.find((d) => d.key === doc.key)?.link ?? doc.link;
+    window.open(link, '_blank', 'noopener,noreferrer');
   }
 
   function reorderDocuments(documents: LessonDocument[]) {

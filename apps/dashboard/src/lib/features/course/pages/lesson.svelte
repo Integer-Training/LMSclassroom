@@ -91,7 +91,10 @@
       return label.endsWith('y') ? `${label.slice(0, -1)}ies` : `${label}s`; // "case study"→"case studies"
     };
     return [...counts]
-      .map(([kind, n]) => `${n} ${pluralize((MATERIAL_KIND_LABELS[kind as MaterialKind] ?? 'assessment').toLowerCase(), n)}`)
+      .map(
+        ([kind, n]) =>
+          `${n} ${pluralize((MATERIAL_KIND_LABELS[kind as MaterialKind] ?? 'assessment').toLowerCase(), n)}`
+      )
       .join(' · ');
   });
 
@@ -148,10 +151,7 @@
   // PearlLMS Phase 9 — the active-time heartbeat runs ONLY for a learner viewing this lesson (view mode,
   // lesson loaded, not locked). Staff / edit-mode / a locked unit all disable it.
   const heartbeatEnabled = $derived(
-    $isCourseLearnerView &&
-      mode === MODES.view &&
-      contentLockReason === null &&
-      lessonApi.lesson?.id === lessonId
+    $isCourseLearnerView && mode === MODES.view && contentLockReason === null && lessonApi.lesson?.id === lessonId
   );
   const lessonSlug = $derived(lessonApi.lesson?.slug ?? '');
   const isPublicCourse = $derived(courseApi.course?.type === 'PUBLIC');
@@ -238,7 +238,9 @@
 
   const viewModeComponents = $derived(getViewModeComponents(tabs));
 
-  const isMaterialsEmpty = $derived(tabs.every((tab) => tab.badgeValue === 0));
+  // Links render inside the Document section, so a unit holding only links still has content to show.
+  const hasLessonLinks = $derived(lessonApi.lesson?.id === lessonId && (lessonApi.lesson?.links?.length ?? 0) > 0);
+  const isMaterialsEmpty = $derived(tabs.every((tab) => tab.badgeValue === 0) && !hasLessonLinks);
   const hasLessonVideos = $derived((lessonApi.lesson?.videos?.length ?? 0) > 0);
 
   let timeoutId: NodeJS.Timeout | undefined;
@@ -512,7 +514,11 @@
   {#snippet child()}
     <div class={`overflow-x-hidden pb-6 ${mode === MODES.edit ? 'lg:w-full xl:w-11/12' : 'mx-auto w-full max-w-3xl'}`}>
       <!-- PearlLMS Phase 9: unit active-time heartbeat (learner view only; the action self-gates on `enabled`). -->
-      <div class="sr-only" aria-hidden="true" use:unitTimeHeartbeat={{ courseId, lessonId, enabled: heartbeatEnabled }}></div>
+      <div
+        class="sr-only"
+        aria-hidden="true"
+        use:unitTimeHeartbeat={{ courseId, lessonId, enabled: heartbeatEnabled }}
+      ></div>
       {#if isLiveSessionLesson && mode === MODES.view && !($isCourseLearnerView && contentLockReason)}
         <div class="mb-4">
           <LiveSessionCard
@@ -541,17 +547,27 @@
                   class="mb-4 flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 sm:flex-row sm:items-center sm:justify-between dark:border-amber-800/60 dark:bg-amber-950/40"
                 >
                   <div class="flex items-center gap-2.5">
-                    <span class="flex size-8 shrink-0 items-center justify-center rounded-md bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300">
+                    <span
+                      class="flex size-8 shrink-0 items-center justify-center rounded-md bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300"
+                    >
                       <ClipboardListIcon size={17} />
                     </span>
                     <div class="text-sm">
                       <p class="font-semibold text-amber-900 dark:text-amber-200">
-                        This unit has {assessmentItems.length > 1 ? `${assessmentItems.length} assessments` : 'an assessment'} to submit
+                        This unit has {assessmentItems.length > 1
+                          ? `${assessmentItems.length} assessments`
+                          : 'an assessment'} to submit
                       </p>
-                      <p class="text-amber-700/90 dark:text-amber-300/80">{assessmentSummary} — download the brief, complete it, then upload your work.</p>
+                      <p class="text-amber-700/90 dark:text-amber-300/80">
+                        {assessmentSummary} — download the brief, complete it, then upload your work.
+                      </p>
                     </div>
                   </div>
-                  <Button size="sm" class="shrink-0 bg-amber-600 text-white hover:bg-amber-700" onclick={scrollToAssessments}>
+                  <Button
+                    size="sm"
+                    class="shrink-0 bg-amber-600 text-white hover:bg-amber-700"
+                    onclick={scrollToAssessments}
+                  >
                     Go to assessment <ArrowDownIcon size={14} />
                   </Button>
                 </div>

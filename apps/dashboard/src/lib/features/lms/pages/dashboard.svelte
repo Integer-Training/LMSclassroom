@@ -6,6 +6,7 @@
   import { currentOrg } from '$lib/utils/store/org';
   import { profile } from '$lib/utils/store/user';
   import { t } from '$lib/utils/functions/translations';
+  import { daysUntilDue } from '$lib/utils/functions/due-date';
   import { coursesApi } from '$features/course/api';
   import { lmsDashboardApi } from '$features/lms/api/dashboard.svelte';
   import { announcementsApi } from '$features/announcements/api/announcements.svelte';
@@ -64,6 +65,10 @@
     announcementsApi.loadFeed();
     coursesApi.getEnrolledCourses();
   });
+
+  function retryDashboard() {
+    lmsDashboardApi.load();
+  }
 
   // Upcoming LIVE sessions (kept from the previous home — genuinely time-sensitive).
   const upcomingSessions = $derived(
@@ -141,9 +146,8 @@
   }
   function relDays(iso: string | null): string {
     if (!iso) return '—';
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return '—';
-    const days = Math.ceil((d.getTime() - Date.now()) / 86_400_000);
+    const days = daysUntilDue(iso);
+    if (days === null) return '—';
     if (days < 0) return 'Overdue';
     if (days === 0) return 'Today';
     if (days === 1) return 'Tomorrow';
@@ -506,7 +510,12 @@
       </button>
     </div>
     <div class="divide-border divide-y">
-      {#if !loaded}
+      {#if !loaded && lmsDashboardApi.error && !lmsDashboardApi.isLoading}
+        <div class="text-muted-foreground flex flex-col items-center justify-center gap-2 py-10 text-sm">
+          <p>We couldn't load your dashboard.</p>
+          <button onclick={retryDashboard} class="text-primary text-xs font-medium hover:underline">Retry</button>
+        </div>
+      {:else if !loaded}
         <div class="text-muted-foreground flex items-center justify-center py-10"><Spinner class="size-6" /></div>
       {:else if dash && dash.courseProgression.length > 0}
         {#each dash.courseProgression as c (c.courseId)}

@@ -12,7 +12,7 @@
   import { HoverableItem, AttachmentIcon } from '@cio/ui/custom/moving-icons';
   import { Button } from '@cio/ui/base/button';
   import { Chip } from '@cio/ui/custom/chip';
-  import { lessonApi, exerciseApi, courseApi, contentApi } from '$features/course/api';
+  import { lessonApi, exerciseApi, courseApi, courseUnlockApi, contentApi } from '$features/course/api';
   import { reindexOrder } from '@cio/utils/functions/reorder';
   import { isOrgStudent } from '$lib/utils/store/app';
   import formatDate from '$lib/utils/functions/formatDate';
@@ -206,6 +206,8 @@
   function isLockedForStudent(item: ContentDndItem, isStudent: boolean) {
     if (!isStudent) return false;
     if ((item.isUnlocked ?? true) === false) return true;
+    // PearlLMS sequential unlock (server-computed map) — same source the sidebar tree uses.
+    if (courseUnlockApi.isLocked(item.contentId)) return true;
 
     return item.accessible === false;
   }
