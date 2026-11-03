@@ -1,6 +1,7 @@
 import type { Course, CourseContentItem, CourseContentSection } from './types';
 import { ExerciseIcon, LessonIcon } from '@cio/ui/custom/moving-icons';
 
+import { withoutExercises } from './learner-content';
 import { ContentType as CourseContentType } from '@cio/utils/constants/content';
 import TableOfContentsIcon from '@lucide/svelte/icons/table-of-contents';
 
@@ -50,8 +51,9 @@ export function getContentRoute(courseId: string, item: { id: string; type: stri
   return '';
 }
 
-export function getCourseContent(course: Course | null) {
-  return course?.content ?? EMPTY_CONTENT;
+export function getCourseContent(course: Course | null, opts?: { hideExercises?: boolean }) {
+  const content = course?.content ?? EMPTY_CONTENT;
+  return opts?.hideExercises ? withoutExercises(content) : content;
 }
 
 const NAVIGABLE_CONTENT_TYPES = [CourseContentType.Lesson, CourseContentType.Exercise] as const;
@@ -92,8 +94,8 @@ export function getCourseProgress(course: Course | null): ContentProgress {
   return getContentItemsProgress(items);
 }
 
-export function getOrderedNavigableContent(course: Course | null): ContentItem[] {
-  const content = getCourseContent(course);
+export function getOrderedNavigableContent(course: Course | null, opts?: { hideExercises?: boolean }): ContentItem[] {
+  const content = getCourseContent(course, opts);
   const items = content.grouped ? content.sections.flatMap((s) => s.items) : content.items;
   return items.filter((item) =>
     NAVIGABLE_CONTENT_TYPES.includes(item.type as (typeof NAVIGABLE_CONTENT_TYPES)[number])

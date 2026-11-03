@@ -35,7 +35,9 @@
 
   let isMarkingComplete = $state(false);
 
-  const navigableContentItems = $derived(getOrderedNavigableContent(courseApi.course));
+  const navigableContentItems = $derived(
+    getOrderedNavigableContent(courseApi.course, { hideExercises: $isCourseLearnerView })
+  );
 
   const lessonItems = $derived(navigableContentItems.filter((item) => item.type === ContentType.Lesson));
 
@@ -211,7 +213,9 @@
       // Match only OVERLAYS THAT ARE OPEN — `.z-modal` (the PDF viewer, mounted only while open) and any
       // dialog whose bits-ui state is "open". Scoping to data-state avoids a persistent closed dialog in the
       // DOM permanently swallowing arrow-key session navigation.
-      return !!document.querySelector('.z-modal, [role="dialog"][data-state="open"], [data-state="open"][aria-modal="true"]');
+      return !!document.querySelector(
+        '.z-modal, [role="dialog"][data-state="open"], [data-state="open"][aria-modal="true"]'
+      );
     } catch {
       return false;
     }

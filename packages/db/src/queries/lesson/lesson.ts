@@ -298,6 +298,52 @@ export async function createLessonComment(data: TNewLessonComment): Promise<TLes
   }
 }
 
+/**
+ * Resolves who wrote a lesson comment and which course its lesson belongs to (for authorization checks)
+ * @param commentId Comment ID
+ * @returns Author group member ID and course ID, or null if the comment does not exist
+ */
+export async function getLessonCommentAuthorAndCourse(commentId: number): Promise<{
+  authorId: string | null;
+  courseId: string | null;
+} | null> {
+  try {
+    const [row] = await db
+      .select({ authorId: schema.lessonComment.groupmemberId, courseId: schema.lesson.courseId })
+      .from(schema.lessonComment)
+      .innerJoin(schema.lesson, eq(schema.lessonComment.lessonId, schema.lesson.id))
+      .where(eq(schema.lessonComment.id, commentId))
+      .limit(1);
+    return row ?? null;
+  } catch (error) {
+    console.error('getLessonCommentAuthorAndCourse error:', error);
+    throw new Error(
+      `Failed to get lesson comment author for comment "${commentId}": ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
+}
+
+/**
+ * Gets the course a lesson belongs to
+ * @param lessonId Lesson ID
+ * @returns Course ID, or null if the lesson does not exist
+ */
+export async function getLessonCourseId(lessonId: string): Promise<string | null> {
+  try {
+    const [row] = await db
+      .select({ courseId: schema.lesson.courseId })
+      .from(schema.lesson)
+      .where(eq(schema.lesson.id, lessonId))
+      .limit(1);
+    return row?.courseId ?? null;
+  } catch (error) {
+    console.error('getLessonCourseId error:', error);
+    throw new Error(
+      `Failed to get course for lesson "${lessonId}": ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
+}
+
 export async function updateLessonComment(commentId: number, comment: string): Promise<TLessonComment | null> {
   try {
     const [updated] = await db

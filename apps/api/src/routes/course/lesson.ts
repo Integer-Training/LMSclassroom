@@ -39,10 +39,15 @@ import { Hono } from '@api/utils/hono';
 import { ZLessonDownloadContent } from '@cio/utils/validation/course';
 import { authMiddleware } from '@api/middlewares/auth';
 import { courseMemberMiddleware } from '@api/middlewares/course-member';
+import {
+  lessonCommentAuthorOnlyMiddleware,
+  lessonCommentAuthorOrTeamMiddleware
+} from '@api/middlewares/lesson-comment-access';
 import { requireAdmin, requireCourseContentRead, requireCourseInOrg } from '@api/middlewares/guards';
 import { notifyCourseSessionUpdateService } from '@api/services/course/notify-session';
 import { generateLessonPdf } from '@api/utils/lesson';
 import { getGroupMemberIdByCourseAndProfile } from '@cio/db/queries/group';
+import { getLessonCourseId } from '@cio/db/queries/lesson';
 import { addUnitTimeSpent, getUnitTimeBeatTarget } from '@cio/db/queries/caseload';
 import { createRateLimiter } from '@api/middlewares/rate-limiter';
 import type { Actor } from '@cio/db/actor';
@@ -183,8 +188,13 @@ export const lessonRouter = new Hono()
     zValidator('query', ZLessonCommentsQuery),
     async (c) => {
       try {
+        const courseId = c.req.param('courseId')!;
         const { lessonId } = c.req.valid('param');
         const { cursor, limit = 10 } = c.req.valid('query');
+
+        if ((await getLessonCourseId(lessonId)) !== courseId) {
+          throw new AppError('Lesson not found', ErrorCodes.INTERNAL_ERROR, 404);
+        }
 
         const result = await getLessonCommentsPaginated(lessonId, { cursor, limit });
 
@@ -207,6 +217,10 @@ export const lessonRouter = new Hono()
         const { lessonId } = c.req.valid('param');
         const { comment } = c.req.valid('json');
 
+        if ((await getLessonCourseId(lessonId)) !== courseId) {
+          throw new AppError('Lesson not found', ErrorCodes.INTERNAL_ERROR, 404);
+        }
+
         const groupMemberId = await getGroupMemberIdByCourseAndProfile(courseId, user.id);
         if (!groupMemberId) {
           return c.json({ success: false, error: 'User is not a member of this course' }, 403);
@@ -224,6 +238,7 @@ export const lessonRouter = new Hono()
     '/comment/:commentId',
     authMiddleware,
     courseMemberMiddleware,
+    lessonCommentAuthorOnlyMiddleware,
     zValidator('param', ZLessonCommentGetParam),
     zValidator('json', ZLessonCommentUpdate),
     async (c) => {
@@ -242,6 +257,7 @@ export const lessonRouter = new Hono()
     '/comment/:commentId',
     authMiddleware,
     courseMemberMiddleware,
+    lessonCommentAuthorOrTeamMiddleware,
     zValidator('param', ZLessonCommentGetParam),
     async (c) => {
       try {

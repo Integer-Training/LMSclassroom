@@ -128,6 +128,8 @@
         url: getNavItemRoute(id, 'attendance'),
         isActive: (path || page.url.pathname) === getNavItemRoute(id, 'attendance'),
         show() {
+          // Admin-only page (requireAdmin) — a learner click would just bounce to /lms.
+          if (isStudent) return false;
           if (courseApi.course?.type !== 'LIVE_CLASS') return false;
           return true;
         },
@@ -150,10 +152,9 @@
         url: getNavItemRoute(id, 'marks'),
         isActive: (path || page.url.pathname) === getNavItemRoute(id, 'marks'),
         show() {
-          if (courseApi.course?.type === 'LIVE_CLASS') {
-            return isStudent ? ($currentOrg.customization?.['course']?.['grading'] ?? false) : true;
-          }
-          return false;
+          // Admin-only page (requireAdmin) — a learner click would just bounce to /lms.
+          if (isStudent) return false;
+          return courseApi.course?.type === 'LIVE_CLASS';
         },
         icon: getNavIcon(NAV_IDS.MARKS)
       },

@@ -68,9 +68,9 @@
 
     // PearlLMS Phase 4: load the sequential-unlock map for the outline + lesson lock states (authoritative
     // server computation; staff / toggle-off courses come back all-unlocked).
-    if (courseUnlockApi.courseId !== data.courseId) {
-      courseUnlockApi.load(data.courseId);
-    }
+    // Reload on every (re)entry of the course layout (and each lesson open, below) — a tutor may have passed the
+    // previous unit since the map was cached, and the singleton otherwise keeps the stale lock until F5.
+    courseUnlockApi.load(data.courseId);
   });
 
   const isCourseReady = $derived.by(() => {
@@ -94,6 +94,11 @@
   const isExercisePage = $derived(!!data.exerciseId);
 
   const lessonId = $derived(page.params.lessonId as string | undefined);
+
+  // Opening a unit re-checks its lock against the server, so a pass recorded since the map was cached unlocks it.
+  $effect(() => {
+    if (lessonId && data.courseId) courseUnlockApi.load(data.courseId);
+  });
   const exerciseId = $derived((page.params.exerciseId as string | undefined) ?? data.exerciseId);
   const isLessonOrExercisePage = $derived(Boolean(lessonId || exerciseId));
   const isLessonEditMode = $derived(page.url.searchParams.get('mode') === 'edit');

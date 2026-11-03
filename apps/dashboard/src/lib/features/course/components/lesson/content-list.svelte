@@ -44,8 +44,8 @@
 
   let courseId = $derived(courseApi.course?.id || '');
   const profileId = $derived($profile?.id || '');
-  const contentData = $derived(getCourseContent(courseApi.course));
   const isStudentView = $derived($isOrgStudent === true);
+  const contentData = $derived(getCourseContent(courseApi.course, { hideExercises: isStudentView }));
   const isLiveCourse = $derived(courseApi.course?.type === 'LIVE_CLASS');
   const isSelfPacedCourse = $derived(isSelfPacedLikeCourse(courseApi.course?.type));
   const metaChipClass =

@@ -61,12 +61,13 @@ export async function listNewsfeedPaginated(courseId: string, options: { cursor?
 /**
  * Gets a newsfeed item by ID
  * @param feedId Newsfeed ID
+ * @param courseId When given, the item must belong to this course (404 otherwise)
  * @returns Newsfeed item
  */
-export async function getNewsfeedItem(feedId: string): Promise<TCourseNewsfeed> {
+export async function getNewsfeedItem(feedId: string, courseId?: string): Promise<TCourseNewsfeed> {
   try {
     const feed = await getNewsfeedById(feedId);
-    if (!feed) {
+    if (!feed || (courseId !== undefined && feed.courseId !== courseId)) {
       throw new AppError('Newsfeed item not found', ErrorCodes.INTERNAL_ERROR, 404);
     }
 
@@ -155,17 +156,32 @@ export async function updateNewsfeedService(feedId: string, data: TNewsfeedUpdat
 }
 
 /**
- * Updates a newsfeed item's reaction
+ * Updates the caller's own reactions on a newsfeed item. The client sends the full reaction map; only the
+ * caller's group member id is taken from it, and everyone else's reactions are kept as stored.
+ * @param courseId Course ID the item must belong to
  * @param feedId Newsfeed ID
- * @param reaction Reaction data
+ * @param groupMemberId Caller's group member ID
+ * @param reaction Reaction data submitted by the client
  * @returns Updated newsfeed item
  */
 export async function updateNewsfeedReactionService(
+  courseId: string,
   feedId: string,
-  reaction: TCourseNewsfeed['reaction']
+  groupMemberId: string,
+  reaction: NonNullable<TCourseNewsfeed['reaction']>
 ): Promise<TCourseNewsfeed> {
   try {
-    const updated = await updateNewsfeed(feedId, { reaction });
+    const feed = await getNewsfeedItem(feedId, courseId);
+    const current = (feed.reaction ?? {}) as Record<string, string[] | undefined>;
+    const submitted = reaction as Record<string, string[] | undefined>;
+
+    const merged: Record<string, string[]> = { ...(current as Record<string, string[]>) };
+    for (const type of ['clap', 'smile', 'thumbsup', 'thumbsdown']) {
+      const others = (current[type] ?? []).filter((id) => id !== groupMemberId);
+      merged[type] = submitted[type]?.includes(groupMemberId) ? [...others, groupMemberId] : others;
+    }
+
+    const updated = await updateNewsfeed(feedId, { reaction: merged as TCourseNewsfeed['reaction'] });
     if (!updated) {
       // If no row was updated, it usually means the feed doesn't exist.
       throw new AppError('Newsfeed item not found', ErrorCodes.INTERNAL_ERROR, 404);

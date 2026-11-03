@@ -6,9 +6,11 @@
   import ContentList from '$features/course/components/lesson/content-list.svelte';
   import ContentSectionList from '$features/course/components/lesson/content-section-list.svelte';
   import CourseContentIcon from '$features/course/components/course-content-icon.svelte';
-  import { courseApi } from '$features/course/api';
+  import { courseApi, courseProgressApi } from '$features/course/api';
+  import { isCourseLearnerView } from '$lib/utils/store/app';
   import { t } from '$lib/utils/functions/translations';
   import { getCourseContent } from '$features/course/utils/content';
+  import { resolveContinueTarget } from '$features/course/utils/learner-content';
   import { ContentType } from '@cio/utils/constants/content';
 
   interface Props {
@@ -20,7 +22,8 @@
 
   const query = new URLSearchParams(page.url.search);
 
-  const contentData = $derived(getCourseContent(courseApi.course));
+  // Exercises are admin-only pages, so a learner's outline / Continue never includes them.
+  const contentData = $derived(getCourseContent(courseApi.course, { hideExercises: $isCourseLearnerView }));
   const contentLength = $derived(contentData.grouped ? contentData.sections.length : contentData.items.length);
   const contentItems = $derived(
     contentData.grouped ? contentData.sections.flatMap((section) => section.items) : contentData.items
@@ -45,11 +48,27 @@
     return navigableContentItems.find((item) => !item.isComplete && item.isUnlocked === true);
   }
 
+  // Learners never write lesson_completion (progress is result-derived), so "first incomplete" would always be
+  // unit 1. Use the server's current position (same computation as the dashboard) and fall back to the first
+  // unlocked lesson only if it is unavailable.
+  async function findLearnerContinueTarget() {
+    await courseProgressApi.load(courseId);
+    const currentLessonId =
+      courseProgressApi.courseId === courseId ? courseProgressApi.progress?.currentPosition?.lessonId : null;
+    return resolveContinueTarget(navigableContentItems, currentLessonId) ?? findFirstIncompleteContent();
+  }
+
   $effect(() => {
     if (!canResolveNext || isFetching || query.get('next') !== 'true') return;
 
     hasHandledNext = true;
-    const incompleteContent = findFirstIncompleteContent();
+    void (async () => {
+      const incompleteContent = $isCourseLearnerView ? await findLearnerContinueTarget() : findFirstIncompleteContent();
+      openContinueTarget(incompleteContent);
+    })();
+  });
+
+  function openContinueTarget(incompleteContent: (typeof navigableContentItems)[number] | undefined) {
     if (incompleteContent) {
       if (incompleteContent.type === ContentType.Lesson) {
         goto(`/courses/${courseId}/lessons/${incompleteContent.id}`);
@@ -59,7 +78,7 @@
     } else {
       goto(`/courses/${courseId}/lessons`);
     }
-  });
+  }
 
   const shouldShowNextPlaceholder = $derived(query.get('next') === 'true');
 </script>

@@ -2,6 +2,7 @@ import axios from 'axios';
 import { classroomio } from '$lib/utils/services/api';
 import { BaseApi } from '$lib/utils/services/api/base.svelte';
 import { snackbar } from '$features/ui/snackbar/store';
+import { GenericUploader } from '$lib/utils/services/courses/presign';
 
 export interface CourseworkFile {
   key: string;
@@ -56,19 +57,28 @@ class CourseworkApi extends BaseApi {
   uploadError = $state<string | null>(null);
   lastSubmitted = $state<CourseworkSubmission | null>(null);
   loadedLessonId = $state<string | null>(null);
+  private inflight: { lessonId: string; promise: Promise<unknown> } | null = null;
 
   private base(courseId: string, lessonId: string) {
     return classroomio.course[':courseId'].lesson[':lessonId'].coursework;
   }
 
   /**
-   * Load the unit's submissions once per lesson (deduped across the several per-assessment cards that mount
-   * together). Sets loadedLessonId synchronously before the fetch so concurrent card mounts don't refetch.
+   * Refresh the unit's submissions every time the cards mount (a tutor may have marked the work since the
+   * learner last looked). Only the several per-assessment cards that mount together share one request; a later
+   * return to the unit always refetches. Cached rows stay visible meanwhile, unless they belong to another unit.
    */
   async ensureLoaded(courseId: string, lessonId: string) {
-    if (this.loadedLessonId === lessonId) return;
-    this.loadedLessonId = lessonId;
-    await this.list(courseId, lessonId);
+    if (this.inflight?.lessonId === lessonId) return this.inflight.promise;
+    if (this.loadedLessonId !== lessonId) {
+      this.submissions = [];
+      this.canSubmit = true;
+    }
+    const promise = this.list(courseId, lessonId).finally(() => {
+      if (this.inflight?.promise === promise) this.inflight = null;
+    });
+    this.inflight = { lessonId, promise };
+    return promise;
   }
 
   async list(courseId: string, lessonId: string) {
@@ -76,6 +86,7 @@ class CourseworkApi extends BaseApi {
       requestFn: () => this.base(courseId, lessonId).$get({ param: { courseId, lessonId } }),
       logContext: 'listing coursework',
       onSuccess: (result) => {
+        this.loadedLessonId = lessonId;
         this.submissions = result.data.submissions as CourseworkSubmission[];
         this.canSubmit = result.data.canSubmit;
       },
@@ -97,6 +108,31 @@ class CourseworkApi extends BaseApi {
       }
     }
     return null;
+  }
+
+  /**
+   * PUT one file straight to storage through the shared uploader, which bounds it with an absolute timeout and a
+   * no-progress watchdog (a stalled Supabase PUT used to spin forever). One retry on a stall, then a clear error.
+   */
+  private async putToStorage(url: string, file: File) {
+    const uploader = new GenericUploader('document');
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await uploader.uploadFile({ url, file });
+        return;
+      } catch (error) {
+        if (attempt >= 2) {
+          throw new Error(
+            axios.isAxiosError(error) && (error.code === 'ECONNABORTED' || axios.isCancel(error))
+              ? `Uploading "${file.name}" timed out. Please check your connection and try again.`
+              : error instanceof Error
+                ? error.message
+                : `Uploading "${file.name}" failed. Please try again.`
+          );
+        }
+        uploader.resetAbort();
+      }
+    }
   }
 
   /**
@@ -140,7 +176,7 @@ class CourseworkApi extends BaseApi {
       const { version, files: presignedFiles } = presign.data;
       for (let i = 0; i < files.length; i++) {
         const target = presignedFiles[i];
-        await axios.put(target.uploadUrl, files[i], { headers: { 'Content-Type': files[i].type } });
+        await this.putToStorage(target.uploadUrl, files[i]);
       }
 
       // 3. Register the versioned submission.
@@ -169,9 +205,7 @@ class CourseworkApi extends BaseApi {
       }
 
       this.lastSubmitted = created.data;
-      snackbar.success(
-        `${submissionType === 'draft' ? 'Draft' : 'Work'} submitted (version ${created.data.version}).`
-      );
+      snackbar.success(`${submissionType === 'draft' ? 'Draft' : 'Work'} submitted (version ${created.data.version}).`);
       await this.list(courseId, lessonId);
       return true;
     } catch (error) {

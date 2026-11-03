@@ -27,7 +27,7 @@
 
   let { path, id, isStudent = false, className = '', onOpenContentModal }: Props = $props();
 
-  const contentData = $derived(getCourseContent(courseApi.course));
+  const contentData = $derived(getCourseContent(courseApi.course, { hideExercises: isStudent }));
   const canOpenContentModal = $derived(Boolean(onOpenContentModal) && !isStudent);
 </script>
 
