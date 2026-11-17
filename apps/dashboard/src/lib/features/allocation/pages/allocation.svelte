@@ -3,6 +3,7 @@
   import * as Table from '@cio/ui/base/table';
   import * as Dialog from '@cio/ui/base/dialog';
   import { Search } from '@cio/ui/custom/search';
+  import SwitchTutorDialog from '$features/allocation/components/switch-tutor-dialog.svelte';
   import PersonPicker from '$features/allocation/components/person-picker.svelte';
   import { Button } from '@cio/ui/base/button';
   import { allocationApi, type Allocation, type AssignablePerson } from '$features/allocation/api/allocation.svelte';
@@ -77,6 +78,14 @@
     }
   }
 
+  // Switch modal — prefilled with this row's learner and tutor pair.
+  let switchOpen = $state(false);
+  let switchTarget = $state<Allocation | null>(null);
+  function openSwitch(a: Allocation) {
+    switchTarget = a;
+    switchOpen = true;
+  }
+
   function openRemove(a: Allocation) {
     removeTarget = a;
     removeOpen = true;
@@ -142,6 +151,7 @@
                   </Table.Cell>
                   <Table.Cell>{(view === 'tutor' ? a.learnerEmail : a.tutorEmail) || '—'}</Table.Cell>
                   <Table.Cell class="text-right">
+                    <Button variant="ghost" size="sm" onclick={() => openSwitch(a)}>Switch</Button>
                     <Button variant="ghost" size="sm" class="ui:text-destructive" onclick={() => openRemove(a)}>
                       Remove
                     </Button>
@@ -182,7 +192,7 @@
 
 <!-- Assign tutor to learner -->
 <Dialog.Root bind:open={assignOpen}>
-  <Dialog.Content class="w-full max-w-md">
+  <Dialog.Content class="w-full max-w-md [&>*]:min-w-0">
     <Dialog.Header>
       <Dialog.Title>Assign tutor</Dialog.Title>
       <Dialog.Description
@@ -219,9 +229,20 @@
   </Dialog.Content>
 </Dialog.Root>
 
+<!-- Switch tutor (one learner, one tutor replaced) -->
+<SwitchTutorDialog
+  bind:open={switchOpen}
+  learner={switchTarget
+    ? { id: switchTarget.learnerId, name: switchTarget.learnerName || switchTarget.learnerEmail || '' }
+    : null}
+  tutors={switchTarget
+    ? [{ tutorId: switchTarget.tutorId, name: switchTarget.tutorName || switchTarget.tutorEmail }]
+    : []}
+/>
+
 <!-- Remove allocation -->
 <Dialog.Root bind:open={removeOpen}>
-  <Dialog.Content class="w-full max-w-md">
+  <Dialog.Content class="w-full max-w-md [&>*]:min-w-0">
     <Dialog.Header>
       <Dialog.Title>Remove allocation</Dialog.Title>
       <Dialog.Description>

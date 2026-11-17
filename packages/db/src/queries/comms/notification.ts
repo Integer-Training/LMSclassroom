@@ -1,6 +1,6 @@
 import * as schema from '@db/schema';
 
-import { and, db, desc, eq, gte, inArray, isNull, ne, sql, type DbOrTxClient } from '@db/drizzle';
+import { and, db, desc, eq, gte, inArray, isNull, ne, notExists, sql, type DbOrTxClient } from '@db/drizzle';
 
 // PearlLMS Phase 6 — in-app notification centre queries (docs/COMMS-MODEL.md §4-5). The centre is strictly
 // SELF-scoped: every read/mutation is filtered by user_id at the query layer; there is no cross-user path.
@@ -178,4 +178,81 @@ export async function getLessonLinkTargets(
     .from(schema.lesson)
     .where(inArray(schema.lesson.id, lessonIds));
   return new Map(rows.map((r) => [r.id, { courseId: r.courseId as string, title: r.title ?? null }]));
+}
+
+/**
+ * After a tutor loses learners (switch / move): clear THAT tutor's unread bell items about them. Two kinds:
+ *  - `message.received` whose entity is the tutor↔learner thread;
+ *  - `submission.created` (entity = lesson) for lessons where one of those learners has a submission AND no
+ *    learner still allocated to the tutor has a latest version awaiting marking there (so a lesson that is
+ *    still waiting on the tutor's remaining learners keeps its alert). Call AFTER the allocations moved.
+ * Self-scoped by user_id (the tutor). Returns the number of rows marked read.
+ */
+export async function markTutorNotificationsReadForLearners(
+  tutorId: string,
+  learnerIds: string[],
+  client: DbOrTxClient = db
+): Promise<number> {
+  if (learnerIds.length === 0) return 0;
+  const n = schema.notification;
+  let marked = 0;
+
+  const threadIds = client
+    .select({ id: schema.messageThread.id })
+    .from(schema.messageThread)
+    .where(and(eq(schema.messageThread.tutorId, tutorId), inArray(schema.messageThread.learnerId, learnerIds)));
+  const msgRows = await client
+    .update(n)
+    .set({ readAt: sql`now()` })
+    .where(and(eq(n.userId, tutorId), eq(n.type, 'message.received'), isNull(n.readAt), inArray(n.entityId, threadIds)))
+    .returning({ id: n.id });
+  marked += msgRows.length;
+
+  const cs = schema.courseworkSubmission;
+  const lessonRows = await client
+    .selectDistinct({ lessonId: cs.lessonId })
+    .from(cs)
+    .where(inArray(cs.learnerId, learnerIds));
+  const lessonIds = lessonRows.map((r) => r.lessonId);
+  if (lessonIds.length > 0) {
+    // Lessons where a learner the tutor STILL has has an unmarked latest version — those alerts stay.
+    const stillWaiting = await client
+      .selectDistinct({ lessonId: cs.lessonId })
+      .from(cs)
+      .innerJoin(
+        schema.tutorAllocation,
+        and(eq(schema.tutorAllocation.learnerId, cs.learnerId), eq(schema.tutorAllocation.tutorId, tutorId))
+      )
+      .where(
+        and(
+          inArray(cs.lessonId, lessonIds),
+          sql`${cs.version} = (select max(s2.version) from coursework_submission s2 where s2.learner_id = ${cs.learnerId} and s2.lesson_id = ${cs.lessonId})`,
+          notExists(
+            client
+              .select({ one: sql`1` })
+              .from(schema.courseworkResult)
+              .where(eq(schema.courseworkResult.submissionId, cs.id))
+          )
+        )
+      );
+    const keep = new Set(stillWaiting.map((r) => r.lessonId));
+    const clearIds = lessonIds.filter((id) => !keep.has(id));
+    if (clearIds.length > 0) {
+      const subRows = await client
+        .update(n)
+        .set({ readAt: sql`now()` })
+        .where(
+          and(
+            eq(n.userId, tutorId),
+            eq(n.type, 'submission.created'),
+            eq(n.entityType, 'lesson'),
+            isNull(n.readAt),
+            inArray(n.entityId, clearIds)
+          )
+        )
+        .returning({ id: n.id });
+      marked += subRows.length;
+    }
+  }
+  return marked;
 }

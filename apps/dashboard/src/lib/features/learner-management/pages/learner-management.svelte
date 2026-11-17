@@ -14,6 +14,8 @@
   import UsersIcon from '@lucide/svelte/icons/users';
   import KeyIcon from '@lucide/svelte/icons/key-round';
   import LogInIcon from '@lucide/svelte/icons/log-in';
+  import ArrowLeftRightIcon from '@lucide/svelte/icons/arrow-left-right';
+  import PencilIcon from '@lucide/svelte/icons/pencil';
   import { loginAsMember } from '$lib/utils/functions/impersonation';
   import { currentOrg } from '$lib/utils/store/org';
   import { downloadCsv } from '$features/admin-dashboard/utils/export-csv';
@@ -24,6 +26,8 @@
   import KpiCard from '$features/analytics/components/kpi-card.svelte';
   import CreateLearnerDialog from '$features/learner-management/components/create-learner-dialog.svelte';
   import ResetPasswordDialog from '$features/learner-management/components/reset-password-dialog.svelte';
+  import SwitchTutorDialog from '$features/allocation/components/switch-tutor-dialog.svelte';
+  import EditDetailsDialog from '$features/users/components/edit-details-dialog.svelte';
   import { SvelteSet } from 'svelte/reactivity';
 
   // Admin Learner-management. KPI tiles + a filterable/searchable/paginated roster with per-learner
@@ -35,6 +39,21 @@
 
   let showCreate = $state(false);
   let showReveal = $state(false);
+
+  // Switch / assign tutor + edit details (Admin).
+  let showSwitch = $state(false);
+  let switchRow = $state<LearnerMgmtRow | null>(null);
+  let showEdit = $state(false);
+  let editRow = $state<LearnerMgmtRow | null>(null);
+
+  function openSwitch(row: LearnerMgmtRow) {
+    switchRow = row;
+    showSwitch = true;
+  }
+  function openEdit(row: LearnerMgmtRow) {
+    editRow = row;
+    showEdit = true;
+  }
 
   let activity = $state<ActivityFilter>('all');
   let courseFilter = $state(ALL);
@@ -303,8 +322,10 @@
                           </button>
                         {/if}
                       </Table.Cell>
-                      <Table.Cell class="font-medium whitespace-nowrap">{row.name || 'Learner'}</Table.Cell>
-                      <Table.Cell class="ui:text-muted-foreground">{row.email ?? ''}</Table.Cell>
+                      <Table.Cell class="font-medium whitespace-normal!">{row.name || 'Learner'}</Table.Cell>
+                      <Table.Cell class="ui:text-muted-foreground [overflow-wrap:anywhere] whitespace-normal!"
+                        >{row.email ?? ''}</Table.Cell
+                      >
                       <Table.Cell class="whitespace-nowrap">
                         {#if row.tutorName}
                           {row.tutorName}
@@ -322,8 +343,8 @@
                           {STATUS_META[row.activity].label}
                         </Badge>
                       </Table.Cell>
-                      <Table.Cell class="text-right whitespace-nowrap">
-                        <div class="flex items-center justify-end gap-1">
+                      <Table.Cell class="text-right whitespace-normal!">
+                        <div class="ml-auto flex w-[17.5rem] flex-wrap items-center justify-end gap-1">
                           <Button
                             variant="outline"
                             size="sm"
@@ -331,6 +352,13 @@
                             onclick={() => loginAsMember(row.memberId)}
                           >
                             <LogInIcon class="size-4" /> Login As
+                          </Button>
+                          <Button variant="outline" size="sm" onclick={() => openSwitch(row)}>
+                            <ArrowLeftRightIcon class="size-4" />
+                            {row.tutors.length === 0 ? 'Assign tutor' : 'Switch tutor'}
+                          </Button>
+                          <Button variant="outline" size="sm" onclick={() => openEdit(row)}>
+                            <PencilIcon class="size-4" /> Edit details
                           </Button>
                           <Button
                             variant="outline"
@@ -415,3 +443,17 @@
 
 <CreateLearnerDialog bind:open={showCreate} />
 <ResetPasswordDialog bind:open={showReveal} />
+<SwitchTutorDialog
+  bind:open={showSwitch}
+  learner={switchRow ? { id: switchRow.userId, name: switchRow.name ?? '' } : null}
+  tutors={switchRow?.tutors ?? []}
+  onDone={() => learnerManagementApi.load()}
+/>
+<EditDetailsDialog
+  bind:open={showEdit}
+  memberId={editRow?.memberId ?? null}
+  name={editRow?.name ?? ''}
+  email={editRow?.email ?? ''}
+  isLearner
+  onDone={() => learnerManagementApi.load()}
+/>

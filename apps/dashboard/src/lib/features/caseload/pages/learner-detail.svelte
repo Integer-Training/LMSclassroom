@@ -10,7 +10,7 @@
   import MarkingForm from '$features/caseload/components/marking-form.svelte';
   import IdVerificationControl from '$features/registrations/components/id-verification-control.svelte';
   import { caseloadApi, type DetailFile } from '$features/caseload/api/caseload.svelte';
-  import { messagingApi } from '$features/messaging/api/messaging.svelte';
+  import { messagingApi, type PreviousThread } from '$features/messaging/api/messaging.svelte';
 
   function resultLabel(result: string | null): string {
     return result ? (RESULT_LABELS[result as keyof typeof RESULT_LABELS] ?? result) : '';
@@ -24,7 +24,13 @@
   }
   let { learnerId }: Props = $props();
 
-  onMount(() => caseloadApi.loadLearner(learnerId));
+  // Archived threads with this learner's former tutors — readable (never writable) by the current tutor.
+  let previousThreads = $state<PreviousThread[]>([]);
+
+  onMount(() => {
+    caseloadApi.loadLearner(learnerId);
+    messagingApi.previousThreads(learnerId).then((list) => (previousThreads = list));
+  });
 
   // PearlLMS Phase 8 — the markable submissions: the latest version of each (assessment, type) group that
   // has no result yet (matches the server mark-latest-per-type rule). A later draft never blocks a final.
@@ -98,6 +104,24 @@
     <div class="mb-6">
       <IdVerificationControl {learnerId} />
     </div>
+
+    {#if previousThreads.length > 0}
+      <div class="mb-6 rounded-md border p-4">
+        <h2 class="text-sm font-semibold">Previous tutor messages</h2>
+        <ul class="mt-2 space-y-1">
+          {#each previousThreads as t (t.threadId)}
+            <li>
+              <a href={`/messages/${t.threadId}`} class="text-primary text-sm hover:underline">
+                Conversation with {t.tutorName}
+              </a>
+              {#if t.lastAt}<span class="text-muted-foreground text-xs">
+                  · last message {formatDate(t.lastAt)}</span
+                >{/if}
+            </li>
+          {/each}
+        </ul>
+      </div>
+    {/if}
 
     {#if caseloadApi.detail.courses.length === 0}
       <div class="text-muted-foreground rounded-md border p-8 text-center text-sm">Nothing submitted yet.</div>

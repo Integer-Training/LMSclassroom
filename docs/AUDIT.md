@@ -78,7 +78,8 @@ Call-sites are added by the steps that own each action — Step 3 only ships the
 | Action | When | Entity | Example metadata |
 |---|---|---|---|
 | `allocation.created` | manager/admin allocates a tutor to a learner | `tutor_allocation` | `{ tutorId, learnerId }` (ids only) |
-| `allocation.removed` | manager/admin removes an allocation | `tutor_allocation` | `{ allocationId }` |
+| `allocation.removed` | manager/admin removes an allocation | `tutor_allocation` | `{ tutorId, learnerId }` (ids only) |
+| `allocation.switched` | admin switches a learner's tutor (single switch or bulk "Move learners"; one row per learner) | `tutor_allocation` | `{ learnerId, fromTutorId, toTutorId, outcome, reason?, batchId? }` — `reason` is the admin's optional free text (≤300 chars, UI says "don't include personal details"); owner-approved exception to the no-free-text rule, 2026-11-17 |
 | `coursework.submitted` | a learner submits coursework | `coursework_submission` | `{ submissionId, version, fileCount }` |
 | `result.entered` | a tutor records a Pass/Refer | `coursework_result` | `{ submissionId, version, result }` — NEVER the feedback text |
 | `completion.recorded` | the final required Pass completes a course (Phase 5) | `course_completion` | `{ learnerId, courseId, completionId }` (ids only) |

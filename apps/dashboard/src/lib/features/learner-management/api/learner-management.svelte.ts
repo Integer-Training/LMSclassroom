@@ -14,6 +14,8 @@ export interface LearnerMgmtRow {
   status: 'ACTIVE' | 'DEACTIVATED';
   activity: 'active' | 'inactive' | 'created' | 'suspended';
   tutorName: string | null;
+  /** All allocated tutors, oldest first (tutorName = the first). */
+  tutors: { tutorId: string; name: string | null }[];
   courses: { courseId: string; title: string }[];
   courseCount: number;
   timeSpentSeconds: number;

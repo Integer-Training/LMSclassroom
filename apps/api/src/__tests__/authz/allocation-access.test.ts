@@ -85,7 +85,16 @@ vi.mock('@api/services/organization/allocation', () => ({
   listOrgAllocations: vi.fn(async () => ({ items: [], page: 1, limit: 50, total: 0, totalPages: 1 })),
   searchAssignablePeopleForOrg: vi.fn(async () => []),
   createTutorAllocation: vi.fn(async () => ({ id: 'a-new' })),
-  removeTutorAllocation: vi.fn(async () => ({ id: 'a-1' }))
+  removeTutorAllocation: vi.fn(async () => ({ id: 'a-1' })),
+  switchTutorForLearner: vi.fn(async () => ({ outcome: 'switched', allocationId: 'a-2' })),
+  moveLearnersBetweenTutors: vi.fn(async () => ({
+    batchId: 'b',
+    moved: 1,
+    alreadyWithTarget: 0,
+    notAllocated: 0,
+    results: []
+  })),
+  listTutorLearnersForMove: vi.fn(async () => [])
 }));
 
 import { allocationsRouter } from '@api/routes/organization/allocations';
@@ -132,6 +141,54 @@ describe('allocationsRouter — Manager/Admin only', () => {
       expect((await req(method, path, 'admin', body)).status).toBeLessThan(300);
     });
   }
+});
+
+// Switch / move / tutor-learners are ADMIN only — a Manager (who can assign + remove) is denied.
+const ADMIN_ONLY_ROUTES: Array<{ method: string; path: string; body?: unknown }> = [
+  {
+    method: 'POST',
+    path: '/organization/allocations/switch',
+    body: { learnerId: UUID_A, fromTutorId: UUID_B, toTutorId: UUID_C }
+  },
+  {
+    method: 'POST',
+    path: '/organization/allocations/move',
+    body: { fromTutorId: UUID_B, toTutorId: UUID_C, all: true }
+  },
+  { method: 'GET', path: `/organization/allocations/tutors/${UUID_A}/learners` }
+];
+
+describe('allocationsRouter — switch / move are ADMIN only', () => {
+  for (const { method, path, body } of ADMIN_ONLY_ROUTES) {
+    it(`${method} ${path}: MANAGER/TUTOR/LEARNER → 403, anon → 401`, async () => {
+      expect((await req(method, path, 'manager', body)).status).toBe(403);
+      expect((await req(method, path, 'tutor', body)).status).toBe(403);
+      expect((await req(method, path, 'learner', body)).status).toBe(403);
+      expect((await req(method, path, 'anon', body)).status).toBe(401);
+    });
+
+    it(`${method} ${path}: ADMIN passes (200)`, async () => {
+      expect((await req(method, path, 'admin', body)).status).toBe(200);
+    });
+  }
+
+  it('POST /move requires exactly one of learnerIds / all (400 for neither or both)', async () => {
+    const base = { fromTutorId: UUID_B, toTutorId: UUID_C };
+    expect((await req('POST', '/organization/allocations/move', 'admin', base)).status).toBe(400);
+    expect(
+      (await req('POST', '/organization/allocations/move', 'admin', { ...base, all: true, learnerIds: [UUID_A] }))
+        .status
+    ).toBe(400);
+    expect(
+      (await req('POST', '/organization/allocations/move', 'admin', { ...base, learnerIds: [UUID_A] })).status
+    ).toBe(200);
+  });
+
+  it('POST /switch caps the reason at 300 chars (400)', async () => {
+    const body = { learnerId: UUID_A, fromTutorId: UUID_B, toTutorId: UUID_C };
+    const res = await req('POST', '/organization/allocations/switch', 'admin', { ...body, reason: 'x'.repeat(301) });
+    expect(res.status).toBe(400);
+  });
 });
 
 // ── (C) typeahead + paginated list — Phase E (no 100-row roster dump) ────────────────────────────

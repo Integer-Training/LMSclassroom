@@ -2,19 +2,25 @@ import {
   ZAllocationCreate,
   ZAllocationIdParam,
   ZAllocationListQuery,
-  ZAssignablePeopleQuery
+  ZAllocationMove,
+  ZAllocationSwitch,
+  ZAssignablePeopleQuery,
+  ZTutorIdParam
 } from '@cio/utils/validation/coursework';
 import {
   createTutorAllocation,
   listOrgAllocations,
+  listTutorLearnersForMove,
+  moveLearnersBetweenTutors,
   removeTutorAllocation,
-  searchAssignablePeopleForOrg
+  searchAssignablePeopleForOrg,
+  switchTutorForLearner
 } from '@api/services/organization/allocation';
 
 import { Hono } from '@api/utils/hono';
 import type { Actor } from '@cio/db/actor';
 import { handleError } from '@api/utils/errors';
-import { requireManagerOrAdmin } from '@api/middlewares/guards';
+import { requireAdmin, requireManagerOrAdmin } from '@api/middlewares/guards';
 import { zValidator } from '@hono/zod-validator';
 
 // Tutor↔learner allocation management (PearlLMS Phase 3). Manager OR Admin across the board
@@ -58,6 +64,37 @@ export const allocationsRouter = new Hono()
       return c.json({ success: true, data }, 201);
     } catch (error) {
       return handleError(c, error, 'Failed to create allocation');
+    }
+  })
+  // Switch / move are ADMIN-only (requireAdmin — a Manager can assign and remove but not reassign).
+  .post('/switch', requireAdmin, zValidator('json', ZAllocationSwitch), async (c) => {
+    try {
+      const orgId = (c.get('actor') as Extract<Actor, { authenticated: true }>).orgId;
+      const actor = c.get('actor') as Actor;
+      const data = await switchTutorForLearner(orgId, actor, c.req.valid('json'));
+      return c.json({ success: true, data }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to switch tutor');
+    }
+  })
+  .post('/move', requireAdmin, zValidator('json', ZAllocationMove), async (c) => {
+    try {
+      const orgId = (c.get('actor') as Extract<Actor, { authenticated: true }>).orgId;
+      const actor = c.get('actor') as Actor;
+      const data = await moveLearnersBetweenTutors(orgId, actor, c.req.valid('json'));
+      return c.json({ success: true, data }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to move learners');
+    }
+  })
+  .get('/tutors/:tutorId/learners', requireAdmin, zValidator('param', ZTutorIdParam), async (c) => {
+    try {
+      const orgId = (c.get('actor') as Extract<Actor, { authenticated: true }>).orgId;
+      const { tutorId } = c.req.valid('param');
+      const data = await listTutorLearnersForMove(orgId, tutorId);
+      return c.json({ success: true, data }, 200);
+    } catch (error) {
+      return handleError(c, error, "Failed to load the tutor's learners");
     }
   })
   .delete('/:allocationId', requireManagerOrAdmin, zValidator('param', ZAllocationIdParam), async (c) => {

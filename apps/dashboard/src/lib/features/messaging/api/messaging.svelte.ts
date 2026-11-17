@@ -20,6 +20,14 @@ export interface ThreadView {
   messages: MessageView[];
   /** Older messages exist before `messages[0]` — fetch them with `loadEarlier`. */
   hasMore?: boolean;
+  /** The viewer is the NEW tutor reading a former tutor's thread (read-only; counterpart = the old tutor). */
+  previousTutor?: boolean;
+}
+
+export interface PreviousThread {
+  threadId: string;
+  tutorName: string;
+  lastAt: string | null;
 }
 
 export interface ConversationSummary {
@@ -73,6 +81,19 @@ class MessagingApi extends BaseApi {
         this.conversationsLoaded = true;
       }
     });
+  }
+
+  /** A learner's former tutors' archived threads (read-only) — Admin, or a tutor currently allocated to them. */
+  async previousThreads(learnerId: string): Promise<PreviousThread[]> {
+    // Direct call (not execute()): a side list must not flip the shared isLoading, and failing is just "none".
+    try {
+      const res = await classroomio.messages.learners[':learnerId']['previous-threads'].$get({ param: { learnerId } });
+      const result = (await res.json()) as { success: boolean; data?: PreviousThread[] };
+      return result.success && Array.isArray(result.data) ? result.data : [];
+    } catch (error) {
+      console.error('Error loading previous conversations:', error);
+      return [];
+    }
   }
 
   async loadMyTutors() {

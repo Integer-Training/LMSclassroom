@@ -36,3 +36,32 @@ export const ZAssignablePeopleQuery = z.object({
   pairedWith: z.uuid().optional()
 });
 export type AssignablePeopleQuery = z.infer<typeof ZAssignablePeopleQuery>;
+
+/** Optional free-text reason stored in the audit row (UI hint: no personal details). */
+const ZSwitchReason = z.string().trim().max(300).optional();
+
+/** Switch ONE learner from one tutor to another (atomic). */
+export const ZAllocationSwitch = z.object({
+  learnerId: z.uuid(),
+  fromTutorId: z.uuid(),
+  toTutorId: z.uuid(),
+  reason: ZSwitchReason
+});
+export type AllocationSwitchInput = z.infer<typeof ZAllocationSwitch>;
+
+/** Bulk move: exactly one of `learnerIds` (1–500) or `all: true`. */
+export const ZAllocationMove = z
+  .object({
+    fromTutorId: z.uuid(),
+    toTutorId: z.uuid(),
+    learnerIds: z.array(z.uuid()).min(1).max(500).optional(),
+    all: z.literal(true).optional(),
+    reason: ZSwitchReason
+  })
+  .refine((v) => (v.learnerIds !== undefined) !== (v.all === true), {
+    message: 'Provide exactly one of learnerIds or all'
+  });
+export type AllocationMoveInput = z.infer<typeof ZAllocationMove>;
+
+/** Path param for the tutor's learners list. */
+export const ZTutorIdParam = z.object({ tutorId: z.uuid() });

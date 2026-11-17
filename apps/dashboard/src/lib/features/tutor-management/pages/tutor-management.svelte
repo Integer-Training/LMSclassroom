@@ -12,12 +12,16 @@
   import LogInIcon from '@lucide/svelte/icons/log-in';
   import UsersIcon from '@lucide/svelte/icons/users';
   import BookIcon from '@lucide/svelte/icons/book-open';
+  import ArrowLeftRightIcon from '@lucide/svelte/icons/arrow-left-right';
+  import PencilIcon from '@lucide/svelte/icons/pencil';
   import { loginAsMember } from '$lib/utils/functions/impersonation';
   import { currentOrg } from '$lib/utils/store/org';
   import { downloadCsv } from '$features/admin-dashboard/utils/export-csv';
   import { tutorManagementApi, type TutorMgmtRow } from '$features/tutor-management/api/tutor-management.svelte';
   import CreateTutorDialog from '$features/tutor-management/components/create-tutor-dialog.svelte';
   import ResetPasswordDialog from '$features/tutor-management/components/reset-password-dialog.svelte';
+  import MoveLearnersDialog from '$features/allocation/components/move-learners-dialog.svelte';
+  import EditDetailsDialog from '$features/users/components/edit-details-dialog.svelte';
   import ManageCoursesDialog from '$features/tutor-management/components/manage-courses-dialog.svelte';
 
   // Admin Tutor-management. Roster of tutors with taught/caseload courses + learner counts, tutor creation,
@@ -29,6 +33,21 @@
   let coursesMemberId = $state<number | null>(null);
   let coursesTutorName = $state('');
   let search = $state('');
+
+  // Move learners + edit details (Admin).
+  let showMove = $state(false);
+  let moveRow = $state<TutorMgmtRow | null>(null);
+  let showEdit = $state(false);
+  let editRow = $state<TutorMgmtRow | null>(null);
+
+  function openMove(row: TutorMgmtRow) {
+    moveRow = row;
+    showMove = true;
+  }
+  function openEdit(row: TutorMgmtRow) {
+    editRow = row;
+    showEdit = true;
+  }
 
   function openCourses(row: TutorMgmtRow) {
     coursesMemberId = row.memberId;
@@ -160,9 +179,13 @@
                 {#each filtered as row (row.memberId)}
                   {@const parts = splitName(row.name)}
                   <Table.Row>
-                    <Table.Cell class="font-medium whitespace-nowrap">{parts.first}</Table.Cell>
+                    <Table.Cell class="font-medium [overflow-wrap:anywhere] whitespace-normal!"
+                      >{parts.first}</Table.Cell
+                    >
                     <Table.Cell class="whitespace-nowrap">{parts.last}</Table.Cell>
-                    <Table.Cell class="ui:text-muted-foreground">{row.email ?? ''}</Table.Cell>
+                    <Table.Cell class="ui:text-muted-foreground [overflow-wrap:anywhere] whitespace-normal!"
+                      >{row.email ?? ''}</Table.Cell
+                    >
                     <Table.Cell>
                       {#if row.courses.length === 0}
                         <span class="ui:text-muted-foreground">—</span>
@@ -182,10 +205,21 @@
                         <Badge variant="secondary" class="text-emerald-600 dark:text-emerald-400">Active</Badge>
                       {/if}
                     </Table.Cell>
-                    <Table.Cell class="text-right whitespace-nowrap">
-                      <div class="flex items-center justify-end gap-1">
+                    <Table.Cell class="text-right whitespace-normal!">
+                      <div class="ml-auto flex w-[17.5rem] flex-wrap items-center justify-end gap-1">
                         <Button variant="outline" size="sm" onclick={() => openCourses(row)}>
                           <BookIcon class="size-4" /> Courses
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={row.learnerCount === 0}
+                          onclick={() => openMove(row)}
+                        >
+                          <ArrowLeftRightIcon class="size-4" /> Move learners
+                        </Button>
+                        <Button variant="outline" size="sm" onclick={() => openEdit(row)}>
+                          <PencilIcon class="size-4" /> Edit details
                         </Button>
                         <Button
                           variant="outline"
@@ -227,4 +261,18 @@
 
 <CreateTutorDialog bind:open={showCreate} />
 <ResetPasswordDialog bind:open={showReveal} />
+<MoveLearnersDialog
+  bind:open={showMove}
+  tutorId={moveRow?.userId ?? null}
+  tutorName={moveRow?.name ?? 'this tutor'}
+  onDone={() => tutorManagementApi.load()}
+/>
+<EditDetailsDialog
+  bind:open={showEdit}
+  memberId={editRow?.memberId ?? null}
+  name={editRow?.name ?? ''}
+  email={editRow?.email ?? ''}
+  isLearner={false}
+  onDone={() => tutorManagementApi.load()}
+/>
 <ManageCoursesDialog bind:open={showCourses} memberId={coursesMemberId} tutorName={coursesTutorName} />

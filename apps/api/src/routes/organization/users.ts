@@ -2,6 +2,7 @@ import {
   ZChangeUserRole,
   ZChangeUserStatus,
   ZCreateUser,
+  ZEditMemberDetails,
   ZLearnerProfile,
   ZListUsersQuery,
   ZUserMemberParam
@@ -12,7 +13,8 @@ import {
   createOrgUser,
   getLearnerProfile,
   listOrgUsers,
-  updateLearnerProfile
+  updateLearnerProfile,
+  updateMemberName
 } from '@api/services/organization/users';
 
 import { Hono } from '@api/utils/hono';
@@ -109,6 +111,25 @@ export const usersRouter = new Hono()
         return c.json({ success: true, data }, 200);
       } catch (error) {
         return handleError(c, error, 'Failed to change user status');
+      }
+    }
+  )
+  // Edit a tutor's / learner's display NAME (both user.name + profile.fullname). ADMIN only; email not editable.
+  .put(
+    '/:memberId/details',
+    requireAdmin,
+    zValidator('param', ZUserMemberParam),
+    zValidator('json', ZEditMemberDetails),
+    async (c) => {
+      try {
+        const orgId = c.req.header('cio-org-id')!;
+        const actor = c.get('actor') as Actor;
+        const { memberId } = c.req.valid('param');
+        const { name } = c.req.valid('json');
+        const data = await updateMemberName(orgId, actor, memberId, name);
+        return c.json({ success: true, data }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to update user details');
       }
     }
   )

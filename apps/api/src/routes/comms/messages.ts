@@ -9,6 +9,7 @@ import { createRateLimiter } from '@api/middlewares/rate-limiter';
 import {
   getMyTutor,
   getMyTutors,
+  getPreviousTutorThreads,
   getThreadView,
   listConversations,
   markThreadRead,
@@ -21,6 +22,7 @@ import {
 // send body is a bounded string — there is no file field anywhere. Mounted at /messages.
 const ZOpen = z.object({ counterpartId: z.string().uuid() });
 const ZSend = z.object({ body: z.string().min(1).max(MESSAGE_MAX_LENGTH) });
+const ZLearnerParam = z.object({ learnerId: z.string().uuid() });
 const ZThreadParam = z.object({ threadId: z.string().uuid() });
 // History paging: newest page by default; `before` (a message createdAt) pages back. Page size is capped at 100.
 const ZThreadQuery = z.object({
@@ -66,6 +68,16 @@ export const messagesRouter = new Hono()
       return c.json({ success: true, data }, 200);
     } catch (error) {
       return handleError(c, error, 'Failed to load conversations');
+    }
+  })
+  // A learner's previous tutors' archived threads (read-only) — Admin, or a tutor currently allocated to them.
+  .get('/learners/:learnerId/previous-threads', requireActor(), zValidator('param', ZLearnerParam), async (c) => {
+    try {
+      const { learnerId } = c.req.valid('param');
+      const data = await getPreviousTutorThreads(c.get('actor') as Actor, learnerId);
+      return c.json({ success: true, data }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to load previous conversations');
     }
   })
   // Open/ensure the thread for an allocated pair (both sides). Returns the full view.

@@ -60,6 +60,8 @@ export interface LearnerMgmtRow {
   status: string;
   activity: Activity;
   tutorName: string | null;
+  /** All allocated tutors, oldest allocation first (tutorName = the first). */
+  tutors: { tutorId: string; name: string | null }[];
   courses: CourseRef[];
   courseCount: number;
   timeSpentSeconds: number;
@@ -87,9 +89,14 @@ export async function getLearnerManagement(actor: Actor): Promise<LearnerManagem
 
   // learner → first allocated tutor name.
   const tutorByLearner = new Map<string, string>();
+  const tutorsByLearner = new Map<string, { tutorId: string; name: string | null }[]>();
   for (const a of allocations) {
     if (a.learnerName === undefined) continue;
     if (!tutorByLearner.has(a.learnerId) && a.tutorName) tutorByLearner.set(a.learnerId, a.tutorName);
+    // listAllocationsByOrg is ordered by createdAt, so each learner's tutors come out oldest-first.
+    const list = tutorsByLearner.get(a.learnerId) ?? [];
+    list.push({ tutorId: a.tutorId, name: a.tutorName });
+    tutorsByLearner.set(a.learnerId, list);
   }
   // learner → courses.
   const coursesByLearner = new Map<string, CourseRef[]>();
@@ -118,6 +125,7 @@ export async function getLearnerManagement(actor: Actor): Promise<LearnerManagem
       status: m.status,
       activity,
       tutorName: tutorByLearner.get(m.userId) ?? null,
+      tutors: tutorsByLearner.get(m.userId) ?? [],
       courses,
       courseCount: courses.length,
       timeSpentSeconds: secondsByLearner.get(m.userId) ?? 0,

@@ -9,6 +9,7 @@ import {
   getThreadById,
   insertMessage,
   listConversationsForParticipant,
+  listPreviousTutorThreads,
   listMessagesPage,
   markNotificationsReadForEntity,
   markThreadRead as markThreadReadQuery,
@@ -33,6 +34,24 @@ function assertAuthed(actor: Actor): asserts actor is Extract<Actor, { authentic
 
 function isParticipant(actor: Extract<Actor, { authenticated: true }>, thread: MessageThreadRow): boolean {
   return actor.userId === thread.tutorId || actor.userId === thread.learnerId;
+}
+
+/**
+ * THE read rule for a thread (D4, revised). Admin always (D2). The learner participant always. The thread's own
+ * tutor only while STILL allocated to the learner (a removed tutor loses access, archived thread included). A
+ * DIFFERENT tutor only when currently allocated to the learner AND the thread is archived AND its tutor is no
+ * longer allocated — i.e. a predecessor's thread; a live co-tutor's conversation stays private.
+ */
+async function canReadThread(
+  actor: Extract<Actor, { authenticated: true }>,
+  thread: MessageThreadRow
+): Promise<boolean> {
+  if (actor.role === 'ADMIN') return true;
+  if (actor.userId === thread.learnerId) return true;
+  if (actor.userId === thread.tutorId) return isTutorAllocatedToLearner(thread.tutorId, thread.learnerId);
+  if (actor.role !== 'TUTOR' || thread.archivedAt == null) return false;
+  if (!(await isTutorAllocatedToLearner(actor.userId, thread.learnerId))) return false;
+  return !(await isTutorAllocatedToLearner(thread.tutorId, thread.learnerId));
 }
 
 /** Advance the read cursor AND clear the bell's "New message" rows for the thread (best-effort). */
@@ -60,6 +79,8 @@ export interface ThreadView {
   archived: boolean;
   readOnly: boolean;
   canWrite: boolean;
+  /** The viewer is a (current) tutor reading a PREDECESSOR's archived thread — read-only. */
+  previousTutor: boolean;
   counterpart: { id: string; name: string };
   /** Oldest-first window: the newest page, or (with a `before` cursor) the page just before it. */
   messages: MessageView[];
@@ -90,6 +111,7 @@ async function buildView(
     // A participant of an archived pair sees the conversation read-only; an Admin overseer is always read-only.
     readOnly: !participant || archived || !allocated,
     canWrite: participant && !archived && allocated,
+    previousTutor: actor.role === 'TUTOR' && actor.userId !== thread.tutorId,
     counterpart: { id: counterpartId, name: counterpart?.fullname ?? 'Conversation' },
     hasMore,
     messages: messages.map((m) => ({
@@ -117,7 +139,16 @@ export interface ConversationSummary {
  */
 export async function listConversations(actor: Actor): Promise<ConversationSummary[]> {
   assertAuthed(actor);
-  const rows = await listConversationsForParticipant(actor.userId);
+  const all = await listConversationsForParticipant(actor.userId);
+  // A tutor's inbox only lists learners still allocated to them (a removed learner's thread is no longer theirs).
+  const rows =
+    actor.role === 'TUTOR'
+      ? (
+          await Promise.all(
+            all.map(async (r) => ((await isTutorAllocatedToLearner(actor.userId, r.counterpartId)) ? r : null))
+          )
+        ).filter((r): r is NonNullable<typeof r> => r !== null)
+      : all;
   return rows.map((r) => ({
     threadId: r.threadId,
     counterpart: { id: r.counterpartId, name: r.counterpartName },
@@ -188,8 +219,7 @@ export async function getThreadView(
   if (!thread) throw new AppError('Thread not found', ErrorCodes.NOT_FOUND, 404);
 
   const participant = isParticipant(actor, thread);
-  const isAdmin = actor.role === 'ADMIN';
-  if (!participant && !isAdmin) {
+  if (!(await canReadThread(actor, thread))) {
     throw new AppError('You do not have access to this conversation', ErrorCodes.FORBIDDEN, 403);
   }
   if (participant && !page.before) await markThreadAndNotificationsRead(thread.id, actor.userId);
@@ -200,10 +230,26 @@ export async function getThreadView(
 export async function markThreadRead(actor: Actor, threadId: string): Promise<void> {
   assertAuthed(actor);
   const thread = await getThreadById(threadId);
-  if (!thread || !isParticipant(actor, thread)) {
+  if (!thread || !isParticipant(actor, thread) || !(await canReadThread(actor, thread))) {
     throw new AppError('You do not have access to this conversation', ErrorCodes.FORBIDDEN, 403);
   }
   await markThreadAndNotificationsRead(threadId, actor.userId);
+}
+
+/**
+ * A learner's previous tutors' archived threads (read-only for the new tutor). Admin, or a tutor CURRENTLY
+ * allocated to the learner; anyone else → 403.
+ */
+export async function getPreviousTutorThreads(
+  actor: Actor,
+  learnerId: string
+): Promise<{ threadId: string; tutorName: string; lastAt: string }[]> {
+  assertAuthed(actor);
+  const allowed =
+    actor.role === 'ADMIN' || (actor.role === 'TUTOR' && (await isTutorAllocatedToLearner(actor.userId, learnerId)));
+  if (!allowed) throw new AppError('You do not have access to this learner', ErrorCodes.FORBIDDEN, 403);
+  const rows = await listPreviousTutorThreads(learnerId);
+  return rows.map((r) => ({ threadId: r.threadId, tutorName: r.tutorName, lastAt: r.lastMessageAt }));
 }
 
 /** Send a text message. Participant of an active, still-allocated pair only. Emits message.received. */

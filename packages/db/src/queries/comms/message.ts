@@ -1,6 +1,21 @@
 import * as schema from '@db/schema';
 
-import { and, count, db, desc, eq, gt, isNull, lt, ne, or, sql, type DbOrTxClient } from '@db/drizzle';
+import {
+  and,
+  count,
+  db,
+  desc,
+  eq,
+  gt,
+  isNull,
+  isNotNull,
+  lt,
+  ne,
+  notExists,
+  or,
+  sql,
+  type DbOrTxClient
+} from '@db/drizzle';
 import { alias } from 'drizzle-orm/pg-core';
 
 // PearlLMS Phase 6 Step 4 — messaging queries (docs/COMMS-MODEL.md §4). A thread is one per (tutor, learner)
@@ -312,4 +327,56 @@ export async function markThreadRead(threadId: string, profileId: string, client
       target: [schema.messageRead.threadId, schema.messageRead.profileId],
       set: { lastReadAt: sql`now()` }
     });
+}
+
+export interface PreviousTutorThreadRow {
+  threadId: string;
+  tutorId: string;
+  tutorName: string;
+  lastMessageAt: string;
+}
+
+/**
+ * A learner's ARCHIVED threads whose tutor is no longer allocated to them (the previous tutors' conversations),
+ * newest-active first. Backs the new tutor's read-only "Previous tutor messages" list. No access control here.
+ */
+export async function listPreviousTutorThreads(
+  learnerId: string,
+  client: DbOrTxClient = db
+): Promise<PreviousTutorThreadRow[]> {
+  const lastMessageAt = sql<string>`coalesce((select max(${schema.message.createdAt}) from ${schema.message} where ${schema.message.threadId} = ${schema.messageThread.id}), ${schema.messageThread.createdAt})`;
+  const rows = await client
+    .select({
+      threadId: schema.messageThread.id,
+      tutorId: schema.messageThread.tutorId,
+      tutorName: schema.profile.fullname,
+      lastMessageAt
+    })
+    .from(schema.messageThread)
+    .leftJoin(schema.profile, eq(schema.profile.id, schema.messageThread.tutorId))
+    .where(
+      and(
+        eq(schema.messageThread.learnerId, learnerId),
+        isNotNull(schema.messageThread.archivedAt),
+        notExists(
+          client
+            .select({ one: sql`1` })
+            .from(schema.tutorAllocation)
+            .where(
+              and(
+                eq(schema.tutorAllocation.tutorId, schema.messageThread.tutorId),
+                eq(schema.tutorAllocation.learnerId, learnerId)
+              )
+            )
+        )
+      )
+    );
+  return rows
+    .map((r) => ({
+      threadId: r.threadId,
+      tutorId: r.tutorId,
+      tutorName: r.tutorName ?? 'Previous tutor',
+      lastMessageAt: String(r.lastMessageAt)
+    }))
+    .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
 }

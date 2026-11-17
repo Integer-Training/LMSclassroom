@@ -169,6 +169,22 @@ class UsersApi extends BaseApiWithErrors {
     });
   }
 
+  /** Edit a tutor's / learner's display name (Admin only; email is not editable). */
+  async updateDetails(memberId: number, name: string) {
+    return this.execute<(typeof classroomio.organization.users)[':memberId']['details']['$put']>({
+      requestFn: () =>
+        classroomio.organization.users[':memberId'].details.$put({
+          param: { memberId: String(memberId) },
+          json: { name }
+        }),
+      logContext: 'updating user details',
+      onError: (result) => {
+        if (typeof result === 'string') snackbar.error(result);
+        else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
+      }
+    });
+  }
+
   // ── Enrolment PII (Admin-only) ──────────────────────────────────────────────
   async getProfile(memberId: number): Promise<LearnerProfile | undefined> {
     const res = await this.execute<(typeof classroomio.organization.users)[':memberId']['profile']['$get']>({

@@ -20,6 +20,8 @@ vi.mock('@cio/db/queries/comms', () => ({
   ensureActiveThread: vi.fn(),
   insertMessage: vi.fn(async () => ({ id: 'm1', threadId: 'th1', senderId: 't1', body: 'hi', createdAt: 't' })),
   listMessagesPage: vi.fn(async () => ({ messages: [], hasMore: false })),
+  listConversationsForParticipant: vi.fn(async () => []),
+  listPreviousTutorThreads: vi.fn(async () => []),
   markThreadRead: vi.fn(async () => {}),
   markNotificationsReadForEntity: vi.fn(async () => 1)
 }));
@@ -32,12 +34,23 @@ import {
   getThreadById,
   ensureActiveThread,
   insertMessage,
+  listConversationsForParticipant,
+  listPreviousTutorThreads,
   listMessagesPage,
   markNotificationsReadForEntity,
   markThreadRead
 } from '@cio/db/queries/comms';
 import { emitNotification } from '@api/services/comms/notify';
-import { getMyTutor, getMyTutors, getThreadView, openThread, sendMessage } from '@api/services/comms/messaging';
+import {
+  getMyTutor,
+  getMyTutors,
+  getPreviousTutorThreads,
+  getThreadView,
+  listConversations,
+  markThreadRead as markThreadReadSvc,
+  openThread,
+  sendMessage
+} from '@api/services/comms/messaging';
 
 const mAllocated = vi.mocked(isTutorAllocatedToLearner);
 const mTutors = vi.mocked(listTutorsForLearner);
@@ -249,5 +262,117 @@ describe('reading a thread clears its bell notifications', () => {
     mGetThread.mockResolvedValue({ ...THREAD } as never);
     mClearNotif.mockRejectedValueOnce(new Error('db down'));
     await expect(getThreadView(learnerA, 'th1')).resolves.toBeTruthy();
+  });
+});
+
+// ── Revised D4 read rule: previous tutor access ────────────────────────────────────────────────────────────
+// Allocation state is modelled as a set of "tutor:learner" pairs.
+function allocate(...pairs: string[]) {
+  const set = new Set(pairs);
+  mAllocated.mockImplementation((async (t: string, l: string) => set.has(`${t}:${l}`)) as never);
+}
+const ARCHIVED = { ...THREAD, archivedAt: 'ts' };
+const convRow = (threadId: string, counterpartId: string, archived = false) => ({
+  threadId,
+  counterpartId,
+  counterpartName: 'N',
+  body: 'b',
+  createdAt: 't',
+  unread: false,
+  archived
+});
+
+describe('canReadThread — former tutor loses access', () => {
+  it('the thread own tutor, no longer allocated -> 403 (view and mark read)', async () => {
+    allocate();
+    mGetThread.mockResolvedValue({ ...ARCHIVED } as never);
+    expect(await code(getThreadView(tutorT1, 'th1'))).toBe(403);
+    expect(await code(markThreadReadSvc(tutorT1, 'th1'))).toBe(403);
+  });
+  it('inbox drops threads whose learner is no longer allocated to the tutor', async () => {
+    allocate('t1:lKeep');
+    vi.mocked(listConversationsForParticipant).mockResolvedValue([
+      convRow('a', 'lKeep'),
+      convRow('b', 'lGone', true)
+    ] as never);
+    expect((await listConversations(tutorT1)).map((r) => r.threadId)).toEqual(['a']);
+  });
+  it('a learner inbox is unfiltered (archived threads stay)', async () => {
+    allocate();
+    vi.mocked(listConversationsForParticipant).mockResolvedValue([convRow('a', 't1', true)] as never);
+    expect(await listConversations(learnerA)).toHaveLength(1);
+  });
+});
+
+describe('canReadThread — new tutor reads the predecessor thread', () => {
+  it('allocated new tutor reads a removed tutor archived thread: read-only, previousTutor', async () => {
+    allocate('t2:lA');
+    mGetThread.mockResolvedValue({ ...ARCHIVED } as never);
+    const v = await getThreadView(tutorT2, 'th1');
+    expect(v.previousTutor).toBe(true);
+    expect(v.canWrite).toBe(false);
+    expect(v.readOnly).toBe(true);
+    expect(mMarkRead).not.toHaveBeenCalled();
+  });
+  it('cannot send into it nor mark it read', async () => {
+    allocate('t2:lA');
+    mGetThread.mockResolvedValue({ ...ARCHIVED } as never);
+    expect(await code(sendMessage(tutorT2, 'th1', 'x'))).toBe(403);
+    expect(await code(markThreadReadSvc(tutorT2, 'th1'))).toBe(403);
+  });
+  it('a live co-tutor thread stays private (predecessor still allocated)', async () => {
+    allocate('t1:lA', 't2:lA');
+    mGetThread.mockResolvedValue({ ...ARCHIVED } as never);
+    expect(await code(getThreadView(tutorT2, 'th1'))).toBe(403);
+  });
+  it('a non-archived thread is never readable by another tutor', async () => {
+    allocate('t2:lA');
+    expect(await code(getThreadView(tutorT2, 'th1'))).toBe(403);
+  });
+  it('a tutor not allocated to the learner -> 403', async () => {
+    allocate();
+    mGetThread.mockResolvedValue({ ...ARCHIVED } as never);
+    expect(await code(getThreadView(tutorT2, 'th1'))).toBe(403);
+  });
+  it('A->B->C: C reads both predecessor threads', async () => {
+    allocate('tC:lA');
+    const tutorC = A('tC', 'TUTOR');
+    for (const tutorId of ['t1', 't2']) {
+      mGetThread.mockResolvedValue({ ...ARCHIVED, tutorId } as never);
+      expect((await getThreadView(tutorC, 'th1')).previousTutor).toBe(true);
+    }
+  });
+  it('learner and Admin are unchanged', async () => {
+    allocate();
+    mGetThread.mockResolvedValue({ ...ARCHIVED } as never);
+    const l = await getThreadView(learnerA, 'th1');
+    expect(l.previousTutor).toBe(false);
+    expect(l.readOnly).toBe(true);
+    const ad = await getThreadView(admin, 'th1');
+    expect(ad.previousTutor).toBe(false);
+    expect(ad.canWrite).toBe(false);
+  });
+  it('the owning tutor, still allocated, is not flagged previousTutor', async () => {
+    allocate('t1:lA');
+    expect((await getThreadView(tutorT1, 'th1')).previousTutor).toBe(false);
+  });
+});
+
+describe('getPreviousTutorThreads', () => {
+  const rows = [{ threadId: 'th9', tutorId: 't1', tutorName: 'Old Tutor', lastMessageAt: '2026-01-01' }];
+  it('allocated tutor gets the list in the response shape', async () => {
+    allocate('t2:lA');
+    vi.mocked(listPreviousTutorThreads).mockResolvedValue(rows as never);
+    expect(await getPreviousTutorThreads(tutorT2, 'lA')).toEqual([
+      { threadId: 'th9', tutorName: 'Old Tutor', lastAt: '2026-01-01' }
+    ]);
+  });
+  it('Admin allowed; unallocated tutor, learner, manager -> 403', async () => {
+    allocate();
+    vi.mocked(listPreviousTutorThreads).mockResolvedValue(rows as never);
+    expect(await getPreviousTutorThreads(admin, 'lA')).toHaveLength(1);
+    expect(await code(getPreviousTutorThreads(tutorT2, 'lA'))).toBe(403);
+    expect(await code(getPreviousTutorThreads(learnerA, 'lA'))).toBe(403);
+    expect(await code(getPreviousTutorThreads(manager, 'lA'))).toBe(403);
   });
 });

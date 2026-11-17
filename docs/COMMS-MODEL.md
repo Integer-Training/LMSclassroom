@@ -53,7 +53,13 @@ into one email; the in-app notification **always** writes. *Category email defau
 (RECOMMENDED).** A thread is bound to the **(tutor_id, learner_id) pair**, never to `tutor_allocation.id`
 (reallocation DELETEs the allocation row — a FK cascade would destroy the whole conversation). On
 reallocation to a **different** tutor: the old thread (old pair) is **archived → read-only** for its
-participants (and Admin per D2); the new tutor is a **different pair → a fresh thread**. Re-allocating the
+participants (and Admin per D2). **Revised read rule (`canReadThread`):** Admin always; the learner always; the
+thread's **own tutor only while still allocated** (a removed tutor loses access, archived thread included); a
+**different** tutor only if **currently allocated to the learner AND the thread is archived AND its tutor is no
+longer allocated** (the new tutor reads predecessors' history **read-only** — never send, never mark read; a live
+co-tutor's thread stays private). A tutor's inbox lists only learners still allocated to them;
+`GET /messages/learners/:learnerId/previous-threads` lists predecessor threads (Admin or currently-allocated
+tutor). The new tutor is a **different pair → a fresh thread**. Re-allocating the
 **same** pair after a gap **reactivates** the existing thread (history is valuable and there is no privacy
 reason to sever it). Writability is a **live** `isAllocatedTutor` re-check at send time + a non-archived
 thread — never a stored grant. **Recommend: confirm.**

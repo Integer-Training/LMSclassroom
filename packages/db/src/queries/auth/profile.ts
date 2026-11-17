@@ -155,3 +155,13 @@ export const markUserAndProfileEmailVerified = async (userId: string, dbClient: 
   await dbClient.update(schema.user).set({ emailVerified: true }).where(eq(schema.user.id, userId));
   await dbClient.update(schema.profile).set({ isEmailVerified: true, verifiedAt }).where(eq(schema.profile.id, userId));
 };
+
+/**
+ * Set a person's display name in BOTH places it lives (`user.name` — login/auth — and `profile.fullname` —
+ * tables, reports, emails) so they never drift. Pass a tx so the two writes are atomic. Email, credentials
+ * and sessions are untouched.
+ */
+export const updateUserAndProfileName = async (userId: string, name: string, dbClient: DbOrTxClient = db) => {
+  await dbClient.update(schema.user).set({ name }).where(eq(schema.user.id, userId));
+  await dbClient.update(schema.profile).set({ fullname: name }).where(eq(schema.profile.id, userId));
+};

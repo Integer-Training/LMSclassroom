@@ -9,6 +9,7 @@ import type { Actor } from '@cio/db/actor';
 vi.mock('@api/services/comms/messaging', () => ({
   getMyTutor: vi.fn(async () => null),
   openThread: vi.fn(async () => ({ threadId: 'th1' })),
+  getPreviousTutorThreads: vi.fn(async () => []),
   getThreadView: vi.fn(async () => ({ threadId: 'th1', messages: [] })),
   sendMessage: vi.fn(async () => ({ id: 'm1', mine: true })),
   markThreadRead: vi.fn(async () => {})
@@ -36,6 +37,17 @@ const TH = '11111111-1111-4111-8111-111111111111';
 const CP = '22222222-2222-4222-8222-222222222222';
 
 beforeEach(() => vi.clearAllMocks());
+
+describe('previous-threads route', () => {
+  it('authed reaches it; anonymous 401; non-uuid learner 400', async () => {
+    const u = `/messages/learners/${CP}/previous-threads`;
+    expect((await app.request(u, { headers: { 'x-actor': 'tutor' } })).status).toBe(200);
+    expect((await app.request(u)).status).toBe(401);
+    expect(
+      (await app.request('/messages/learners/nope/previous-threads', { headers: { 'x-actor': 'tutor' } })).status
+    ).toBe(400);
+  });
+});
 
 describe('messaging routes — authed only', () => {
   it('authed reaches the routes', async () => {

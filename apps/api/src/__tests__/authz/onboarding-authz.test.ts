@@ -16,7 +16,8 @@ vi.mock('@api/services/organization/users', () => ({
   changeOrgUserStatus: vi.fn(),
   getLearnerProfile: vi.fn(),
   listOrgUsers: vi.fn(),
-  updateLearnerProfile: vi.fn()
+  updateLearnerProfile: vi.fn(),
+  updateMemberName: vi.fn(async () => ({ userId: 'u1', changed: true }))
 }));
 
 import { usersRouter } from '@api/routes/organization/users';

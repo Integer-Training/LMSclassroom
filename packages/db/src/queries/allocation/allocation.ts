@@ -1,6 +1,6 @@
 import * as schema from '@db/schema';
 
-import { and, asc, count, db, eq, ilike, inArray, notExists, or, sql } from '@db/drizzle';
+import { and, asc, count, db, eq, ilike, inArray, isNull, notExists, or, sql, type DbOrTxClient } from '@db/drizzle';
 import { alias } from 'drizzle-orm/pg-core';
 
 // Tutor↔learner allocation (PearlLMS Phase 3). Provider-wide pairs; a tutor is "staff" only for the
@@ -357,11 +357,14 @@ export interface AllocatedTutor {
  * an empty result means the learner has no allocated tutor yet (caller sends nothing).
  */
 export async function listTutorsForLearner(learnerId: string): Promise<AllocatedTutor[]> {
+  // Ordered by allocation age (then id) so "the learner's tutor" / tutors[0] is deterministic. (UNIQUE
+  // (tutor_id, learner_id) already makes the rows distinct; DISTINCT can't ORDER BY a non-selected column.)
   return db
-    .selectDistinct({ tutorId: schema.tutorAllocation.tutorId, email: schema.profile.email })
+    .select({ tutorId: schema.tutorAllocation.tutorId, email: schema.profile.email })
     .from(schema.tutorAllocation)
     .leftJoin(schema.profile, eq(schema.profile.id, schema.tutorAllocation.tutorId))
-    .where(eq(schema.tutorAllocation.learnerId, learnerId));
+    .where(eq(schema.tutorAllocation.learnerId, learnerId))
+    .orderBy(asc(schema.tutorAllocation.createdAt), asc(schema.tutorAllocation.id));
 }
 
 /** Distinct STUDENT learners in this org's courses that have at least one course-team TUTOR assigned. */
@@ -411,4 +414,90 @@ export async function getOrgMemberRoleId(organizationId: string, profileId: stri
     )
     .limit(1);
   return rows[0]?.roleId ?? null;
+}
+
+/** A profile's org role id AND account status (ACTIVE | DEACTIVATED) — for "is B an ACTIVE tutor" checks. */
+export async function getOrgMemberRoleAndStatus(
+  organizationId: string,
+  profileId: string
+): Promise<{ roleId: number | null; status: string | null } | null> {
+  const rows = await db
+    .select({ roleId: schema.organizationmember.roleId, status: schema.profile.status })
+    .from(schema.organizationmember)
+    .leftJoin(schema.profile, eq(schema.profile.id, schema.organizationmember.profileId))
+    .where(
+      and(
+        eq(schema.organizationmember.organizationId, organizationId),
+        eq(schema.organizationmember.profileId, profileId)
+      )
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export interface MoveAllocationsInput {
+  organizationId: string;
+  fromTutorId: string;
+  toTutorId: string;
+  /** Specific learners, or 'all' = every learner currently allocated to the from-tutor (resolved in the tx). */
+  learnerIds: string[] | 'all';
+  createdBy: string;
+}
+
+export interface MoveAllocationsResult {
+  /** Learners taken off the from-tutor AND newly allocated to the to-tutor (allocationId = the new row). */
+  moved: { learnerId: string; allocationId: string }[];
+  /** Learners taken off the from-tutor who were ALREADY with the to-tutor (co-tutor) — nothing was added. */
+  alreadyWithTarget: string[];
+}
+
+/**
+ * Atomically hand learners from one tutor to another (switch / bulk move). Must run inside a transaction
+ * (`runInTransaction`): 1) DELETE the from-tutor's rows (RETURNING — the row lock settles races, a loser gets
+ * 0 rows); 2) INSERT the to-tutor's rows, ON CONFLICT DO NOTHING (a learner already with the to-tutor is
+ * reported as `alreadyWithTarget`); 3) archive the from-tutor↔learner message threads. Learners that were not
+ * allocated to the from-tutor appear in neither list. There is never a moment a learner is unallocated.
+ */
+export async function moveAllocationsTx(tx: DbOrTxClient, input: MoveAllocationsInput): Promise<MoveAllocationsResult> {
+  const { organizationId, fromTutorId, toTutorId, learnerIds, createdBy } = input;
+  if (learnerIds !== 'all' && learnerIds.length === 0) return { moved: [], alreadyWithTarget: [] };
+
+  const deleted = await tx
+    .delete(schema.tutorAllocation)
+    .where(
+      and(
+        eq(schema.tutorAllocation.organizationId, organizationId),
+        eq(schema.tutorAllocation.tutorId, fromTutorId),
+        learnerIds === 'all' ? sql`true` : inArray(schema.tutorAllocation.learnerId, learnerIds)
+      )
+    )
+    .returning({ learnerId: schema.tutorAllocation.learnerId });
+  const removedIds = deleted.map((r) => r.learnerId);
+  if (removedIds.length === 0) return { moved: [], alreadyWithTarget: [] };
+
+  const inserted = await tx
+    .insert(schema.tutorAllocation)
+    .values(removedIds.map((learnerId) => ({ organizationId, tutorId: toTutorId, learnerId, createdBy })))
+    .onConflictDoNothing({ target: [schema.tutorAllocation.tutorId, schema.tutorAllocation.learnerId] })
+    .returning({ id: schema.tutorAllocation.id, learnerId: schema.tutorAllocation.learnerId });
+  const newByLearner = new Map(inserted.map((r) => [r.learnerId, r.id] as const));
+
+  // The old tutor↔learner threads become read-only history (same effect as removeTutorAllocation).
+  await tx
+    .update(schema.messageThread)
+    .set({ archivedAt: sql`now()` })
+    .where(
+      and(
+        eq(schema.messageThread.tutorId, fromTutorId),
+        inArray(schema.messageThread.learnerId, removedIds),
+        isNull(schema.messageThread.archivedAt)
+      )
+    );
+
+  return {
+    moved: removedIds
+      .filter((id) => newByLearner.has(id))
+      .map((id) => ({ learnerId: id, allocationId: newByLearner.get(id)! })),
+    alreadyWithTarget: removedIds.filter((id) => !newByLearner.has(id))
+  };
 }

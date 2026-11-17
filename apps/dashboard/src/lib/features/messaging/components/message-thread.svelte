@@ -56,6 +56,12 @@
   }
 </script>
 
+{#if view.previousTutor}
+  <p class="ui:bg-muted mx-auto mb-2 w-full max-w-2xl rounded-md px-4 py-2 text-sm">
+    Conversation with previous tutor {view.counterpart.name} — read only
+  </p>
+{/if}
+
 <div class="ui:border-border mx-auto flex h-[70vh] w-full max-w-2xl flex-col rounded-lg border">
   <div class="ui:border-border flex items-center justify-between border-b px-4 py-2">
     <span class="text-sm font-semibold">{view.counterpart.name}</span>

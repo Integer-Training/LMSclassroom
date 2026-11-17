@@ -12,6 +12,8 @@ export const AUDIT_ACTIONS = {
   // Phase 3 — tutor↔learner allocation (ids only in metadata; never names/emails).
   ALLOCATION_CREATED: 'allocation.created',
   ALLOCATION_REMOVED: 'allocation.removed',
+  // A learner handed from one tutor to another (ids + outcome + optional reason; never names/emails).
+  ALLOCATION_SWITCHED: 'allocation.switched',
   // Phase 3 — learner coursework submission (ids + counts only; never file names/contents).
   COURSEWORK_SUBMITTED: 'coursework.submitted',
   // Phase 3 — tutor marking (submission id + version + result value only; NEVER the feedback text).

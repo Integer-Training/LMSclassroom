@@ -19,6 +19,30 @@ export interface AssignablePerson {
   email: string;
 }
 
+export interface TutorLearner {
+  learnerId: string;
+  name: string | null;
+  email: string | null;
+  awaitingMarking: number;
+}
+
+export interface MoveResult {
+  batchId: string;
+  moved: number;
+  alreadyWithTarget: number;
+  notAllocated: number;
+  results: { learnerId: string; outcome: string }[];
+}
+
+/** Pull a readable message out of whatever execute() hands to onError (string or { error }). */
+function errText(result: unknown): string | null {
+  if (typeof result === 'string') return result;
+  if (result && typeof result === 'object' && 'error' in result && typeof result.error === 'string') {
+    return result.error;
+  }
+  return null;
+}
+
 type ListRequest = typeof classroomio.organization.allocations.$get;
 type CreateRequest = typeof classroomio.organization.allocations.$post;
 
@@ -95,6 +119,72 @@ class AllocationApi extends BaseApiWithErrors {
         else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
       }
     });
+  }
+
+  /**
+   * Atomically replace one tutor with another for one learner (Admin only). Returns 'ok', 'stale' (the
+   * learner is no longer with that tutor — the caller should reload) or 'error' (snackbar already shown).
+   */
+  async switchTutor(input: {
+    learnerId: string;
+    fromTutorId: string;
+    toTutorId: string;
+    reason?: string;
+  }): Promise<'ok' | 'stale' | 'error'> {
+    let outcome: 'ok' | 'stale' | 'error' = 'error';
+    await this.execute<typeof classroomio.organization.allocations.switch.$post>({
+      requestFn: () => classroomio.organization.allocations.switch.$post({ json: input }),
+      logContext: 'switching tutor',
+      onSuccess: () => {
+        outcome = 'ok';
+        snackbar.success('Tutor switched');
+        this.list();
+      },
+      onError: (result) => {
+        const msg = errText(result);
+        if (msg && msg.includes('no longer with that tutor')) {
+          outcome = 'stale';
+          snackbar.error("This learner's tutor has already changed — refreshing");
+          this.list();
+        } else if (msg) snackbar.error(msg);
+      }
+    });
+    return outcome;
+  }
+
+  /** Move many learners (ids, or all) from one tutor to another in one all-or-nothing batch (Admin only). */
+  async moveLearners(input: {
+    fromTutorId: string;
+    toTutorId: string;
+    reason?: string;
+    learnerIds?: string[];
+    all?: boolean;
+  }): Promise<MoveResult | undefined> {
+    const res = await this.execute<typeof classroomio.organization.allocations.move.$post>({
+      requestFn: () => classroomio.organization.allocations.move.$post({ json: input }),
+      logContext: 'moving learners',
+      onSuccess: () => this.list(),
+      onError: (result) => {
+        const msg = errText(result);
+        if (msg) snackbar.error(msg);
+      }
+    });
+    return res?.data as MoveResult | undefined;
+  }
+
+  /** Every learner currently allocated to a tutor, with their to-mark count (for the move dialog). */
+  async tutorLearners(tutorId: string): Promise<TutorLearner[] | undefined> {
+    const res = await this.execute<
+      (typeof classroomio.organization.allocations.tutors)[':tutorId']['learners']['$get']
+    >({
+      requestFn: () => classroomio.organization.allocations.tutors[':tutorId'].learners.$get({ param: { tutorId } }),
+      logContext: 'loading tutor learners',
+      onError: (result) => {
+        const msg = errText(result);
+        if (msg) snackbar.error(msg);
+      }
+    });
+    return res?.data as TutorLearner[] | undefined;
   }
 
   async remove(allocationId: string) {

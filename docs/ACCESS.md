@@ -643,7 +643,18 @@ Tutor = allocated ∩ enrolled (may be empty), anyone else 403. Learner-level ch
 | Quiz-submission + learner-joined emails | every course-team tutor | course Admins + the learner's allocated tutors (`createLearner` now allocates before enrolling so the tutor is notified) |
 | Admin overview | — | "Unallocated learners" warning (active, org-role learner, enrolled, no allocation; capped list of 25) |
 
-Edge cases: reallocation → the old tutor loses all access immediately (results keep `recordedBy`); allocation is
+**Switch tutor / Move learners (Admin only, 2026-11-17).** `POST /organization/allocations/switch` replaces ONE tutor
+(A→B) for a learner and keeps any co-tutor; `POST /organization/allocations/move` moves all or chosen learners of A to
+B. Each runs in one transaction (delete A's rows, insert B's with `ON CONFLICT DO NOTHING`, archive the A↔learner
+threads), so there is never an "unallocated" window. A concurrent/repeated switch finds no row → 409. B must be an
+ACTIVE tutor in the org; A may be inactive (a leaving tutor is the main case). After commit: A's unread
+`message.received` / `submission.created` bell items about those learners are marked read; one `allocation.switched`
+audit row per learner. Nobody is notified. The new tutor can READ the previous tutors' archived threads (never write);
+see COMMS-MODEL.md D4. **Edit details:** `PUT /organization/users/:memberId/details` (Admin; tutor/learner targets
+only) updates the name in BOTH `user.name` and `profile.fullname` in one transaction; email is never editable here.
+
+Edge cases: reallocation → the old tutor loses all access immediately, including reading their old message thread
+(results keep `recordedBy`); allocation is
 per learner, not per course (a learner on two courses is visible to their tutor on both — known limit);
 co-tutors (2 allocations) both see the learner. **Open (single-org prod, logged for hardening):** several
 pre-existing Admin routes (`/caseload/courses/*`, `/course/:id/members`, `/mark`, `/submission/*`) are not

@@ -66,3 +66,13 @@ export const ZLearnerProfile = z.object({
   notes: nullableText
 });
 export type TLearnerProfileInput = z.infer<typeof ZLearnerProfile>;
+
+// Admin edit of a TUTOR/STUDENT display name (email is deliberately not editable here).
+export const ZEditMemberDetails = z.object({
+  name: z
+    .string()
+    .trim()
+    .transform((v) => v.replace(/\s+/g, ' '))
+    .pipe(z.string().min(1).max(200))
+});
+export type TEditMemberDetails = z.infer<typeof ZEditMemberDetails>;

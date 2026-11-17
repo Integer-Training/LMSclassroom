@@ -29,9 +29,9 @@ import {
   type LearnerProfileFields
 } from '@cio/db/queries/learner-profile';
 import { updateOrganizationMemberById } from '@cio/db/queries/organization/invite';
-import { markUserAndProfileEmailVerified, updateProfile } from '@cio/db/queries/auth';
+import { markUserAndProfileEmailVerified, updateProfile, updateUserAndProfileName } from '@cio/db/queries/auth';
 import { getProfileById } from '@cio/db/queries/auth';
-import { db } from '@cio/db/drizzle';
+import { db, runInTransaction } from '@cio/db/drizzle';
 import { recordAudit, AUDIT_ACTIONS } from '@cio/db/audit';
 import { ROLE, roleIdToName } from '@cio/utils/constants';
 
@@ -350,6 +350,35 @@ export async function updateLearnerProfile(orgId: string, actor: Actor, memberId
   }
 
   return { userId, changed: changedFields.length };
+}
+
+/**
+ * Admin-only: edit a TUTOR's or LEARNER's display name. Writes BOTH `user.name` and `profile.fullname` in one
+ * transaction so tables, reports, emails and login all agree. Email, username, password and sessions are
+ * untouched. No-op when unchanged. Audits `profile.updated` with the field NAME only (never the value).
+ */
+export async function updateMemberName(orgId: string, actor: Actor, memberId: number, name: string) {
+  const member = await resolveMember(orgId, memberId);
+  if (!member.profileId) {
+    throw new AppError('User not found in this organization', ErrorCodes.NOT_FOUND, 404);
+  }
+  const roleId = await currentMemberRoleId(orgId, member.profileId);
+  if (roleId !== ROLE.TUTOR && roleId !== ROLE.STUDENT) {
+    throw new AppError('Only tutor and learner details can be edited here', ErrorCodes.FORBIDDEN, 403);
+  }
+  const existing = await getProfileById(member.profileId);
+  if (existing?.fullname === name) return { userId: member.profileId, changed: false };
+
+  await runInTransaction((tx) => updateUserAndProfileName(member.profileId!, name, tx));
+
+  await recordAudit({
+    actor,
+    action: AUDIT_ACTIONS.PROFILE_UPDATED,
+    entityType: 'profile',
+    entityId: member.profileId,
+    metadata: { fields: ['fullname'] } // field NAME only — never the value
+  });
+  return { userId: member.profileId, changed: true };
 }
 
 export const _roleName = roleIdToName; // re-export convenience (kept for callers/tests)
