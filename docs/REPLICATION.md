@@ -35,6 +35,11 @@ _Last updated 2026-10-27._
 | 10 Go-live | ⏳ | |
 | 11 Course copy | ➖ only on request | |
 
+**Pearl features added after the Gecko copy (port by hand/cherry-pick if Gecko wants them):**
+- 2026-11-17 `a05c25bf2` — Admin **Switch tutor / Move learners / Edit details** (atomic re-allocation, previous-tutor
+  read-only messages, former tutors lose old-thread access, name edit syncs `user.name` + `profile.fullname`).
+  No migration. See `RUNBOOK.md` §8.
+
 **Still needed from the owner:** domain (→ `{{APP_DOMAIN}}` = `learn.<domain>`), logo set, sender
 email address; Supabase keys + buckets (Phase 4 row above).
 

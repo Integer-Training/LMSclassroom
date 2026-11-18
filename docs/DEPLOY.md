@@ -152,6 +152,12 @@ if empty add a 4 GB swapfile: `fallocate -l 4G /swapfile && chmod 600 /swapfile 
 and an `/etc/fstab` line) and free old build layers now and then: `docker image prune -af --filter until=168h`
 (weekly cron is fine; it never touches running containers).
 
+**How long a deploy takes (measured 2026-11-17, `a05c25bf2`):** about **45 minutes** end to end on the 2 vCPU droplet —
+API image `pnpm install` ≈ 13 min, API `tsc` ≈ 2–3 min, dashboard `vite build` ≈ 25 min, container swap ≈ 2 min.
+The old containers keep serving until the swap, so the site stays up throughout; only the final restart (≈ 1–2 min)
+causes a brief blip and may log users out. Run `/root/deploy.sh` at a quiet time and watch `tail -f /root/deploy.log`
+until `=== COMPLETE ===`. (Moving image builds off the droplet is a tracked follow-up.)
+
 ### Memory limits (K4 starting points)
 
 Limits are **starting points** to be revisited after about a week of `docker stats`. Each is overridable from `.env` (see

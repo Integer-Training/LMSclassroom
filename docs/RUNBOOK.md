@@ -135,3 +135,26 @@ point (coordinate with the owner). Prefer rolling **forward** with a fix for sch
 
 **On every deploy:** confirm `git rev-parse HEAD` on the droplet == `origin/main`; run the smoke (login per role,
 one upload, one marking, headers visible in dev tools, source link present).
+
+## 8. Admin tasks — switching tutors and editing details  *(live since 2026-11-17, `a05c25bf2`)*
+
+All three are **Admin only** (Managers, Tutors, Learners get 403). Access rules: `ACCESS.md` §8; message rule:
+`COMMS-MODEL.md` D4; audit shape: `AUDIT.md` (`allocation.switched`).
+
+| Task | Where | What happens |
+|---|---|---|
+| **Switch one learner's tutor** | Learners page → **Switch tutor** (or **Assign tutor** if none); Allocation page → **Switch** | One atomic swap (no "unallocated" gap). Replaces ONE tutor; a co-tutor stays. Old tutor loses access immediately (caseload, marking, messages — including their old thread) and their unread bell items about that learner are cleared. New tutor gets the to-mark queue and can **read** the old tutor's messages (read-only), then starts a fresh thread. Nobody is notified. Optional reason (≤300 chars, no personal details) goes into the audit row. |
+| **Move many learners** | Tutors page → **Move learners** | Same as above for all or selected learners of one tutor, in one all-or-nothing transaction. Result shows moved / already-with-target / no-longer-allocated. One audit row per learner, sharing a `batchId`. |
+| **Edit a name** | Learners or Tutors page → **Edit details** | Updates `user.name` and `profile.fullname` together. Learners: enrolment PII fields are editable here too. **Email cannot be changed** (would break login). Admin/Manager accounts are not editable here (self-service). Past feedback keeps the tutor name it was written under. |
+
+**Undo:** there is no undo button — switch the learner back (the original thread un-archives automatically).
+**Errors you may see:** "tutor already changed — refresh" (409: someone switched first, or a double click);
+"target tutor is not active" (400: activate the tutor first). The *old* tutor may be deactivated — that is the main use case.
+
+**Who switched whom (read-only audit query):**
+```sql
+select occurred_at, actor_user_id, metadata
+from audit_event
+where action = 'allocation.switched'
+order by occurred_at desc limit 50;
+```
