@@ -240,6 +240,8 @@ export interface SubmissionWithContext extends CourseworkSubmissionRow {
   result: string | null;
   /** The tutor's written feedback for this version (Step 5), or null. */
   feedback: string | null;
+  /** The tutor's feedback files for this version (empty when none) — read-only, shown on the learner detail. */
+  feedbackFiles: CourseworkFile[];
   /** When the result was recorded, or null while unmarked (drives "recently graded" / turnaround). */
   resultRecordedAt: string | null;
 }
@@ -270,6 +272,7 @@ export async function getSubmissionsWithContextForLearners(learnerIds: string[])
       resultKind: schema.courseworkResult.kind,
       result: schema.courseworkResult.result,
       feedback: schema.courseworkResult.feedback,
+      feedbackFiles: schema.courseworkResult.feedbackFiles,
       resultRecordedAt: schema.courseworkResult.recordedAt
     })
     .from(schema.courseworkSubmission)
@@ -296,12 +299,13 @@ export async function getSubmissionsWithContextForLearners(learnerIds: string[])
     resultKind: r.resultKind ?? null,
     result: r.result ?? null,
     feedback: r.feedback ?? null,
+    feedbackFiles: (r.feedbackFiles ?? []) as CourseworkFile[],
     resultRecordedAt: (r.resultRecordedAt as string | null) ?? null
   }));
 }
 
 /** A submission version WITHOUT the heavy columns (`files`, `comment`, `feedback`) — the status-only shape. */
-export type SubmissionStatusRow = Omit<SubmissionWithContext, 'files' | 'comment' | 'feedback'>;
+export type SubmissionStatusRow = Omit<SubmissionWithContext, 'files' | 'comment' | 'feedback' | 'feedbackFiles'>;
 
 /**
  * Lean twin of getSubmissionsWithContextForLearners for the dashboards / pipeline / caseload / course-content stats:

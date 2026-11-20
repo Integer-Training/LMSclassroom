@@ -3,6 +3,7 @@
   import { Button } from '@cio/ui/base/button';
   import { RESULT_VALUES, RESULT_LABELS, MAX_FEEDBACK_LENGTH } from '@cio/utils/constants';
   import { caseloadApi } from '$features/caseload/api/caseload.svelte';
+  import FeedbackFilesPicker from '$features/caseload/components/feedback-files-picker.svelte';
 
   // Record a result on the LATEST, unmarked version of a unit (PearlLMS Phase 3 Step 5). Result values
   // come from config (RESULT_VALUES); feedback is one free-text field. The tutor assesses off-platform —
@@ -21,6 +22,7 @@
 
   let result = $state<string>(RESULT_VALUES[0]);
   let feedback = $state('');
+  let selectedFiles = $state<File[]>([]);
   let saving = $state(false);
 
   function label(v: string): string {
@@ -37,11 +39,20 @@
       return;
     }
     saving = true;
-    const ok = await caseloadApi.markResult(submissionId, isDraft ? undefined : result, feedback);
-    saving = false;
-    if (ok) {
-      feedback = '';
-      onMarked();
+    try {
+      let meta = undefined;
+      if (selectedFiles.length > 0) {
+        meta = await caseloadApi.uploadFeedbackFiles(submissionId, selectedFiles);
+        if (meta === null) return; // upload failed; snackbar already shown
+      }
+      const ok = await caseloadApi.markResult(submissionId, isDraft ? undefined : result, feedback, meta ?? undefined);
+      if (ok) {
+        feedback = '';
+        selectedFiles = [];
+        onMarked();
+      }
+    } finally {
+      saving = false;
     }
   }
 </script>
@@ -75,6 +86,10 @@
     >
       {feedback.length.toLocaleString('en-GB')} / {MAX_FEEDBACK_LENGTH.toLocaleString('en-GB')}
     </p>
+  </div>
+  <div class="space-y-1">
+    <p class="text-muted-foreground text-xs font-medium">Feedback files</p>
+    <FeedbackFilesPicker bind:files={selectedFiles} />
   </div>
   <div class="flex justify-end">
     <Button onclick={save} loading={saving} disabled={saving}>

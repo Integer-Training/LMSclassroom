@@ -92,6 +92,7 @@ export interface DetailSubmission {
   result: string | null;
   feedback: string | null;
   files: DetailFile[];
+  feedbackFiles: DetailFile[];
 }
 export interface DetailUnit {
   lessonId: string;

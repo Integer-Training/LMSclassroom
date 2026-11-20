@@ -4,18 +4,10 @@
   import { Button } from '@cio/ui/base/button';
   import { Textarea } from '@cio/ui/base/textarea';
   import FileIcon from '@lucide/svelte/icons/file';
-  import UploadIcon from '@lucide/svelte/icons/upload';
-  import XIcon from '@lucide/svelte/icons/x';
   import { RESULT_VALUES, RESULT_LABELS, MAX_FEEDBACK_LENGTH } from '@cio/utils/constants';
   import { caseloadApi, type SubmissionsGridRow } from '$features/caseload/api/caseload.svelte';
   import { snackbar } from '$features/ui/snackbar/store';
-  import { getResolvedUploadLimits } from '$lib/utils/config/upload-limits-context';
-  import {
-    ALLOWED_DOCUMENT_ACCEPT,
-    ALLOWED_DOCUMENT_TYPES_LABEL,
-    MAX_PRESIGN_FILES,
-    isAllowedDocumentFile
-  } from '@cio/utils/validation/constants';
+  import FeedbackFilesPicker from '$features/caseload/components/feedback-files-picker.svelte';
 
   // Grading drawer for the tutor submissions grid (PearlLMS — courses-assigned phase). Grades ONE
   // submission version. A DRAFT (submissionType === 'draft') gets feedback only (no verdict); a FINAL
@@ -43,14 +35,10 @@
   const files = $derived(target?.files ?? row?.files ?? []);
   const learnerComment = $derived(target?.comment ?? row?.comment ?? null);
 
-  // Same allow-list, per-file size ceiling and file-count cap the server enforces on the feedback presign.
-  const maxFileBytes = getResolvedUploadLimits().documentBytes;
-
   let result = $state<string>(RESULT_VALUES[0]);
   let feedback = $state('');
   let selectedFiles = $state<File[]>([]);
   let saving = $state(false);
-  let fileInput = $state<HTMLInputElement | null>(null);
 
   // Reset the form each time a new submission is targeted / the drawer opens.
   $effect(() => {
@@ -63,32 +51,6 @@
 
   function label(v: string): string {
     return RESULT_LABELS[v as keyof typeof RESULT_LABELS] ?? v;
-  }
-
-  function onFilesPicked(e: Event) {
-    const input = e.currentTarget as HTMLInputElement;
-    const accepted: File[] = [];
-    for (const file of input.files ? Array.from(input.files) : []) {
-      if (!isAllowedDocumentFile(file.name, file.type)) {
-        snackbar.error(`"${file.name}" is not an accepted file type. Please upload ${ALLOWED_DOCUMENT_TYPES_LABEL}.`);
-        continue;
-      }
-      if (file.size > maxFileBytes) {
-        const mb = Math.round(maxFileBytes / 1024 / 1024);
-        snackbar.error(`"${file.name}" is too large. The maximum file size is ${mb}MB.`);
-        continue;
-      }
-      if (selectedFiles.length + accepted.length >= MAX_PRESIGN_FILES) {
-        snackbar.error(`"${file.name}" was not added — you can attach at most ${MAX_PRESIGN_FILES} files.`);
-        break;
-      }
-      accepted.push(file);
-    }
-    if (accepted.length > 0) selectedFiles = [...selectedFiles, ...accepted];
-    input.value = '';
-  }
-  function removeFile(idx: number) {
-    selectedFiles = selectedFiles.filter((_, i) => i !== idx);
   }
 
   async function submit() {
@@ -207,37 +169,7 @@
         <!-- Feedback files -->
         <div class="space-y-1.5">
           <p class="text-muted-foreground text-xs font-medium tracking-wide uppercase">Feedback files</p>
-          <input
-            bind:this={fileInput}
-            type="file"
-            multiple
-            accept={ALLOWED_DOCUMENT_ACCEPT}
-            class="hidden"
-            onchange={onFilesPicked}
-          />
-          <Button type="button" variant="outline" size="sm" onclick={() => fileInput?.click()}>
-            <UploadIcon size={16} class="mr-1" /> Attach marked-up file
-          </Button>
-          {#if selectedFiles.length > 0}
-            <ul class="space-y-1 pt-1">
-              {#each selectedFiles as file, i (file.name + i)}
-                <li class="flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm">
-                  <span class="inline-flex min-w-0 items-center gap-1.5">
-                    <FileIcon size={14} class="shrink-0" />
-                    <span class="truncate">{file.name}</span>
-                  </span>
-                  <button
-                    type="button"
-                    class="text-muted-foreground hover:text-foreground shrink-0"
-                    aria-label="Remove file"
-                    onclick={() => removeFile(i)}
-                  >
-                    <XIcon size={14} />
-                  </button>
-                </li>
-              {/each}
-            </ul>
-          {/if}
+          <FeedbackFilesPicker bind:files={selectedFiles} />
         </div>
       </div>
 

@@ -17,7 +17,8 @@ vi.mock('@cio/db/queries/allocation', () => ({
 vi.mock('@cio/db/queries/coursework', () => ({
   getSubmissionsWithContextForLearners: vi.fn(),
   getSubmissionStatusRowsForLearners: vi.fn(),
-  getSubmissionByFileKey: vi.fn()
+  getSubmissionByFileKey: vi.fn(),
+  getAssessmentItemsByLesson: vi.fn(async () => new Map())
 }));
 vi.mock('@cio/db/queries/auth', () => ({ getProfileById: vi.fn() }));
 
@@ -143,6 +144,23 @@ describe('getCaseloadLearnerDetail — allocation-gated (URL-tamper defence)', (
     expect(d.learner.id).toBe(L1);
     const versions = d.courses[0].units[0].submissions.map((s) => s.version);
     expect(versions).toEqual([2, 1]);
+  });
+
+  it('returns each version own feedbackFiles (empty when none) — never mixed across versions', async () => {
+    mAllocated.mockResolvedValue(true);
+    mProfile.mockResolvedValue({ id: L1, fullname: 'Lea One', email: 'l1@x' } as never);
+    const fb = [{ key: 'coursework-feedback/C1/u-L1/U1/1/n-marked.docx', name: 'marked.docx' }];
+    mSubs.mockImplementation(
+      async () =>
+        [
+          { ...(sub('s-v2', L1, 'U1', 2, '2026-08-15T09:00:00Z') as object) },
+          { ...(sub('s-v1', L1, 'U1', 1, '2026-08-10T09:00:00Z', 'Pass') as object), feedbackFiles: fb }
+        ] as never
+    );
+    const d = await getCaseloadLearnerDetail(tutorA, L1);
+    const [v2, v1] = d.courses[0].units[0].submissions;
+    expect(v2.feedbackFiles).toEqual([]);
+    expect(v1.feedbackFiles).toEqual(fb);
   });
 
   it('tutor NOT allocated (tutor B opening an A-only learner by id) → 403', async () => {

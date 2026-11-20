@@ -173,10 +173,31 @@
                             </li>
                           {/each}
                         </ul>
-                        {#if sub.feedback}
+                        {#if sub.feedback || sub.feedbackFiles?.length}
                           <div class="bg-muted/40 mt-2 rounded-md p-2.5">
                             <p class="text-muted-foreground mb-0.5 text-xs font-medium">Feedback</p>
-                            <p class="text-sm whitespace-pre-wrap">{sub.feedback}</p>
+                            {#if sub.feedback}
+                              <p class="text-sm whitespace-pre-wrap">{sub.feedback}</p>
+                            {/if}
+                            {#if sub.feedbackFiles?.length}
+                              <ul class="mt-1.5 space-y-1">
+                                {#each sub.feedbackFiles as file (file.key)}
+                                  <li>
+                                    <button
+                                      type="button"
+                                      class="ui:text-primary inline-flex items-center gap-1.5 text-sm hover:underline"
+                                      onclick={() => open(course.courseId, unit.lessonId, file)}
+                                    >
+                                      <FileTextIcon class="size-4 shrink-0" />
+                                      <span class="truncate">{file.name}</span>
+                                      {#if file.size}<span class="text-muted-foreground text-xs"
+                                          >({formatSize(file.size)})</span
+                                        >{/if}
+                                    </button>
+                                  </li>
+                                {/each}
+                              </ul>
+                            {/if}
                           </div>
                         {/if}
                         {#if markableIds.has(sub.id)}

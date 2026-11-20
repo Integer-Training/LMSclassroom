@@ -453,6 +453,8 @@ export interface LearnerDetailSubmission {
   result: string | null;
   feedback: string | null;
   files: { key: string; name: string; size?: number; type?: string }[];
+  /** The tutor's feedback files recorded on this version (empty when none); opened via the guarded coursework download. */
+  feedbackFiles: { key: string; name: string; size?: number; type?: string }[];
 }
 export interface LearnerDetailUnit {
   lessonId: string;
@@ -520,7 +522,8 @@ export async function getCaseloadLearnerDetail(
       resultKind: s.resultKind,
       result: s.result,
       feedback: s.feedback,
-      files: s.files
+      files: s.files,
+      feedbackFiles: s.feedbackFiles ?? []
     });
     units.set(s.lessonId, unit);
     courseMap.set(s.courseId, units);
