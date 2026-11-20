@@ -6,7 +6,7 @@
   import FileIcon from '@lucide/svelte/icons/file';
   import UploadIcon from '@lucide/svelte/icons/upload';
   import XIcon from '@lucide/svelte/icons/x';
-  import { RESULT_VALUES, RESULT_LABELS } from '@cio/utils/constants';
+  import { RESULT_VALUES, RESULT_LABELS, MAX_FEEDBACK_LENGTH } from '@cio/utils/constants';
   import { caseloadApi, type SubmissionsGridRow } from '$features/caseload/api/caseload.svelte';
   import { snackbar } from '$features/ui/snackbar/store';
 
@@ -24,18 +24,12 @@
     allowDrafts: boolean;
     onGraded: () => void;
   }
-  let {
-    open = $bindable(false),
-    row,
-    courseId,
-    lessonId,
-    submissionId,
-    allowDrafts,
-    onGraded
-  }: Props = $props();
+  let { open = $bindable(false), row, courseId, lessonId, submissionId, allowDrafts, onGraded }: Props = $props();
 
   // The version being graded (found by submissionId in the row's versions).
-  const target = $derived(row && submissionId ? row.versions.find((v) => v.submissionId === submissionId) ?? null : null);
+  const target = $derived(
+    row && submissionId ? (row.versions.find((v) => v.submissionId === submissionId) ?? null) : null
+  );
   const isDraft = $derived(!!target && target.submissionType === 'draft');
 
   // Files/comment shown belong to the target version when known, else the row's latest.
@@ -72,6 +66,10 @@
 
   async function submit() {
     if (!submissionId) return;
+    if (feedback.length > MAX_FEEDBACK_LENGTH) {
+      snackbar.error(`Feedback is too long — maximum ${MAX_FEEDBACK_LENGTH.toLocaleString('en-GB')} characters.`);
+      return;
+    }
     if (isDraft && !feedback.trim() && selectedFiles.length === 0) {
       snackbar.error('Draft feedback cannot be empty.');
       return;
@@ -85,12 +83,7 @@
         return; // upload failed; snackbar already shown
       }
     }
-    const ok = await caseloadApi.markResult(
-      submissionId,
-      isDraft ? undefined : result,
-      feedback,
-      meta ?? undefined
-    );
+    const ok = await caseloadApi.markResult(submissionId, isDraft ? undefined : result, feedback, meta ?? undefined);
     saving = false;
     if (ok) {
       open = false;
@@ -114,7 +107,7 @@
       <div class="space-y-5 px-4 pb-6">
         <!-- Learner submission files -->
         <div class="space-y-1.5">
-          <p class="text-muted-foreground text-xs font-medium uppercase tracking-wide">Submission files</p>
+          <p class="text-muted-foreground text-xs font-medium tracking-wide uppercase">Submission files</p>
           {#if files.length > 0}
             <ul class="space-y-1">
               {#each files as file (file.key)}
@@ -138,7 +131,7 @@
         <!-- Learner comment -->
         {#if learnerComment}
           <div class="space-y-1.5">
-            <p class="text-muted-foreground text-xs font-medium uppercase tracking-wide">Learner comment</p>
+            <p class="text-muted-foreground text-xs font-medium tracking-wide uppercase">Learner comment</p>
             <p class="bg-muted/40 rounded-md p-2.5 text-sm whitespace-pre-wrap">{learnerComment}</p>
           </div>
         {/if}
@@ -146,7 +139,7 @@
         <!-- Verdict (final only) -->
         {#if !isDraft}
           <div class="space-y-1.5">
-            <p class="text-muted-foreground text-xs font-medium uppercase tracking-wide">Result</p>
+            <p class="text-muted-foreground text-xs font-medium tracking-wide uppercase">Result</p>
             <div class="flex flex-wrap gap-2">
               {#each RESULT_VALUES as value (value)}
                 <Button
@@ -166,20 +159,26 @@
 
         <!-- Feedback -->
         <div class="space-y-1.5">
-          <label for="grade-feedback" class="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+          <label for="grade-feedback" class="text-muted-foreground text-xs font-medium tracking-wide uppercase">
             Feedback
           </label>
           <Textarea
             id="grade-feedback"
             class="ui:min-h-[110px]"
             placeholder={isDraft ? 'Feedback on this draft (no Pass/Refer)…' : 'Written feedback for the learner…'}
+            maxlength={MAX_FEEDBACK_LENGTH}
             bind:value={feedback}
           />
+          <p
+            class={`text-right text-xs ${feedback.length > MAX_FEEDBACK_LENGTH ? 'text-destructive' : 'text-muted-foreground'}`}
+          >
+            {feedback.length.toLocaleString('en-GB')} / {MAX_FEEDBACK_LENGTH.toLocaleString('en-GB')}
+          </p>
         </div>
 
         <!-- Feedback files -->
         <div class="space-y-1.5">
-          <p class="text-muted-foreground text-xs font-medium uppercase tracking-wide">Feedback files</p>
+          <p class="text-muted-foreground text-xs font-medium tracking-wide uppercase">Feedback files</p>
           <input
             bind:this={fileInput}
             type="file"

@@ -1,7 +1,7 @@
 <script lang="ts">
   import * as Select from '@cio/ui/base/select';
   import { Button } from '@cio/ui/base/button';
-  import { RESULT_VALUES, RESULT_LABELS } from '@cio/utils/constants';
+  import { RESULT_VALUES, RESULT_LABELS, MAX_FEEDBACK_LENGTH } from '@cio/utils/constants';
   import { caseloadApi } from '$features/caseload/api/caseload.svelte';
 
   // Record a result on the LATEST, unmarked version of a unit (PearlLMS Phase 3 Step 5). Result values
@@ -28,6 +28,10 @@
   }
 
   async function save() {
+    if (feedback.length > MAX_FEEDBACK_LENGTH) {
+      snackbar.error(`Feedback is too long — maximum ${MAX_FEEDBACK_LENGTH.toLocaleString('en-GB')} characters.`);
+      return;
+    }
     if (isDraft && !feedback.trim()) {
       snackbar.error('Draft feedback cannot be empty.');
       return;
@@ -63,8 +67,14 @@
       id={`feedback-${submissionId}`}
       class="border-input bg-background focus-visible:ring-ring min-h-[96px] w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-1 focus-visible:outline-none"
       placeholder={isDraft ? 'Feedback on this draft (no Pass/Refer)…' : 'Written feedback for the learner…'}
+      maxlength={MAX_FEEDBACK_LENGTH}
       bind:value={feedback}
     ></textarea>
+    <p
+      class={`text-right text-xs ${feedback.length > MAX_FEEDBACK_LENGTH ? 'text-destructive' : 'text-muted-foreground'}`}
+    >
+      {feedback.length.toLocaleString('en-GB')} / {MAX_FEEDBACK_LENGTH.toLocaleString('en-GB')}
+    </p>
   </div>
   <div class="flex justify-end">
     <Button onclick={save} loading={saving} disabled={saving}>

@@ -38,3 +38,6 @@ export function isPassingResult(value: unknown): value is ResultValue {
 export function isAllowedResult(value: unknown): value is ResultValue {
   return typeof value === 'string' && (RESULT_VALUES as readonly string[]).includes(value);
 }
+
+/** Max length of tutor feedback text on a submission (validator + marking UI counters share this). */
+export const MAX_FEEDBACK_LENGTH = 20000;

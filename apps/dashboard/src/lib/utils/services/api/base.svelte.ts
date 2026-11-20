@@ -1,4 +1,5 @@
 import { getErrMsg } from './utils';
+import { normalizeErrorMessage } from './error-message';
 import type { InferResponseType } from '@cio/api/rpc-types';
 import { ApiError, type ZodValidationError, type ZodValidatorMesssage } from './types';
 import { mapZodErrorsToTranslations } from '$lib/utils/validation/validation';
@@ -52,7 +53,7 @@ export class BaseApi {
         if (apiResult.success === false) {
           console.log('apiResult false', apiResult);
           this.error = JSON.stringify(apiResult);
-          options.onError?.(apiResult as ExtractError<TrpcType>);
+          options.onError?.(this.toErrorPayload<ExtractError<TrpcType>>(apiResult));
 
           return;
         }
@@ -77,10 +78,25 @@ export class BaseApi {
       this.error = getErrMsg(error, `Error ${logContext}:`);
 
       const errorResult = this.getServerError<ExtractError<TrpcType>>(error);
-      options.onError?.(errorResult);
+      // 4xx responses arrive here as ApiError (the fetch wrapper throws) — normalise them too.
+      options.onError?.(this.toErrorPayload<ExtractError<TrpcType>>(errorResult));
     } finally {
       this.isLoading = false;
     }
+  }
+
+  /**
+   * Make `error` ALWAYS a human-readable string before it reaches `onError` callbacks (a validator 400
+   * carries a ZodError object that callers' `typeof error === 'string'` checks silently dropped). The
+   * original value is kept on `rawError` for callers that map field-level validation issues.
+   */
+  protected toErrorPayload<T>(raw: unknown): T | string {
+    const message = normalizeErrorMessage(raw);
+    if (typeof raw === 'object' && raw !== null && !(raw instanceof Error)) {
+      const obj = raw as Record<string, unknown>;
+      return { ...obj, success: false, error: message, rawError: obj.error } as T;
+    }
+    return message;
   }
 
   getServerError<T>(error: unknown): T | string {
@@ -132,7 +148,8 @@ export class BaseApiWithErrors extends BaseApi {
     code?: string;
     field?: string;
   }): Promise<void> | void {
-    const zodValidationError = result.error as unknown as ZodValidationError;
+    const zodValidationError = ((result as { rawError?: unknown }).rawError ??
+      result.error) as unknown as ZodValidationError;
 
     // Handle Zod validation errors
     if (zodValidationError && typeof zodValidationError === 'object' && zodValidationError.name === 'ZodError') {

@@ -2,6 +2,7 @@ import * as z from 'zod';
 
 import { SUBMISSION_TYPES } from '../../constants/assessment';
 import { ZResult } from './result';
+import { MAX_FEEDBACK_LENGTH } from '../../constants/result';
 
 /**
  * Validators for learner coursework upload (PearlLMS Phase 3 Step 4). Shape only — the config-driven
@@ -82,7 +83,7 @@ export const ZProgressionQuery = z.object({
  */
 export const ZMarkSubmission = z.object({
   result: ZResult.optional(),
-  feedback: z.string().max(5000).optional(),
+  feedback: z.string().max(MAX_FEEDBACK_LENGTH, 'Feedback is too long — maximum 20,000 characters').optional(),
   // Already-uploaded tutor feedback files (registered under the coursework-feedback/ prefix for THIS
   // submission; the service re-validates each key's prefix). Optional; replaces the version's feedback set.
   feedbackFiles: z.array(ZCourseworkFile).max(10).optional()
