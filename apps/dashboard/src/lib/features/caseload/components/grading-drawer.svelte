@@ -70,8 +70,9 @@
       snackbar.error(`Feedback is too long — maximum ${MAX_FEEDBACK_LENGTH.toLocaleString('en-GB')} characters.`);
       return;
     }
-    if (isDraft && !feedback.trim() && selectedFiles.length === 0) {
-      snackbar.error('Draft feedback cannot be empty.');
+    // The server requires feedback TEXT on a draft (files alone are rejected) — check before uploading anything.
+    if (isDraft && !feedback.trim()) {
+      snackbar.error('Draft feedback needs written feedback (files can be attached too).');
       return;
     }
     saving = true;
