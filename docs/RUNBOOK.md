@@ -158,3 +158,16 @@ from audit_event
 where action = 'allocation.switched'
 order by occurred_at desc limit 50;
 ```
+
+### Marking & feedback  *(2026-11-20)*
+
+- Tutor feedback text: up to **20,000 characters** (`MAX_FEEDBACK_LENGTH`, live counter on both feedback boxes).
+- Feedback files (PDF, Word, PowerPoint; max 10 per version; per-file size = the document upload limit) can be attached to
+  **drafts and finals** from both the tutor's learner page (`/caseload/<learner>`) and the course submissions grid. Each
+  version keeps its own files; learner, allocated tutor and admin can open them (guarded download, short-lived links).
+- A draft always needs written feedback (files alone are rejected). Only the latest unmarked version of each type is
+  markable; a marked version can't be re-marked (409).
+- After a **Refer**, a newer draft shows as *Draft* (gradeable) then *Draft feedback* for both tutor and learner; a **Pass**
+  closes uploads and grading for that item.
+- Every rejected request now shows its reason in the UI. To diagnose a "button does nothing" report on the server:
+  `docker logs pearl-api | grep <path>` — validator 400s are NOT written to the Activity log (`system_event_log`).
