@@ -2,6 +2,8 @@ import axios from 'axios';
 import { classroomio, type InferResponseType } from '$lib/utils/services/api';
 import { ApiError } from '$lib/utils/services/api/types';
 import { BaseApi } from '$lib/utils/services/api/base.svelte';
+import { normalizeErrorMessage, GENERIC_ERROR_MESSAGE } from '$lib/utils/services/api/error-message';
+import { resolveDocumentMimeType } from '@cio/utils/validation/constants';
 import { snackbar } from '$features/ui/snackbar/store';
 import { courseworkApi, type CourseworkFile } from '$features/course/api/coursework.svelte';
 
@@ -22,6 +24,18 @@ type UnitContentResp = InferResponseType<
   (typeof classroomio.caseload.courses)[':courseId']['lessons'][':lessonId']['unit']['$get']
 >;
 export type TutorUnitContent = Extract<UnitContentResp, { success: true }>['data'];
+
+/** The reason a feedback presign request failed, in words a tutor can act on. */
+export function feedbackPresignErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    const message = normalizeErrorMessage(error.message);
+    if (message !== GENERIC_ERROR_MESSAGE) return message;
+    if (error.status === 413) return 'File too large — please choose a smaller file.';
+    if (error.status === 403) return 'You are not allowed to upload feedback on this submission.';
+    return 'Could not prepare the feedback upload. Please try again.';
+  }
+  return 'Could not prepare the feedback upload. Please check your connection and try again.';
+}
 
 export interface CaseloadState {
   key: string;
@@ -314,30 +328,42 @@ class CaseloadApi extends BaseApi {
 
   /**
    * Upload tutor feedback files for a submission (presign → PUT). Returns the registered file metadata to
-   * pass into markResult; null on failure. Only an allocated tutor / admin is permitted (server-enforced).
+   * pass into markResult; null on failure (a snackbar with the REAL reason has already been shown). Only an
+   * allocated tutor / admin is permitted (server-enforced).
    */
   async uploadFeedbackFiles(submissionId: string, files: File[]): Promise<CourseworkFile[] | null> {
+    // Browsers report an empty File.type for some documents — derive it from the extension (same map the server allow-list uses).
+    const typed = files.map((f) => ({ file: f, type: resolveDocumentMimeType(f.name, f.type) }));
+
+    let presigned: { fileName: string; fileKey: string; uploadUrl: string }[];
     try {
       const presignRes = await classroomio.caseload.submissions[':submissionId'].feedback.presign.$post({
         param: { submissionId },
-        json: { files: files.map((f) => ({ fileName: f.name, fileType: f.type, fileSize: f.size })) }
+        json: { files: typed.map(({ file, type }) => ({ fileName: file.name, fileType: type, fileSize: file.size })) }
       });
       const presign = (await presignRes.json()) as
         | { success: true; data: { files: { fileName: string; fileKey: string; uploadUrl: string }[] } }
-        | { success: false; error?: string };
+        | { success: false; error?: unknown };
       if (!presign.success) {
-        snackbar.error(presign.error ?? 'Could not prepare the feedback upload.');
+        snackbar.error(normalizeErrorMessage(presign.error ?? 'Could not prepare the feedback upload.'));
         return null;
       }
-      const presigned = presign.data.files;
-      for (let i = 0; i < files.length; i++) {
-        await axios.put(presigned[i].uploadUrl, files[i], { headers: { 'Content-Type': files[i].type } });
-      }
-      return files.map((f, i) => ({ key: presigned[i].fileKey, name: f.name, size: f.size, type: f.type }));
-    } catch {
-      snackbar.error('Feedback upload failed. Please try again.');
+      presigned = presign.data.files;
+    } catch (error) {
+      // The fetch wrapper throws ApiError(message = response body) for every 4xx/5xx — surface the server's reason.
+      snackbar.error(feedbackPresignErrorMessage(error));
       return null;
     }
+
+    try {
+      for (let i = 0; i < typed.length; i++) {
+        await axios.put(presigned[i].uploadUrl, typed[i].file, { headers: { 'Content-Type': typed[i].type } });
+      }
+    } catch {
+      snackbar.error('Upload to storage failed — please try again.');
+      return null;
+    }
+    return typed.map(({ file, type }, i) => ({ key: presigned[i].fileKey, name: file.name, size: file.size, type }));
   }
 
   /** The grading pipeline — queue lists + headline stats (Phase 8). Allocation-scoped server-side. */

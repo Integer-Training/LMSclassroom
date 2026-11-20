@@ -3,6 +3,7 @@ import * as z from 'zod';
 import { SUBMISSION_TYPES } from '../../constants/assessment';
 import { ZResult } from './result';
 import { MAX_FEEDBACK_LENGTH } from '../../constants/result';
+import { MAX_PRESIGN_FILES } from '../constants';
 
 /**
  * Validators for learner coursework upload (PearlLMS Phase 3 Step 4). Shape only — the config-driven
@@ -23,7 +24,7 @@ export const ZCourseworkPresign = z.object({
   // The service re-validates it is a real assessment material on this lesson.
   assessmentKey: z.string().min(1).max(1024),
   submissionType: z.enum(SUBMISSION_TYPES).default('final'),
-  files: z.array(ZPresignFile).min(1).max(10)
+  files: z.array(ZPresignFile).min(1).max(MAX_PRESIGN_FILES)
 });
 
 /** One uploaded file's metadata, recorded on the submission after the PUT completes. */
@@ -45,7 +46,7 @@ export const ZCourseworkCreate = z.object({
 
 /** Tutor feedback-file presign: the files the tutor intends to upload as feedback on one submission. */
 export const ZFeedbackPresign = z.object({
-  files: z.array(ZPresignFile).min(1).max(10)
+  files: z.array(ZPresignFile).min(1).max(MAX_PRESIGN_FILES)
 });
 
 /** Download-signing request: the keys the caller wants signed URLs for (guard binds each to a submission). */

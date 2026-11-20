@@ -1,6 +1,6 @@
 import type { Actor } from '@cio/db/actor';
 import { AppError, ErrorCodes } from '@api/utils/errors';
-import { isPassingResult } from '@cio/utils/constants';
+import { computeState, type RowState } from './grade-state';
 import { isCourseTutor, isTutorAllocatedToCourse } from '@cio/db/queries/allocation';
 import { visibleLearnerIdsForCourse } from '@api/middlewares/guards/ownership';
 import { generateDocumentDownloadPresignedUrls } from '@cio/core/utils/s3';
@@ -25,8 +25,6 @@ import {
 // open a course when they are on its team (materials/units) or have allocated learners enrolled in it, but
 // they only ever see their OWN allocated learners' data ("Separate groups: <tutor>"); an ADMIN sees all.
 // Manager/Learner are refused. Read-only — grading stays on the existing recordResult path.
-
-type RowState = 'not_submitted' | 'draft' | 'draft_feedback' | 'awaiting_marking' | 'referred' | 'passed';
 
 /** Resolve the caller's roster for a course and enforce access. The roster is ALWAYS learner data, so it
  *  follows the central rule (visibleLearnerIdsForCourse): admin = all enrolled, tutor = allocated∩enrolled.
@@ -61,30 +59,6 @@ async function assertCanAccessCourse(actor: Actor, courseId: string): Promise<vo
   if (!(await canAccessCourse(actor, courseId))) {
     throw new AppError('You are not assigned to this course', ErrorCodes.FORBIDDEN, 403);
   }
-}
-
-/** Per-assessment state from a learner's submissions for it (newest first). Mirrors the learner
- *  assignments board so tutor + learner see the same status. Also returns the submission id to grade. */
-function computeState(subs: GridSubmission[]): { state: RowState; gradeTargetId: string | null } {
-  // gradeTargetId is set ONLY when there's an unmarked latest version to act on now (awaiting final or an
-  // unmarked draft). Already-marked states (passed/referred/draft_feedback) → null, so the grid disables
-  // "Grade" and a tutor can't trip the no-re-mark 409; the next markable version appears on resubmit.
-  if (subs.length === 0) return { state: 'not_submitted', gradeTargetId: null };
-  const latestFinal = subs.find((s) => s.submissionType === 'final') ?? null;
-  const latestDraft = subs.find((s) => s.submissionType === 'draft') ?? null;
-  if (latestFinal) {
-    if (latestFinal.resultKind === 'verdict' && isPassingResult(latestFinal.result)) {
-      return { state: 'passed', gradeTargetId: null };
-    }
-    if (latestFinal.resultKind === 'verdict' && latestFinal.result && !isPassingResult(latestFinal.result)) {
-      return { state: 'referred', gradeTargetId: null };
-    }
-    return { state: 'awaiting_marking', gradeTargetId: latestFinal.submissionId }; // unmarked final → grade this
-  }
-  if (latestDraft && latestDraft.resultKind === 'draft') {
-    return { state: 'draft_feedback', gradeTargetId: null };
-  }
-  return { state: 'draft', gradeTargetId: latestDraft?.submissionId ?? subs[0].submissionId };
 }
 
 // ── Phase 1: tutor read-only course content (outline + per-assessment stats) ─────────────────────────

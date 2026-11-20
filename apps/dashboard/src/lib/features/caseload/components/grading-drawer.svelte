@@ -9,6 +9,13 @@
   import { RESULT_VALUES, RESULT_LABELS, MAX_FEEDBACK_LENGTH } from '@cio/utils/constants';
   import { caseloadApi, type SubmissionsGridRow } from '$features/caseload/api/caseload.svelte';
   import { snackbar } from '$features/ui/snackbar/store';
+  import { getResolvedUploadLimits } from '$lib/utils/config/upload-limits-context';
+  import {
+    ALLOWED_DOCUMENT_ACCEPT,
+    ALLOWED_DOCUMENT_TYPES_LABEL,
+    MAX_PRESIGN_FILES,
+    isAllowedDocumentFile
+  } from '@cio/utils/validation/constants';
 
   // Grading drawer for the tutor submissions grid (PearlLMS — courses-assigned phase). Grades ONE
   // submission version. A DRAFT (submissionType === 'draft') gets feedback only (no verdict); a FINAL
@@ -36,6 +43,9 @@
   const files = $derived(target?.files ?? row?.files ?? []);
   const learnerComment = $derived(target?.comment ?? row?.comment ?? null);
 
+  // Same allow-list, per-file size ceiling and file-count cap the server enforces on the feedback presign.
+  const maxFileBytes = getResolvedUploadLimits().documentBytes;
+
   let result = $state<string>(RESULT_VALUES[0]);
   let feedback = $state('');
   let selectedFiles = $state<File[]>([]);
@@ -57,7 +67,24 @@
 
   function onFilesPicked(e: Event) {
     const input = e.currentTarget as HTMLInputElement;
-    if (input.files) selectedFiles = [...selectedFiles, ...Array.from(input.files)];
+    const accepted: File[] = [];
+    for (const file of input.files ? Array.from(input.files) : []) {
+      if (!isAllowedDocumentFile(file.name, file.type)) {
+        snackbar.error(`"${file.name}" is not an accepted file type. Please upload ${ALLOWED_DOCUMENT_TYPES_LABEL}.`);
+        continue;
+      }
+      if (file.size > maxFileBytes) {
+        const mb = Math.round(maxFileBytes / 1024 / 1024);
+        snackbar.error(`"${file.name}" is too large. The maximum file size is ${mb}MB.`);
+        continue;
+      }
+      if (selectedFiles.length + accepted.length >= MAX_PRESIGN_FILES) {
+        snackbar.error(`"${file.name}" was not added — you can attach at most ${MAX_PRESIGN_FILES} files.`);
+        break;
+      }
+      accepted.push(file);
+    }
+    if (accepted.length > 0) selectedFiles = [...selectedFiles, ...accepted];
     input.value = '';
   }
   function removeFile(idx: number) {
@@ -184,7 +211,7 @@
             bind:this={fileInput}
             type="file"
             multiple
-            accept=".pdf,.doc,.docx"
+            accept={ALLOWED_DOCUMENT_ACCEPT}
             class="hidden"
             onchange={onFilesPicked}
           />
