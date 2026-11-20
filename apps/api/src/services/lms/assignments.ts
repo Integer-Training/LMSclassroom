@@ -70,7 +70,14 @@ interface ItemState {
  */
 function computeItemState(subs: SubmissionWithContext[]): ItemState {
   if (subs.length === 0) {
-    return { state: 'not_started', result: null, feedback: null, markedAt: null, latestVersion: null, latestSubmittedAt: null };
+    return {
+      state: 'not_started',
+      result: null,
+      feedback: null,
+      markedAt: null,
+      latestVersion: null,
+      latestSubmittedAt: null
+    };
   }
   const latest = subs[0];
   const latestFinal = subs.find((s) => s.submissionType === 'final') ?? null;
@@ -79,20 +86,76 @@ function computeItemState(subs: SubmissionWithContext[]): ItemState {
   if (latestFinal) {
     const isVerdict = latestFinal.resultKind === 'verdict';
     if (isVerdict && isPassingResult(latestFinal.result)) {
-      return { state: 'passed', result: latestFinal.result, feedback: latestFinal.feedback, markedAt: latestFinal.resultRecordedAt, latestVersion: latestFinal.version, latestSubmittedAt: latestFinal.submittedAt };
+      return {
+        state: 'passed',
+        result: latestFinal.result,
+        feedback: latestFinal.feedback,
+        markedAt: latestFinal.resultRecordedAt,
+        latestVersion: latestFinal.version,
+        latestSubmittedAt: latestFinal.submittedAt
+      };
     }
     if (isVerdict && latestFinal.result && !isPassingResult(latestFinal.result)) {
-      return { state: 'referred', result: latestFinal.result, feedback: latestFinal.feedback, markedAt: latestFinal.resultRecordedAt, latestVersion: latestFinal.version, latestSubmittedAt: latestFinal.submittedAt };
+      // A draft uploaded AFTER the Refer is the learner's current work — same rule as the tutor grid
+      // (services/caseload/grade-state.ts): unmarked → 'draft', feedback given → 'draft_feedback'.
+      if (latestDraft && latestDraft.version > latestFinal.version) {
+        return latestDraft.resultKind === 'draft'
+          ? {
+              state: 'draft_feedback',
+              result: null,
+              feedback: latestDraft.feedback,
+              markedAt: latestDraft.resultRecordedAt,
+              latestVersion: latestDraft.version,
+              latestSubmittedAt: latestDraft.submittedAt
+            }
+          : {
+              state: 'draft',
+              result: null,
+              feedback: null,
+              markedAt: null,
+              latestVersion: latestDraft.version,
+              latestSubmittedAt: latestDraft.submittedAt
+            };
+      }
+      return {
+        state: 'referred',
+        result: latestFinal.result,
+        feedback: latestFinal.feedback,
+        markedAt: latestFinal.resultRecordedAt,
+        latestVersion: latestFinal.version,
+        latestSubmittedAt: latestFinal.submittedAt
+      };
     }
     // A final exists but isn't a verdict yet → awaiting marking.
-    return { state: 'awaiting_marking', result: null, feedback: null, markedAt: null, latestVersion: latestFinal.version, latestSubmittedAt: latestFinal.submittedAt };
+    return {
+      state: 'awaiting_marking',
+      result: null,
+      feedback: null,
+      markedAt: null,
+      latestVersion: latestFinal.version,
+      latestSubmittedAt: latestFinal.submittedAt
+    };
   }
 
   // Only drafts so far.
   if (latestDraft && latestDraft.resultKind === 'draft') {
-    return { state: 'draft_feedback', result: null, feedback: latestDraft.feedback, markedAt: latestDraft.resultRecordedAt, latestVersion: latestDraft.version, latestSubmittedAt: latestDraft.submittedAt };
+    return {
+      state: 'draft_feedback',
+      result: null,
+      feedback: latestDraft.feedback,
+      markedAt: latestDraft.resultRecordedAt,
+      latestVersion: latestDraft.version,
+      latestSubmittedAt: latestDraft.submittedAt
+    };
   }
-  return { state: 'draft', result: null, feedback: null, markedAt: null, latestVersion: latest.version, latestSubmittedAt: latest.submittedAt };
+  return {
+    state: 'draft',
+    result: null,
+    feedback: null,
+    markedAt: null,
+    latestVersion: latest.version,
+    latestSubmittedAt: latest.submittedAt
+  };
 }
 
 /**

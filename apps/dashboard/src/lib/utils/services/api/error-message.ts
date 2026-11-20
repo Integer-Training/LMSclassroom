@@ -39,7 +39,14 @@ export function normalizeErrorMessage(input: unknown, depth = 0): string {
 
   if (typeof input === 'string') {
     const parsed = parseMaybeJson(input);
-    if (typeof parsed === 'string') return parsed.trim() || FALLBACK;
+    if (typeof parsed === 'string') {
+      const text = parsed.trim();
+      // A proxy/web-server error page (e.g. nginx "413 Request Entity Too Large") is HTML — never show markup;
+      // return the generic message so callers can fall back to a status-specific one.
+      if (!text || /^<(!doctype|html|head|body|\?xml)/i.test(text) || /<\/(html|body|title)>/i.test(text))
+        return FALLBACK;
+      return text;
+    }
     return normalizeErrorMessage(parsed, depth + 1);
   }
 

@@ -29,9 +29,9 @@ describe('computeState', () => {
     expect(r).toEqual({ state: 'draft', gradeTargetId: 'd2' });
   });
 
-  it('referred final then a marked draft (nothing newer) -> stays referred, no target', () => {
+  it('referred final then a newer draft that already has feedback -> draft_feedback (matches the learner board), no target', () => {
     const r = computeState([sub('d2', 'draft', 2, 'feedback'), sub('f1', 'final', 1, 'REFER')]);
-    expect(r).toEqual({ state: 'referred', gradeTargetId: null });
+    expect(r).toEqual({ state: 'draft_feedback', gradeTargetId: null });
   });
 
   it('draft older than the referred final is ignored', () => {
@@ -61,10 +61,10 @@ describe('computeState', () => {
     expect(computeState([sub('f1', 'final', 1, 'PASS')])).toEqual({ state: 'passed', gradeTargetId: null });
   });
 
-  it('passed final then a later unmarked draft (should not happen) -> does not crash, stays passed, target = that draft', () => {
+  it('passed final then a later unmarked draft (should not happen) -> stays passed, NO grade target (Pass is terminal)', () => {
     expect(computeState([sub('d2', 'draft', 2), sub('f1', 'final', 1, 'PASS')])).toEqual({
       state: 'passed',
-      gradeTargetId: 'd2'
+      gradeTargetId: null
     });
   });
 

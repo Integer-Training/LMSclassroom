@@ -4,7 +4,7 @@ import { BaseApi } from '$lib/utils/services/api/base.svelte';
 import { snackbar } from '$features/ui/snackbar/store';
 import { GenericUploader } from '$lib/utils/services/courses/presign';
 import { ApiError } from '$lib/utils/services/api/types';
-import { normalizeErrorMessage } from '$lib/utils/services/api/error-message';
+import { normalizeErrorMessage, GENERIC_ERROR_MESSAGE } from '$lib/utils/services/api/error-message';
 import { resolveDocumentMimeType } from '@cio/utils/validation/constants';
 
 /**
@@ -239,7 +239,12 @@ class CourseworkApi extends BaseApi {
       return true;
     } catch (error) {
       // ApiError carries the raw response body (JSON) — turn it into the server's readable reason.
-      if (error instanceof ApiError) return fail(normalizeErrorMessage(error.message));
+      if (error instanceof ApiError) {
+        const message = normalizeErrorMessage(error.message);
+        if (message !== GENERIC_ERROR_MESSAGE) return fail(message);
+        if (error.status === 413) return fail('File too large — please choose a smaller file.');
+        return fail('Upload failed. Please try again.');
+      }
       return fail(error instanceof Error ? error.message : 'Upload failed. Please try again.');
     } finally {
       this.uploading[itemKey] = false;

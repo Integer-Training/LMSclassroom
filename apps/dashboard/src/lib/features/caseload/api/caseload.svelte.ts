@@ -25,6 +25,9 @@ type UnitContentResp = InferResponseType<
 >;
 export type TutorUnitContent = Extract<UnitContentResp, { success: true }>['data'];
 
+/** Files already uploaded as feedback (per File object) — lets a retry after a failed save reuse them. */
+const uploadedFeedbackFiles = new WeakMap<File, { submissionId: string; meta: CourseworkFile }>();
+
 /** The reason a feedback presign request failed, in words a tutor can act on. */
 export function feedbackPresignErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
@@ -333,6 +336,18 @@ class CaseloadApi extends BaseApi {
    * allocated tutor / admin is permitted (server-enforced).
    */
   async uploadFeedbackFiles(submissionId: string, files: File[]): Promise<CourseworkFile[] | null> {
+    // A retry after a failed save (e.g. markResult 409/500) must not upload the same file again: reuse what this
+    // exact File already uploaded for this submission, and only presign + PUT the rest.
+    const pending = files.filter((f) => uploadedFeedbackFiles.get(f)?.submissionId !== submissionId);
+    if (pending.length > 0) {
+      const fresh = await this.uploadFeedbackFilesNow(submissionId, pending);
+      if (!fresh) return null;
+      pending.forEach((f, i) => uploadedFeedbackFiles.set(f, { submissionId, meta: fresh[i] }));
+    }
+    return files.map((f) => uploadedFeedbackFiles.get(f)!.meta);
+  }
+
+  private async uploadFeedbackFilesNow(submissionId: string, files: File[]): Promise<CourseworkFile[] | null> {
     // Browsers report an empty File.type for some documents — derive it from the extension (same map the server allow-list uses).
     const typed = files.map((f) => ({ file: f, type: resolveDocumentMimeType(f.name, f.type) }));
 

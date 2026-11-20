@@ -26,7 +26,13 @@
   function onFilesPicked(e: Event) {
     const input = e.currentTarget as HTMLInputElement;
     const accepted: File[] = [];
+    let overCap = 0;
     for (const file of input.files ? Array.from(input.files) : []) {
+      // Cap first, so files that can't be added anyway don't raise type/size errors.
+      if (files.length + accepted.length >= MAX_PRESIGN_FILES) {
+        overCap++;
+        continue;
+      }
       if (!isAllowedDocumentFile(file.name, file.type)) {
         snackbar.error(`"${file.name}" is not an accepted file type. Please upload ${ALLOWED_DOCUMENT_TYPES_LABEL}.`);
         continue;
@@ -36,11 +42,12 @@
         snackbar.error(`"${file.name}" is too large. The maximum file size is ${mb}MB.`);
         continue;
       }
-      if (files.length + accepted.length >= MAX_PRESIGN_FILES) {
-        snackbar.error(`"${file.name}" was not added — you can attach at most ${MAX_PRESIGN_FILES} files.`);
-        break;
-      }
       accepted.push(file);
+    }
+    if (overCap > 0) {
+      snackbar.error(
+        `${overCap} file${overCap === 1 ? ' was' : 's were'} not added — you can attach at most ${MAX_PRESIGN_FILES} files.`
+      );
     }
     if (accepted.length > 0) files = [...files, ...accepted];
     input.value = '';

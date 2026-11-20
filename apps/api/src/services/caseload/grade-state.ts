@@ -41,16 +41,16 @@ export function computeState<T extends StateSubmission>(subs: T[]): { state: Row
   const draftUnmarked = !!latestDraft && latestDraft.resultKind !== 'draft';
 
   if (latestFinal) {
-    const finalState: RowState = isPassingResult(latestFinal.result) ? 'passed' : 'referred';
-    if (latestDraft && draftIsCurrent && draftUnmarked) {
-      // A newer unmarked draft after a Refer is awaiting draft feedback ('draft'). After a Pass (upload is closed, so this
-      // should not occur) keep the terminal 'passed' state but still expose the unmarked draft as the target.
-      return {
-        state: finalState === 'passed' ? 'passed' : 'draft',
-        gradeTargetId: latestDraft.submissionId
-      };
+    // A Pass is terminal: uploads close, nothing more to grade (no Grade button even if a stray draft exists).
+    if (isPassingResult(latestFinal.result)) return { state: 'passed', gradeTargetId: null };
+    // Referred. A draft uploaded AFTER the Refer is the learner's current work — same rule as the learner board
+    // (services/lms/assignments.ts computeItemState): unmarked → 'draft' (grade it), feedback given → 'draft_feedback'.
+    if (latestDraft && draftIsCurrent) {
+      return draftUnmarked
+        ? { state: 'draft', gradeTargetId: latestDraft.submissionId }
+        : { state: 'draft_feedback', gradeTargetId: null };
     }
-    return { state: finalState, gradeTargetId: null };
+    return { state: 'referred', gradeTargetId: null };
   }
 
   // Drafts only.
