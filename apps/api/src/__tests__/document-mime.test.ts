@@ -16,6 +16,11 @@ describe('resolveDocumentMimeType', () => {
     expect(resolveDocumentMimeType('Marked Up.DOCX', '')).toBe(DOCUMENT_EXTENSION_MIME.docx);
     expect(resolveDocumentMimeType('a.b.pdf')).toBe('application/pdf');
   });
+  it('prefers the extension when the browser reports a generic/non-allowed type', () => {
+    expect(resolveDocumentMimeType('work.docx', 'application/octet-stream')).toBe(DOCUMENT_EXTENSION_MIME.docx);
+    expect(isAllowedDocumentFile('work.pdf', 'application/x-unknown')).toBe(true);
+    expect(isAllowedDocumentFile('pic.png', 'application/octet-stream')).toBe(false);
+  });
   it('returns empty for unknown extensions', () => {
     expect(resolveDocumentMimeType('a.exe', '')).toBe('');
     expect(resolveDocumentMimeType('noext', '')).toBe('');

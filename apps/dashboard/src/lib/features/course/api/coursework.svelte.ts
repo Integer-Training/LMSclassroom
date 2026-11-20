@@ -3,6 +3,19 @@ import { classroomio } from '$lib/utils/services/api';
 import { BaseApi } from '$lib/utils/services/api/base.svelte';
 import { snackbar } from '$features/ui/snackbar/store';
 import { GenericUploader } from '$lib/utils/services/courses/presign';
+import { ApiError } from '$lib/utils/services/api/types';
+import { normalizeErrorMessage } from '$lib/utils/services/api/error-message';
+import { resolveDocumentMimeType } from '@cio/utils/validation/constants';
+
+/**
+ * Browsers report an EMPTY or generic File.type for some documents (e.g. .docx on a PC without Office). The server
+ * validates the type and signs the storage URL for it, and the uploader PUTs with `file.type` — so give such files the
+ * type their extension implies (same map as the server allow-list). Files that already carry an allowed type are untouched.
+ */
+function withResolvedType(f: File): File {
+  const type = resolveDocumentMimeType(f.name, f.type);
+  return type === f.type ? f : new File([f], f.name, { type, lastModified: f.lastModified });
+}
 
 export interface CourseworkFile {
   key: string;
@@ -112,7 +125,7 @@ class CourseworkApi extends BaseApi {
   validateFiles(files: File[], maxBytes: number): string | null {
     if (files.length === 0) return 'Please choose at least one file.';
     for (const f of files) {
-      if (!ALLOWED_TYPES.includes(f.type)) {
+      if (!ALLOWED_TYPES.includes(resolveDocumentMimeType(f.name, f.type))) {
         return `"${f.name}" is not an accepted file type. Please upload PDF or Word (.doc, .docx).`;
       }
       if (f.size > maxBytes) {
@@ -161,6 +174,7 @@ class CourseworkApi extends BaseApi {
     comment?: string
   ): Promise<boolean> {
     const itemKey = this.itemKey(lessonId, assessmentKey);
+    files = files.map(withResolvedType);
     this.uploading[itemKey] = true;
     delete this.uploadErrors[itemKey];
     const fail = (message: string) => {
@@ -224,6 +238,8 @@ class CourseworkApi extends BaseApi {
       await this.list(courseId, lessonId);
       return true;
     } catch (error) {
+      // ApiError carries the raw response body (JSON) — turn it into the server's readable reason.
+      if (error instanceof ApiError) return fail(normalizeErrorMessage(error.message));
       return fail(error instanceof Error ? error.message : 'Upload failed. Please try again.');
     } finally {
       this.uploading[itemKey] = false;

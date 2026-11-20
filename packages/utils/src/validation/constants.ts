@@ -43,14 +43,16 @@ export const ALLOWED_DOCUMENT_TYPES_LABEL = 'PDF, Word (.doc, .docx) or PowerPoi
 export const MAX_PRESIGN_FILES = 10;
 
 /**
- * The MIME type to send for a document upload: the browser-reported type when present, otherwise derived from the
- * file extension. Returns '' when neither is known (callers should then reject the file as an unsupported type).
+ * The MIME type to send for a document upload: the browser-reported type when it is on the allow-list, otherwise the
+ * type derived from the file extension (browsers report '' or a generic type such as application/octet-stream for
+ * some .docx/.pdf files). Falls back to the reported type, or '' when neither is known (callers then reject the file).
  */
 export function resolveDocumentMimeType(fileName: string, reportedType?: string): string {
-  if (reportedType && reportedType.trim()) return reportedType;
+  const reported = reportedType?.trim() ?? '';
+  if (reported && (ALLOWED_DOCUMENT_TYPES as readonly string[]).includes(reported)) return reported;
   const dot = fileName.lastIndexOf('.');
   const ext = dot >= 0 ? fileName.slice(dot + 1).toLowerCase() : '';
-  return DOCUMENT_EXTENSION_MIME[ext] ?? '';
+  return DOCUMENT_EXTENSION_MIME[ext] ?? reported;
 }
 
 /** True when the (resolved) MIME type of this file is on the document allow-list. */
