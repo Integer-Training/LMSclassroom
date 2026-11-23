@@ -6,6 +6,7 @@
   import MessageSquareIcon from '@lucide/svelte/icons/message-square';
   import { Badge } from '@cio/ui/base/badge';
   import * as Table from '@cio/ui/base/table';
+  import { Input } from '@cio/ui/base/input';
   import UsersIcon from '@lucide/svelte/icons/users';
   import { caseloadApi, type PipelineItem } from '$features/caseload/api/caseload.svelte';
   import ActivityPie from '$features/caseload/components/activity-pie.svelte';
@@ -48,13 +49,29 @@
   type QueueView = 'awaiting' | 'resubmissions' | 'drafts' | 'overdue' | 'dueSoon' | 'learners';
   let activeView = $state<QueueView | null>(null);
 
-  // The pipeline carries every tile/table on this page. The full per-learner caseload list is only needed by the
-  // "learners" drill-down, so it loads on first open (not on every dashboard visit). BroadcastBanner (rendered below)
-  // owns the announcements feed load — this page just reads the shared items.
-  let caseloadRequested = false;
+  // The pipeline carries the tiles/tables; the "Your learners" roster (always visible, with View / Message / Email per
+  // learner) loads the caseload list alongside it. Its own loading flag — the API object's isLoading is shared with
+  // the pipeline load. BroadcastBanner (rendered below) owns the announcements feed load.
+  let rosterLoading = $state(true);
+  let rosterFilter = $state('');
+  let rosterEl = $state<HTMLElement | null>(null);
   onMount(() => {
     caseloadApi.loadPipeline();
+    caseloadApi.loadCaseload().finally(() => (rosterLoading = false));
   });
+
+  const filteredLearners = $derived.by(() => {
+    const q = rosterFilter.trim().toLowerCase();
+    if (!q) return caseloadApi.learners;
+    return caseloadApi.learners.filter(
+      (l) => (l.name ?? '').toLowerCase().includes(q) || (l.email ?? '').toLowerCase().includes(q)
+    );
+  });
+
+  function scrollToRoster() {
+    const reduce = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    rosterEl?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+  }
 
   const stats = $derived(caseloadApi.pipeline?.stats ?? null);
   const programmes = $derived(caseloadApi.pipeline?.programmes ?? []);
@@ -97,13 +114,11 @@
   let drilldownEl = $state<HTMLElement | null>(null);
 
   async function open(view: QueueView) {
+    // The learner roster is always on the page now — a "learners" tile just jumps to it.
+    if (view === 'learners') return scrollToRoster();
     const wasActive = activeView === view;
     activeView = wasActive ? null : view;
     if (wasActive) return; // toggled off — nothing to scroll to
-    if (view === 'learners' && !caseloadRequested) {
-      caseloadRequested = true;
-      caseloadApi.loadCaseload();
-    }
     await tick(); // wait for the drill-down to render
     const reduce = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     drilldownEl?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
@@ -176,9 +191,16 @@
 
 <!-- Primary KPI tiles -->
 <div class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-  <!-- Your Learners -->
-  <div class="bg-card rounded-xl border p-4">
-    <p class="text-muted-foreground text-xs font-medium">Your Learners</p>
+  <!-- Your Learners (click → the roster below) -->
+  <button
+    type="button"
+    onclick={scrollToRoster}
+    class="bg-card hover:bg-muted/40 rounded-xl border p-4 text-left transition-colors"
+    aria-label="Your learners — show the list"
+  >
+    <p class="text-muted-foreground flex items-center justify-between text-xs font-medium">
+      Your Learners <span class="text-primary">View list ↓</span>
+    </p>
     <p class="mt-1 text-3xl font-semibold">{stats?.learners ?? caseloadApi.learners.length}</p>
     <div class="mt-2 flex flex-wrap gap-1">
       <Badge variant="secondary" class="text-emerald-600 dark:text-emerald-400"
@@ -187,7 +209,7 @@
       <Badge variant="secondary">{stats?.inactiveLearners ?? 0} Inactive</Badge>
       <Badge variant="secondary">{stats?.neverLoggedIn ?? 0} Never in</Badge>
     </div>
-  </div>
+  </button>
 
   <!-- Courses -->
   <div class="bg-card rounded-xl border p-4">
@@ -237,6 +259,91 @@
     </button>
   {/each}
 </div>
+
+<!-- Your learners — always visible: View / Message / Email per learner -->
+<section class="mb-6 scroll-mt-4" bind:this={rosterEl} aria-labelledby="roster-heading">
+  <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+    <h2 id="roster-heading" class="text-lg font-semibold tracking-tight">
+      Your learners
+      {#if caseloadApi.learners.length}<span class="text-muted-foreground text-sm font-normal"
+          >({caseloadApi.learners.length})</span
+        >{/if}
+    </h2>
+    {#if caseloadApi.learners.length > 6}
+      <Input
+        type="search"
+        placeholder="Search by name or email"
+        aria-label="Search your learners"
+        class="h-8 w-full sm:w-64"
+        bind:value={rosterFilter}
+      />
+    {/if}
+  </div>
+
+  {#if rosterLoading && caseloadApi.learners.length === 0}
+    <div class="text-muted-foreground rounded-md border p-8 text-center text-sm">Loading…</div>
+  {:else if caseloadApi.learners.length === 0}
+    <div class="rounded-md border p-8 text-center">
+      <UsersIcon class="text-muted-foreground mx-auto mb-3 size-6" />
+      <p class="font-medium">No learners are allocated to you yet</p>
+      <p class="text-muted-foreground mt-1 text-sm">Your manager assigns learners to you. They appear here.</p>
+    </div>
+  {:else if filteredLearners.length === 0}
+    <div class="text-muted-foreground rounded-md border p-8 text-center text-sm">
+      No learners match “{rosterFilter.trim()}”.
+    </div>
+  {:else}
+    <div class="overflow-x-auto rounded-md border">
+      <Table.Root>
+        <Table.Header>
+          <Table.Row>
+            <Table.Head>Learner</Table.Head>
+            <Table.Head class="hidden md:table-cell">Email</Table.Head>
+            <Table.Head class="hidden text-right sm:table-cell">Submissions</Table.Head>
+            <Table.Head class="text-right">Actions</Table.Head>
+          </Table.Row>
+        </Table.Header>
+        <Table.Body>
+          {#each filteredLearners as learner (learner.learnerId)}
+            <Table.Row>
+              <Table.Cell class="font-medium whitespace-normal!">
+                <a href={`/caseload/${learner.learnerId}`} class="hover:underline">{learner.name || 'Learner'}</a>
+              </Table.Cell>
+              <Table.Cell class="text-muted-foreground hidden break-all whitespace-normal! md:table-cell"
+                >{learner.email ?? ''}</Table.Cell
+              >
+              <Table.Cell class="hidden text-right sm:table-cell">{learner.submissionCount}</Table.Cell>
+              <Table.Cell class="text-right">
+                <div class="flex flex-wrap items-center justify-end gap-1.5">
+                  <Button href={`/caseload/${learner.learnerId}`} variant="ghost" size="sm">View</Button>
+                  {#if canMessage}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      aria-label="Message {learner.name || 'learner'}"
+                      loading={messagingId === learner.learnerId}
+                      disabled={!!messagingId}
+                      onclick={() => messageLearner(learner.learnerId)}
+                    >
+                      <MessageSquareIcon class="size-4" /> Message
+                    </Button>
+                  {/if}
+                  <EmailContact
+                    compact
+                    labelled
+                    email={learner.email}
+                    name={learner.name || 'learner'}
+                    subject={emailSubject(learner.name)}
+                  />
+                </div>
+              </Table.Cell>
+            </Table.Row>
+          {/each}
+        </Table.Body>
+      </Table.Root>
+    </div>
+  {/if}
+</section>
 
 <!-- Charts -->
 {#if stats}
@@ -325,65 +432,7 @@
       </button>
     </div>
 
-    {#if activeView === 'learners'}
-      {#if caseloadApi.learners.length === 0}
-        <div class="rounded-md border p-8 text-center">
-          <UsersIcon class="text-muted-foreground mx-auto mb-3 size-6" />
-          <p class="font-medium">No learners are allocated to you yet</p>
-          <p class="text-muted-foreground mt-1 text-sm">Your manager assigns learners to you. They appear here.</p>
-        </div>
-      {:else}
-        <div class="overflow-x-auto rounded-md border">
-          <Table.Root>
-            <Table.Header>
-              <Table.Row>
-                <Table.Head>Learner</Table.Head>
-                <Table.Head>Email</Table.Head>
-                <Table.Head class="text-right">Submissions</Table.Head>
-                <Table.Head class="text-right">Action</Table.Head>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
-              {#each caseloadApi.learners as learner (learner.learnerId)}
-                <Table.Row>
-                  <Table.Cell class="font-medium whitespace-normal!">{learner.name || 'Learner'}</Table.Cell>
-                  <Table.Cell class="text-muted-foreground break-all whitespace-normal!"
-                    >{learner.email ?? ''}</Table.Cell
-                  >
-                  <Table.Cell class="text-right">{learner.submissionCount}</Table.Cell>
-                  <Table.Cell class="text-right">
-                    <div class="flex items-center justify-end gap-1">
-                      <a href={`/caseload/${learner.learnerId}`} class="text-primary mr-1 text-sm hover:underline"
-                        >View</a
-                      >
-                      {#if canMessage}
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label="Message {learner.name || 'learner'}"
-                          title="Message"
-                          loading={messagingId === learner.learnerId}
-                          disabled={!!messagingId}
-                          onclick={() => messageLearner(learner.learnerId)}
-                        >
-                          <MessageSquareIcon class="size-4" />
-                        </Button>
-                      {/if}
-                      <EmailContact
-                        compact
-                        email={learner.email}
-                        name={learner.name || 'learner'}
-                        subject={emailSubject(learner.name)}
-                      />
-                    </div>
-                  </Table.Cell>
-                </Table.Row>
-              {/each}
-            </Table.Body>
-          </Table.Root>
-        </div>
-      {/if}
-    {:else if queueItems.length === 0}
+    {#if queueItems.length === 0}
       <div class="text-muted-foreground rounded-md border p-8 text-center text-sm">
         {caseloadApi.isLoading ? 'Loading…' : QUEUE_META[activeView].empty}
       </div>

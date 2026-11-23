@@ -12,15 +12,27 @@
     name: string;
     subject: string;
     compact?: boolean;
+    /** Compact mode only: show the word "Email" next to the icon (table rows where an icon alone is missed). */
+    labelled?: boolean;
   }
-  let { email, name, subject, compact = false }: Props = $props();
+  let { email, name, subject, compact = false, labelled = false }: Props = $props();
 
   const valid = $derived(isMailableAddress(email));
   const href = $derived(buildMailto(email, subject));
   const label = $derived(`Email ${name || 'contact'}`);
 </script>
 
-{#if compact}
+{#if compact && labelled}
+  {#if href}
+    <Button {href} variant="outline" size="sm" aria-label={label} title={label}>
+      <MailIcon class="size-4" /> Email
+    </Button>
+  {:else}
+    <Button variant="outline" size="sm" disabled aria-label="{label} (no email address)" title="No email address">
+      <MailIcon class="size-4" /> Email
+    </Button>
+  {/if}
+{:else if compact}
   {#if href}
     <Button {href} variant="ghost" size="icon-sm" aria-label={label} title={label}>
       <MailIcon class="size-4" />
