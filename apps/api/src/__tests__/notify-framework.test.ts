@@ -77,6 +77,25 @@ describe('getCategoryEmailEnabled — preference row else config default', () =>
 describe('emitNotification — in-app always / email per preference', () => {
   const recip = { userId: 'u1', email: 'u1@x.test', emailFields: { courseTitle: 'C' } };
 
+  it('passes actorId + variant through to the in-app row (null when omitted); email args unchanged', async () => {
+    await emitNotification({
+      type: 'submission.created',
+      recipients: [recip],
+      entityType: 'lesson',
+      entityId: 'l1',
+      actorId: 'learner-1',
+      variant: 'draft',
+      emailTemplateId: 'courseworkSubmitted'
+    });
+    expect(mInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'u1', actorId: 'learner-1', variant: 'draft' })
+    );
+    expect(mEnqueue).toHaveBeenCalledWith('courseworkSubmitted', { to: 'u1@x.test', fields: { courseTitle: 'C' } });
+    mInsert.mockClear();
+    await emitNotification({ type: 'session.unlocked', recipients: [{ userId: 'u2' }] });
+    expect(mInsert).toHaveBeenCalledWith(expect.objectContaining({ actorId: null, variant: null }));
+  });
+
   it('writes an in-app row per recipient (always) with type + entity', async () => {
     await emitNotification({
       type: 'result.recorded',

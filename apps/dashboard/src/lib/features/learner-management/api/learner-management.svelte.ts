@@ -1,6 +1,7 @@
 import { classroomio } from '$lib/utils/services/api';
 import { BaseApi } from '$lib/utils/services/api/base.svelte';
 import { snackbar } from '$features/ui/snackbar/store';
+import { errorText } from '$lib/utils/services/api/error-message';
 
 // Admin Learner-management (PearlLMS). Org-wide roster + KPIs, learner creation (reveals a temp password),
 // "Send login" (regenerates + reveals a new temp password), and suspend/reactivate. All endpoints are
@@ -84,8 +85,7 @@ class LearnerManagementApi extends BaseApi {
           this.load();
         },
         onError: (result) => {
-          if (typeof result === 'string') snackbar.error(result);
-          else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
+          snackbar.error(errorText(result));
         }
       });
     } finally {
@@ -110,8 +110,7 @@ class LearnerManagementApi extends BaseApi {
           this.revealed = { name: rowName, password: data.temporaryPassword };
         },
         onError: (result) => {
-          if (typeof result === 'string') snackbar.error(result);
-          else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
+          snackbar.error(errorText(result));
         }
       });
     } finally {
@@ -134,8 +133,7 @@ class LearnerManagementApi extends BaseApi {
           this.load();
         },
         onError: (result) => {
-          if (typeof result === 'string') snackbar.error(result);
-          else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
+          snackbar.error(errorText(result));
         }
       });
     } finally {

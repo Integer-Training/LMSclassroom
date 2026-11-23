@@ -1,5 +1,9 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
+  import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
+  import { Button } from '@cio/ui/base/button';
+  import MessageSquareIcon from '@lucide/svelte/icons/message-square';
   import { Badge } from '@cio/ui/base/badge';
   import * as Table from '@cio/ui/base/table';
   import UsersIcon from '@lucide/svelte/icons/users';
@@ -10,6 +14,30 @@
   import AnnouncementsList from '$features/announcements/components/announcements-list.svelte';
   import BroadcastBanner from '$features/announcements/components/broadcast-banner.svelte';
   import { profile } from '$lib/utils/store/user';
+  import { currentOrg } from '$lib/utils/store/org';
+  import { snackbar } from '$features/ui/snackbar/store';
+  import { messagingApi } from '$features/messaging/api/messaging.svelte';
+  import EmailContact from '$features/messaging/components/email-contact.svelte';
+
+  // Message is TUTOR-only (the API refuses Admin/Manager); Email is shown to whoever already sees the row.
+  const canMessage = $derived(($page.data.locals?.actor as { role?: string } | undefined)?.role === 'TUTOR');
+  let messagingId = $state<string | null>(null);
+  async function messageLearner(learnerId: string) {
+    if (messagingId) return;
+    messagingId = learnerId;
+    try {
+      const res = await messagingApi.startConversation(learnerId);
+      if (!res) return;
+      if ('error' in res) {
+        snackbar.error(res.error);
+        return;
+      }
+      await goto(`/messages/${res.threadId}`);
+    } finally {
+      messagingId = null;
+    }
+  }
+  const emailSubject = (learnerName: string | null) => [$currentOrg.name, learnerName].filter(Boolean).join(' — ');
 
   const firstName = $derived($profile.fullname?.trim().split(/\s+/)[0] || '');
 
@@ -312,17 +340,42 @@
                 <Table.Head>Learner</Table.Head>
                 <Table.Head>Email</Table.Head>
                 <Table.Head class="text-right">Submissions</Table.Head>
-                <Table.Head class="w-20 text-right">Action</Table.Head>
+                <Table.Head class="text-right">Action</Table.Head>
               </Table.Row>
             </Table.Header>
             <Table.Body>
               {#each caseloadApi.learners as learner (learner.learnerId)}
                 <Table.Row>
-                  <Table.Cell class="font-medium">{learner.name || 'Learner'}</Table.Cell>
-                  <Table.Cell class="text-muted-foreground">{learner.email ?? ''}</Table.Cell>
+                  <Table.Cell class="font-medium whitespace-normal!">{learner.name || 'Learner'}</Table.Cell>
+                  <Table.Cell class="text-muted-foreground break-all whitespace-normal!"
+                    >{learner.email ?? ''}</Table.Cell
+                  >
                   <Table.Cell class="text-right">{learner.submissionCount}</Table.Cell>
                   <Table.Cell class="text-right">
-                    <a href={`/caseload/${learner.learnerId}`} class="text-primary text-sm hover:underline">View</a>
+                    <div class="flex items-center justify-end gap-1">
+                      <a href={`/caseload/${learner.learnerId}`} class="text-primary mr-1 text-sm hover:underline"
+                        >View</a
+                      >
+                      {#if canMessage}
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label="Message {learner.name || 'learner'}"
+                          title="Message"
+                          loading={messagingId === learner.learnerId}
+                          disabled={!!messagingId}
+                          onclick={() => messageLearner(learner.learnerId)}
+                        >
+                          <MessageSquareIcon class="size-4" />
+                        </Button>
+                      {/if}
+                      <EmailContact
+                        compact
+                        email={learner.email}
+                        name={learner.name || 'learner'}
+                        subject={emailSubject(learner.name)}
+                      />
+                    </div>
                   </Table.Cell>
                 </Table.Row>
               {/each}

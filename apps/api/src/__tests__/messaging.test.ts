@@ -9,8 +9,10 @@ vi.mock('@cio/db/queries/allocation', () => ({
   isTutorAllocatedToLearner: vi.fn(async () => true),
   isCourseTutorForLearner: vi.fn(async () => false),
   isCourseTutor: vi.fn(async () => false),
-  listTutorsForLearner: vi.fn(async () => [])
+  listTutorsForLearner: vi.fn(async () => []),
+  listLearnersForTutor: vi.fn(async () => [])
 }));
+vi.mock('@cio/db/queries/caseload', () => ({ getProfileStatusForIds: vi.fn(async () => new Map()) }));
 vi.mock('@cio/db/queries/auth', () => ({
   getProfileById: vi.fn(async () => ({ fullname: 'Counterpart', email: 'c@t.test' }))
 }));
@@ -23,14 +25,17 @@ vi.mock('@cio/db/queries/comms', () => ({
   listConversationsForParticipant: vi.fn(async () => []),
   listPreviousTutorThreads: vi.fn(async () => []),
   markThreadRead: vi.fn(async () => {}),
-  markNotificationsReadForEntity: vi.fn(async () => 1)
+  markNotificationsReadForEntity: vi.fn(async () => 1),
+  getProfileNamesByIds: vi.fn(async (ids: string[]) => ids.map((id) => ({ id, name: 'Counterpart' })))
 }));
 vi.mock('@api/services/comms/notify', () => ({ emitNotification: vi.fn(async () => {}) }));
 vi.mock('@cio/email', () => ({ buildEmailBranding: vi.fn(() => ({})) }));
 vi.mock('@cio/core/config/dashboard-url', () => ({ getAppBaseUrl: vi.fn(() => 'http://app') }));
 
-import { isTutorAllocatedToLearner, listTutorsForLearner } from '@cio/db/queries/allocation';
+import { isTutorAllocatedToLearner, listLearnersForTutor, listTutorsForLearner } from '@cio/db/queries/allocation';
+import { getProfileStatusForIds } from '@cio/db/queries/caseload';
 import {
+  getProfileNamesByIds,
   getThreadById,
   ensureActiveThread,
   insertMessage,
@@ -40,8 +45,10 @@ import {
   markNotificationsReadForEntity,
   markThreadRead
 } from '@cio/db/queries/comms';
+import { getProfileById } from '@cio/db/queries/auth';
 import { emitNotification } from '@api/services/comms/notify';
 import {
+  getMyLearners,
   getMyTutor,
   getMyTutors,
   getPreviousTutorThreads,
@@ -112,6 +119,13 @@ describe('openThread — allocated participant only', () => {
   it('a non-allocated pair → 403', async () => {
     mAllocated.mockResolvedValue(false);
     expect(await code(openThread(tutorT1, 'lB'))).toBe(403);
+  });
+  it('403 wording is role-specific and readable', async () => {
+    mAllocated.mockResolvedValue(false);
+    await expect(openThread(tutorT1, 'lB')).rejects.toThrow(
+      "This learner is no longer allocated to you, so you can't message them."
+    );
+    await expect(openThread(learnerA, 'tX')).rejects.toThrow('This tutor is no longer allocated to you.');
   });
   it('Admin / Manager cannot open (not participants) → 403', async () => {
     expect(await code(openThread(admin, 'lA'))).toBe(403);
@@ -186,6 +200,7 @@ describe('sendMessage — participant of an active, allocated pair; text only; e
     expect(emit.entityType).toBe('message_thread');
     expect(emit.entityId).toBe('th1');
     expect(emit.coalesce).toBe(true);
+    expect(emit.actorId).toBe('t1'); // the sender, for the in-app wording
   });
   it('the learner sends → emits to the tutor', async () => {
     await sendMessage(learnerA, 'th1', 'hi tutor');
@@ -216,7 +231,7 @@ describe('sendMessage — participant of an active, allocated pair; text only; e
 describe('getMyTutor — the learner entry point / empty state', () => {
   it('returns the allocated tutor', async () => {
     mTutors.mockResolvedValue([{ tutorId: 't1', email: 't1@x.test' }] as never);
-    expect(await getMyTutor(learnerA)).toEqual({ tutorId: 't1', name: 'Counterpart' });
+    expect(await getMyTutor(learnerA)).toEqual({ tutorId: 't1', name: 'Counterpart', email: 't1@x.test' });
   });
   it('no allocated tutor → null (empty state)', async () => {
     mTutors.mockResolvedValue([] as never);
@@ -227,15 +242,15 @@ describe('getMyTutor — the learner entry point / empty state', () => {
 describe('getMyTutors — a learner with several allocated tutors', () => {
   it('lists every allocated tutor in a stable (name, id) order', async () => {
     mTutors.mockResolvedValue([
-      { tutorId: 't2', email: null },
+      { tutorId: 't2', email: 't2@x.test' },
       { tutorId: 't1', email: null }
     ] as never);
     const names: Record<string, string> = { t1: 'Zed', t2: 'Amy' };
-    const { getProfileById } = await import('@cio/db/queries/auth');
-    vi.mocked(getProfileById).mockImplementation((async (id: string) => ({ fullname: names[id] })) as never);
+    const byName = (async (ids: string[]) => ids.map((id) => ({ id, name: names[id] }))) as never;
+    vi.mocked(getProfileNamesByIds).mockImplementationOnce(byName).mockImplementationOnce(byName);
     expect(await getMyTutors(learnerA)).toEqual([
-      { tutorId: 't2', name: 'Amy' },
-      { tutorId: 't1', name: 'Zed' }
+      { tutorId: 't2', name: 'Amy', email: 't2@x.test' },
+      { tutorId: 't1', name: 'Zed', email: null }
     ]);
     expect((await getMyTutor(learnerA))?.tutorId).toBe('t2');
   });
@@ -374,5 +389,58 @@ describe('getPreviousTutorThreads', () => {
     expect(await code(getPreviousTutorThreads(tutorT2, 'lA'))).toBe(403);
     expect(await code(getPreviousTutorThreads(learnerA, 'lA'))).toBe(403);
     expect(await code(getPreviousTutorThreads(manager, 'lA'))).toBe(403);
+  });
+});
+
+describe('getMyLearners — the tutor "New message" picker', () => {
+  const L = (learnerId: string, name: string | null, email: string | null = null) => ({ learnerId, name, email });
+  it('own allocated, non-deactivated learners, sorted by name case-insensitively', async () => {
+    vi.mocked(listLearnersForTutor).mockResolvedValue([
+      L('l3', 'zoe', 'z@x.test'),
+      L('l1', 'Bob'),
+      L('l2', 'amy', 'a@x.test'),
+      L('l4', 'Gone')
+    ] as never);
+    vi.mocked(getProfileStatusForIds).mockResolvedValue(new Map([['l4', 'DEACTIVATED']]));
+    expect(await getMyLearners(tutorT1)).toEqual([
+      { learnerId: 'l2', name: 'amy', email: 'a@x.test' },
+      { learnerId: 'l1', name: 'Bob', email: null },
+      { learnerId: 'l3', name: 'zoe', email: 'z@x.test' }
+    ]);
+    expect(listLearnersForTutor).toHaveBeenCalledWith('t1');
+  });
+  it('every non-tutor role gets [] and no query runs', async () => {
+    vi.mocked(listLearnersForTutor).mockClear();
+    for (const a of [learnerA, admin, manager]) expect(await getMyLearners(a)).toEqual([]);
+    expect(listLearnersForTutor).not.toHaveBeenCalled();
+  });
+  it('anonymous → 401', async () => {
+    expect(await code(getMyLearners({ authenticated: false } as Actor))).toBe(401);
+  });
+});
+
+describe('counterpart.email — only for an allocated participant', () => {
+  beforeEach(() => {
+    vi.mocked(getProfileById).mockResolvedValue({ fullname: 'Counterpart', email: 'c@t.test' } as never);
+  });
+  it('participant of an allocated pair gets the email (both sides)', async () => {
+    expect((await getThreadView(tutorT1, 'th1')).counterpart.email).toBe('c@t.test');
+    expect((await getThreadView(learnerA, 'th1')).counterpart.email).toBe('c@t.test');
+    expect((await openThread(tutorT1, 'lA')).counterpart.email).toBe('c@t.test');
+  });
+  it('Admin oversight → null', async () => {
+    expect((await getThreadView(admin, 'th1')).counterpart.email).toBeNull();
+  });
+  it('a de-allocated pair (archived read-only view) → null', async () => {
+    allocate();
+    mGetThread.mockResolvedValue({ ...THREAD, archivedAt: 'ts' } as never);
+    expect((await getThreadView(learnerA, 'th1')).counterpart.email).toBeNull();
+  });
+  it('a current tutor reading a predecessor thread (previousTutor) → null', async () => {
+    allocate('t2:lA');
+    mGetThread.mockResolvedValue({ ...THREAD, archivedAt: 'ts' } as never);
+    const v = await getThreadView(tutorT2, 'th1');
+    expect(v.previousTutor).toBe(true);
+    expect(v.counterpart.email).toBeNull();
   });
 });

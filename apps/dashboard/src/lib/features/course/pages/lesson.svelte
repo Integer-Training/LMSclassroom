@@ -19,6 +19,10 @@
   import { isCourseLearnerView, isStudentExperience } from '$lib/utils/store/app';
   import { getStudentContentLockReason } from '$features/ai-assistant/utils/content-ask-ai-bar';
   import { currentOrg } from '$lib/utils/store/org';
+  import { messagingApi } from '$features/messaging/api/messaging.svelte';
+  import EmailContact from '$features/messaging/components/email-contact.svelte';
+  import { buildMailto } from '$lib/utils/functions/mailto';
+  import * as DropdownMenu from '@cio/ui/base/dropdown-menu';
   import { snackbar } from '$features/ui/snackbar/store';
   import { RefreshPageData, UnsavedChanges } from '$features/ui';
   import LessonVersionHistory from '$features/course/components/lesson/lesson-version-history.svelte';
@@ -118,6 +122,24 @@
       (item) => item.type === ContentType.Lesson && item.id === lessonId
     )
   );
+  // "Email your tutor" next to the assessments link: learner view only, once the block shows.
+  const tutorEmailSubject = $derived(
+    `${courseApi.course?.title ?? 'Course'}: ${lessonApi.lesson?.title ?? 'Unit'} — ${$profile.fullname || 'Learner'}`
+  );
+  // Only tutors whose address passes buildMailto's safety check get a link (never navigate to "null").
+  const tutorEmails = $derived(
+    (messagingApi.myTutors as { tutorId: string; name: string; email?: string | null }[])
+      .map((tutor) => ({ ...tutor, href: buildMailto(tutor.email, tutorEmailSubject) }))
+      .filter((tutor): tutor is typeof tutor & { href: string } => tutor.href !== null)
+  );
+  let tutorsRequested = false;
+
+  $effect(() => {
+    if (tutorsRequested || !$isCourseLearnerView || assessmentItems.length === 0) return;
+    tutorsRequested = true;
+    messagingApi.loadMyTutors();
+  });
+
   const lessonTitle = $derived(currentLessonContentItem?.title || lessonApi.lesson?.title || 'Lesson');
   const stockLockReason = $derived(getStudentContentLockReason(courseApi.course, lessonId, ContentType.Lesson));
   // PearlLMS Phase 4: overlay the server sequential-unlock map (authoritative) on top of the stock lock reason.
@@ -610,6 +632,34 @@
                       Message your tutor →
                     </a>
                   </div>
+                  {#if tutorEmails.length === 1}
+                    <div class="mb-2">
+                      <EmailContact
+                        email={tutorEmails[0].email}
+                        name={tutorEmails[0].name}
+                        subject={tutorEmailSubject}
+                      />
+                    </div>
+                  {:else if tutorEmails.length > 1}
+                    <div class="mb-2">
+                      <DropdownMenu.Root>
+                        <DropdownMenu.Trigger>
+                          {#snippet child({ props })}
+                            <Button {...props} variant="outline" size="sm" aria-label="Email your tutor">
+                              Email your tutor
+                            </Button>
+                          {/snippet}
+                        </DropdownMenu.Trigger>
+                        <DropdownMenu.Content align="start">
+                          {#each tutorEmails as tutor (tutor.tutorId)}
+                            <DropdownMenu.Item onclick={() => (window.location.href = tutor.href)}>
+                              {tutor.name}
+                            </DropdownMenu.Item>
+                          {/each}
+                        </DropdownMenu.Content>
+                      </DropdownMenu.Root>
+                    </div>
+                  {/if}
                   <p class="text-muted-foreground mb-4 text-sm">
                     Download each brief, complete it, then upload your work. Your tutor grades it Pass or Refer.
                   </p>

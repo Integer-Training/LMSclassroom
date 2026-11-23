@@ -5,6 +5,9 @@
   import SendIcon from '@lucide/svelte/icons/send-horizontal';
   import LockIcon from '@lucide/svelte/icons/lock';
   import { messagingApi, type ThreadView } from '$features/messaging/api/messaging.svelte';
+  import EmailContact from '$features/messaging/components/email-contact.svelte';
+  import { profile } from '$lib/utils/store/user';
+  import { currentOrg } from '$lib/utils/store/org';
 
   // PearlLMS Phase 6 Step 4 — a tutor↔learner conversation. Text only (no attachment affordance anywhere).
   // Read-only when archived (reallocation) or when viewed by an Admin overseer. History oldest-first.
@@ -13,6 +16,13 @@
     view: ThreadView;
   }
   let { view }: Props = $props();
+
+  // Email subject: "<org> — <learner name>" (same wording on both sides). The learner is whichever participant
+  // is not the counterpart when the viewer is the learner; otherwise the counterpart.
+  const emailSubject = $derived.by(() => {
+    const learnerName = $profile.id === view.learnerId ? $profile.fullname || '' : view.counterpart.name;
+    return [$currentOrg.name, learnerName].filter(Boolean).join(' — ');
+  });
 
   let draft = $state('');
   let listEl = $state<HTMLElement | null>(null);
@@ -63,8 +73,11 @@
 {/if}
 
 <div class="ui:border-border mx-auto flex h-[70vh] w-full max-w-2xl flex-col rounded-lg border">
-  <div class="ui:border-border flex items-center justify-between border-b px-4 py-2">
-    <span class="text-sm font-semibold">{view.counterpart.name}</span>
+  <div class="ui:border-border flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2">
+    <span class="min-w-0 truncate text-sm font-semibold">{view.counterpart.name}</span>
+    {#if view.counterpart.email}
+      <EmailContact email={view.counterpart.email} name={view.counterpart.name} subject={emailSubject} compact />
+    {/if}
     {#if view.readOnly}
       <span class="ui:text-muted-foreground flex items-center gap-1 text-xs">
         <LockIcon size={12} />
@@ -86,12 +99,14 @@
       </Button>
     {/if}
     {#if view.messages.length === 0}
-      <p class="ui:text-muted-foreground m-auto text-sm">No messages yet. Say hello.</p>
+      <p class="ui:text-muted-foreground m-auto text-center text-sm">
+        No messages yet. Start the conversation with {view.counterpart.name}.
+      </p>
     {:else}
       {#each view.messages as m (m.id)}
         <div class="flex {m.mine ? 'justify-end' : 'justify-start'}">
           <div
-            class="max-w-[80%] rounded-2xl px-3 py-1.5 text-sm {m.mine
+            class="max-w-[80%] min-w-0 rounded-2xl px-3 py-1.5 text-sm {m.mine
               ? 'ui:bg-primary ui:text-primary-foreground'
               : 'ui:bg-muted'}"
           >

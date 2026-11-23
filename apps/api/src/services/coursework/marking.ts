@@ -65,7 +65,11 @@ export async function recordResult(
   const isDraft = submission.submissionType === 'draft';
   if (isDraft) {
     if (input.result != null) {
-      throw new AppError('A draft receives feedback only — it cannot be passed or referred', ErrorCodes.VALIDATION_ERROR, 400);
+      throw new AppError(
+        'A draft receives feedback only — it cannot be passed or referred',
+        ErrorCodes.VALIDATION_ERROR,
+        400
+      );
     }
     if (!input.feedback || !input.feedback.trim()) {
       throw new AppError('Draft feedback cannot be empty', ErrorCodes.VALIDATION_ERROR, 400);
@@ -171,7 +175,9 @@ export async function recordResult(
     await notifyCourseworkResulted({
       learnerId: submission.learnerId,
       courseId: submission.courseId,
-      lessonId: submission.lessonId
+      lessonId: submission.lessonId,
+      actorId: actor.userId,
+      variant: submission.submissionType
     });
   } catch (error) {
     console.error('[coursework] result notification failed (result still recorded):', error);

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Actor } from '@cio/db/actor';
 import { isPassingResult, RESULT_VALUES } from '@cio/utils/constants';
+import { notifyCourseworkResulted } from '@api/services/coursework/notifications';
 
 // PearlLMS Phase 3 Step 5 — marking record (TEST-FIRST). Covers the passed-helper truth table (via the
 // config decision + latest-marked value), the recordResult state machine (mark, latest-only, no re-mark),
@@ -124,6 +125,19 @@ describe('recordResult — mark the latest version', () => {
     expect(mRecord).toHaveBeenCalledWith(
       expect.objectContaining({ submissionId: 's1', result: 'PASS', recordedBy: 'u-tutor' }),
       expect.anything() // Phase 5: now receives the tx client — the asserted result payload is unchanged
+    );
+  });
+
+  it('the result notification carries the marker as actor and the submission type as variant', async () => {
+    mById.mockResolvedValue({ ...SUB_V1, submissionType: 'final' } as never);
+    await recordResult(tutor, 's1', { result: 'PASS', feedback: 'Solid work' });
+    expect(vi.mocked(notifyCourseworkResulted)).toHaveBeenCalledWith(
+      expect.objectContaining({ learnerId: 'u-L1', actorId: 'u-tutor', variant: 'final' })
+    );
+    vi.mocked(notifyCourseworkResulted).mockClear();
+    await recordResult(admin, 's1', { result: 'PASS', feedback: 'Solid work' });
+    expect(vi.mocked(notifyCourseworkResulted)).toHaveBeenCalledWith(
+      expect.objectContaining({ actorId: 'u-admin', variant: 'final' })
     );
   });
 

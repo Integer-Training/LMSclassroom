@@ -576,6 +576,12 @@ Notes:
   "read/write another user's notifications/preferences by id" is a non-existent route, not merely a refused one.
   The one id-accepting call (mark-one-read) is self-scoped: supplying another learner's notification id marks
   nothing for them (verified adversarially, docs/PHASE6.md §4 row D2).
+- **Tutor learner picker (2026-11-23):** `GET /messages/my-learners` — tutor-only, own allocated ACTIVE learners
+  (`[]` for other roles); returns learner email. Contact email is exposed to an allocated pair only
+  (`my-learners`, `my-tutors`, `my-tutor`, thread `counterpart.email` null for Admin/previous tutor,
+  `/lms/dashboard` `tutors[]`).
+- **Notification names (2026-11-23):** a tutor sees a learner's name/link in submission and message notifications
+  only while that learner is CURRENTLY allocated to them; otherwise the generic text.
 - **No-attachments invariant** — the `message` table has no attachment column and the send schema is a bounded
   string; attachment-shaped payloads are stripped and a non-string body is rejected 400 (PHASE6.md §4 B1/B2).
 - **Emails are content-light everywhere** — announce + link only; no message body, feedback, result value, file,
@@ -617,7 +623,7 @@ document is stored, uploaded or attached anywhere** (D2, diff-swept). Informatio
 | Own status (self) | `GET /organization/id-verification/me` | `requireActor` + self (actor.userId) | **Self only** — no learner id in the call, so no one sees another's status; shown on id-check-typed units as plain info |
 
 Audited `id_verification.recorded` with `{learnerId, status, method}` — **never the note text** and never any
-document. Recording surfaces: the allocated tutor's caseload learner-detail view; the learner-facing status
+document. Recording surface (UI moved 2026-11-23): admin Learners → **Edit details** dialog (removed from the tutor learner page; API unchanged — Admin/Manager/allocated tutor still allowed); the learner-facing status
 line renders on id-check units in the lesson view.
 
 ## 8. Tutor = allocated learners only, on every surface (2026-10-28)

@@ -7,6 +7,7 @@ import {
   desc,
   eq,
   gt,
+  inArray,
   isNull,
   isNotNull,
   lt,
@@ -56,6 +57,13 @@ export async function getThreadByPair(
 export async function getThreadById(threadId: string, client: DbOrTxClient = db): Promise<MessageThreadRow | null> {
   const [row] = await client.select().from(schema.messageThread).where(eq(schema.messageThread.id, threadId)).limit(1);
   return (row as MessageThreadRow) ?? null;
+}
+
+/** Threads for a set of ids (one query; empty in → empty out). Used to derive a message notification's sender. */
+export async function getThreadsByIds(threadIds: string[], client: DbOrTxClient = db): Promise<MessageThreadRow[]> {
+  if (threadIds.length === 0) return [];
+  const rows = await client.select().from(schema.messageThread).where(inArray(schema.messageThread.id, threadIds));
+  return rows as MessageThreadRow[];
 }
 
 /**

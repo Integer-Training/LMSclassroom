@@ -9,6 +9,9 @@
   import { daysUntilDue } from '$lib/utils/functions/due-date';
   import { coursesApi } from '$features/course/api';
   import { lmsDashboardApi } from '$features/lms/api/dashboard.svelte';
+  import { snackbar } from '$features/ui/snackbar/store';
+  import { messagingApi } from '$features/messaging/api/messaging.svelte';
+  import EmailContact from '$features/messaging/components/email-contact.svelte';
   import { announcementsApi } from '$features/announcements/api/announcements.svelte';
   import AnnouncementsList from '$features/announcements/components/announcements-list.svelte';
   import BroadcastBanner from '$features/announcements/components/broadcast-banner.svelte';
@@ -37,6 +40,37 @@
   // (plus the existing announcements feed + enrolled courses for live sessions). Explore-more-courses removed.
 
   const dash = $derived(lmsDashboardApi.data);
+
+  // GET /lms/dashboard returns `tutors` (one per allocated tutor, with email); fall back to the single `tutor`.
+  type DashTutor = { id: string; name: string; email: string | null };
+  const tutors = $derived.by<DashTutor[]>(() => {
+    const d = dash as unknown as {
+      tutors?: DashTutor[];
+      tutor?: { id?: string; name: string; email?: string | null } | null;
+    };
+    if (d?.tutors?.length) return d.tutors;
+    if (d?.tutor) return [{ id: d.tutor.id ?? '', name: d.tutor.name, email: d.tutor.email ?? null }];
+    return [];
+  });
+  let messagingTutorId = $state<string | null>(null);
+
+  async function messageTutor(tutorId: string) {
+    if (!tutorId || messagingTutorId) return;
+    messagingTutorId = tutorId;
+    try {
+      const res = (await messagingApi.startConversation(tutorId)) as
+        | { threadId?: string; error?: string }
+        | null
+        | undefined;
+      // null = another conversation is already opening (re-entry guard) — not an error.
+      if (!res) return;
+
+      if (res.threadId) await goto(`/messages/${res.threadId}`);
+      else snackbar.error(res.error || "We couldn't open that conversation. Please try again.");
+    } finally {
+      messagingTutorId = null;
+    }
+  }
   const loaded = $derived(lmsDashboardApi.loaded);
 
   const firstName = $derived($profile.fullname?.trim().split(/\s+/)[0] || $t('dashboard.learner'));
@@ -322,31 +356,47 @@
         <h2 class="text-sm font-semibold">My Tutor</h2>
       </div>
       <div class="p-4">
-        {#if dash?.tutor}
-          <div class="flex flex-wrap items-center justify-between gap-3">
-            <div class="flex items-center gap-3">
-              <div
-                class="bg-primary/10 text-primary flex size-11 items-center justify-center rounded-full font-semibold"
-              >
-                {dash.tutor.name
-                  .trim()
-                  .split(/\s+/)
-                  .slice(0, 2)
-                  .map((p) => p[0])
-                  .join('')
-                  .toUpperCase()}
-              </div>
-              <div class="min-w-0">
-                <p class="font-semibold">{dash.tutor.name}</p>
-                {#if dash.tutor.email}
-                  <p class="text-muted-foreground truncate text-xs">{dash.tutor.email}</p>
-                {/if}
-              </div>
-            </div>
-            <Button size="sm" onclick={() => goto('/messages')}>
-              <MailIcon size={14} /> Contact Tutor
-            </Button>
-          </div>
+        {#if tutors.length > 0}
+          <ul class="divide-y">
+            {#each tutors as tutor (tutor.id || tutor.name)}
+              <li class="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                <div class="flex min-w-0 items-center gap-3">
+                  <div
+                    class="bg-primary/10 text-primary flex size-11 shrink-0 items-center justify-center rounded-full font-semibold"
+                  >
+                    {tutor.name
+                      .trim()
+                      .split(/\s+/)
+                      .slice(0, 2)
+                      .map((p) => p[0])
+                      .join('')
+                      .toUpperCase()}
+                  </div>
+                  <div class="min-w-0">
+                    <p class="truncate font-semibold">{tutor.name}</p>
+                    {#if tutor.email}
+                      <p class="text-muted-foreground truncate text-xs">{tutor.email}</p>
+                    {/if}
+                  </div>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    aria-label={`Message ${tutor.name}`}
+                    disabled={!tutor.id || messagingTutorId !== null}
+                    onclick={() => messageTutor(tutor.id)}
+                  >
+                    <MailIcon size={14} /> Message
+                  </Button>
+                  <EmailContact
+                    email={tutor.email}
+                    name={tutor.name}
+                    subject={`Question from ${$profile.fullname || 'a learner'}`}
+                  />
+                </div>
+              </li>
+            {/each}
+          </ul>
         {:else}
           <p class="text-muted-foreground py-3 text-center text-sm">No tutor assigned yet.</p>
         {/if}

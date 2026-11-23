@@ -323,15 +323,23 @@ export async function listOrgTutors(organizationId: string, client: DbOrTxClient
   return rows as OrgTutorOption[];
 }
 
-/** Display names for a set of profile ids (admin manage list enrichment). Empty in → empty out. */
+/**
+ * Display names for a set of profile ids. The person's real name lives in `user.name` (set at account creation and
+ * by Edit details); `profile.fullname` is a username-style handle for most accounts, so it is only the fallback.
+ * Empty in → empty out.
+ */
 export async function getProfileNamesByIds(
   ids: string[],
   client: DbOrTxClient = db
 ): Promise<{ id: string; name: string | null }[]> {
   if (ids.length === 0) return [];
   const rows = await client
-    .select({ id: schema.profile.id, name: schema.profile.fullname })
+    .select({
+      id: schema.profile.id,
+      name: sql<string | null>`coalesce(nullif(btrim(${schema.user.name}), ''), ${schema.profile.fullname})`
+    })
     .from(schema.profile)
+    .leftJoin(schema.user, eq(schema.user.id, schema.profile.id))
     .where(inArray(schema.profile.id, ids));
   return rows;
 }

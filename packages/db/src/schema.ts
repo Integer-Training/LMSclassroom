@@ -4235,7 +4235,11 @@ export const notification = pgTable(
     entityType: varchar('entity_type'),
     entityId: uuid('entity_id'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-    readAt: timestamp('read_at', { withTimezone: true, mode: 'string' })
+    readAt: timestamp('read_at', { withTimezone: true, mode: 'string' }),
+    // Who caused it (learner / tutor / message sender). Nullable, no FK: rows predate it; readers fall back.
+    actorId: uuid('actor_id'),
+    // Submission type (draft | final) for submission.created / result.recorded rows.
+    variant: varchar()
   },
   (table) => [
     foreignKey({

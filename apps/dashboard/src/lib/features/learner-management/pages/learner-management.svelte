@@ -455,5 +455,6 @@
   name={editRow?.name ?? ''}
   email={editRow?.email ?? ''}
   isLearner
+  learnerProfileId={editRow?.userId ?? null}
   onDone={() => learnerManagementApi.load()}
 />

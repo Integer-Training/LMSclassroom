@@ -23,6 +23,7 @@ import {
 } from '@cio/db/queries/caseload';
 import { getLastSeenForUserIds } from '@cio/db/queries/analytics';
 import { getProfileById } from '@cio/db/queries/auth';
+import { getProfileNamesByIds } from '@cio/db/queries/comms';
 import { isAllocatedTutor } from '@api/middlewares/guards';
 
 // Tutor caseload (PearlLMS Phase 3 Step 4) — read-only review of allocated learners' coursework. The
@@ -542,8 +543,11 @@ export async function getCaseloadLearnerDetail(
     });
   }
 
+  // Real name (user.name first; profile.fullname is a username-style handle for most accounts) — the same source the
+  // caseload list, notifications and messages use, so the header matches everywhere.
+  const [displayName] = await getProfileNamesByIds([profile.id]);
   return {
-    learner: { id: profile.id, name: profile.fullname ?? null, email: profile.email ?? null },
+    learner: { id: profile.id, name: displayName?.name ?? profile.fullname ?? null, email: profile.email ?? null },
     courses
   };
 }

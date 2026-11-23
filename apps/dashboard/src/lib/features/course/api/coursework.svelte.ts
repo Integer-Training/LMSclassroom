@@ -6,6 +6,7 @@ import { GenericUploader } from '$lib/utils/services/courses/presign';
 import { ApiError } from '$lib/utils/services/api/types';
 import { normalizeErrorMessage, GENERIC_ERROR_MESSAGE } from '$lib/utils/services/api/error-message';
 import { resolveDocumentMimeType } from '@cio/utils/validation/constants';
+import { errorText } from '$lib/utils/services/api/error-message';
 
 /**
  * Browsers report an EMPTY or generic File.type for some documents (e.g. .docx on a PC without Office). The server
@@ -117,7 +118,7 @@ class CourseworkApi extends BaseApi {
         this.canSubmit = result.data.canSubmit;
       },
       onError: (result) => {
-        if (typeof result === 'string') snackbar.error(result);
+        snackbar.error(errorText(result));
       }
     });
   }

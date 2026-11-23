@@ -1,6 +1,7 @@
 import { classroomio } from '$lib/utils/services/api';
 import { BaseApiWithErrors } from '$lib/utils/services/api/base.svelte';
 import { snackbar } from '$features/ui/snackbar/store';
+import { errorText } from '$lib/utils/services/api/error-message';
 
 export interface OrgUser {
   memberId: number;
@@ -74,7 +75,7 @@ class UsersApi extends BaseApiWithErrors {
         this.totalPages = data.totalPages;
       },
       onError: (result) => {
-        if (typeof result === 'string') snackbar.error(result);
+        snackbar.error(errorText(result));
       }
     });
   }
@@ -88,8 +89,7 @@ class UsersApi extends BaseApiWithErrors {
         this.list({ page: 1 });
       },
       onError: (result) => {
-        if (typeof result === 'string') snackbar.error(result);
-        else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
+        snackbar.error(errorText(result));
       }
     });
   }
@@ -108,7 +108,7 @@ class UsersApi extends BaseApiWithErrors {
         this.onboardingCourses = result.data as { courseId: string; title: string | null }[];
       },
       onError: (result) => {
-        if (typeof result === 'string') snackbar.error(result);
+        snackbar.error(errorText(result));
       }
     });
   }
@@ -124,8 +124,7 @@ class UsersApi extends BaseApiWithErrors {
         this.list({ page: 1 });
       },
       onError: (result) => {
-        if (typeof result === 'string') snackbar.error(result);
-        else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
+        snackbar.error(errorText(result));
       }
     });
     return res?.data;
@@ -144,8 +143,7 @@ class UsersApi extends BaseApiWithErrors {
         this.list();
       },
       onError: (result) => {
-        if (typeof result === 'string') snackbar.error(result);
-        else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
+        snackbar.error(errorText(result));
       }
     });
   }
@@ -163,8 +161,7 @@ class UsersApi extends BaseApiWithErrors {
         this.list();
       },
       onError: (result) => {
-        if (typeof result === 'string') snackbar.error(result);
-        else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
+        snackbar.error(errorText(result));
       }
     });
   }
@@ -179,8 +176,7 @@ class UsersApi extends BaseApiWithErrors {
         }),
       logContext: 'updating user details',
       onError: (result) => {
-        if (typeof result === 'string') snackbar.error(result);
-        else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
+        snackbar.error(errorText(result));
       }
     });
   }
@@ -192,7 +188,7 @@ class UsersApi extends BaseApiWithErrors {
         classroomio.organization.users[':memberId'].profile.$get({ param: { memberId: String(memberId) } }),
       logContext: 'loading learner profile',
       onError: (result) => {
-        if (typeof result === 'string') snackbar.error(result);
+        snackbar.error(errorText(result));
       }
     });
     return res?.data as LearnerProfile | undefined;
@@ -208,8 +204,7 @@ class UsersApi extends BaseApiWithErrors {
       logContext: 'saving learner profile',
       onSuccess: () => snackbar.success('Profile saved'),
       onError: (result) => {
-        if (typeof result === 'string') snackbar.error(result);
-        else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
+        snackbar.error(errorText(result));
       }
     });
   }

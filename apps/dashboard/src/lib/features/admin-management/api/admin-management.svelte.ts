@@ -1,6 +1,7 @@
 import { classroomio } from '$lib/utils/services/api';
 import { BaseApi } from '$lib/utils/services/api/base.svelte';
 import { snackbar } from '$features/ui/snackbar/store';
+import { errorText } from '$lib/utils/services/api/error-message';
 
 // Admin Admin-management (PearlLMS). Org-wide admin roster and "Reset Password" (regenerate + reveal a temp
 // password). Admin-only (the API enforces it). The super admin (earliest admin) and the caller themselves are
@@ -62,8 +63,7 @@ class AdminManagementApi extends BaseApi {
           this.load();
         },
         onError: (result) => {
-          if (typeof result === 'string') snackbar.error(result);
-          else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
+          snackbar.error(errorText(result));
         }
       });
     } finally {
@@ -88,8 +88,7 @@ class AdminManagementApi extends BaseApi {
           this.revealed = { name: rowName, password: data.temporaryPassword };
         },
         onError: (result) => {
-          if (typeof result === 'string') snackbar.error(result);
-          else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
+          snackbar.error(errorText(result));
         }
       });
     } finally {

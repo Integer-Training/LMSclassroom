@@ -86,6 +86,20 @@ Recipient rules key on existing predicates: allocated-tutor via `listTutorsForLe
 when a Pass changes `isUnitUnlocked` for the next non-exempt unit (computed, not stored — the emit hooks the
 same `recordResult` transaction that already recomputes unlock).
 
+**Named, deep-linked in-app subjects (2026-11-23, in-app only — emails unchanged).** `notification` carries a
+nullable `actor_id` (who triggered it) and `variant` (e.g. Draft|Final); the reader derives the subject:
+
+| Type | In-app subject | Links to |
+|---|---|---|
+| `message.received` | "New message from <name>" | the thread |
+| `submission.created` | "<Learner> submitted <Unit> (Draft|Final)" | `/caseload/<learnerId>#unit-<lessonId>` (unit scrolled + highlighted) |
+| `result.recorded` | "<Tutor> marked <Unit>" / "<Tutor> gave feedback on your draft — <Unit>" | the lesson |
+
+Rows created before 0029 (no actor/variant) fall back to the previous generic text (message sender is derived from
+the thread). **Privacy:** a tutor gets a learner's name/link only while that learner is CURRENTLY allocated to them
+(submission and message notifications alike). Names come from `user.name` first, `profile.fullname` only as
+fallback (it is a username-style handle for most accounts).
+
 ## 2. The one notification framework
 
 **Shape:** a single `emitNotification({ type, recipientId, entityType, entityId, emailTemplate?, emailFields?,
@@ -151,6 +165,7 @@ machinery.
   source FK column would force a migration per new type; notifications are ephemeral and the reader
   resolves/skips dangling refs), `created_at`, `read_at` (null = unread). Indexes on `user_id` and
   `(user_id, read_at)` (unread-count/inbox).
+  **0029 (2026-11-23, additive):** nullable `actor_id` and `variant` columns — no FK, no default, no backfill.
 
 **Config** — new `packages/utils/src/constants/notification.ts` (registered in `constants/index.ts`,
 mirroring `result.ts`/`unit-type.ts`): `NOTIFICATION_TYPES` (the five, `as const` + guard),
@@ -172,6 +187,10 @@ columns stay plain varchars so the set extends in config with no migration.
   message your tutor once one is assigned").
 - **"Message learner" (tutor)** — `caseload/pages/learner-detail.svelte:47-50` (header action next to the
   name, always allocation-verified) + optional row action in `caseload/pages/caseload.svelte:93-100`.
+  **AS-BUILT (2026-11-23):** tutors can also START a conversation — **New message** button in the tutor inbox
+  (`/caseload/messages`) opens a picker of their own allocated, ACTIVE learners (`GET /messages/my-learners`;
+  tutor-only, `[]` for everyone else), and caseload rows have a **Message** button. Admins still never post (D2
+  unchanged). `POST /messages/open` 403 text is now readable in the UI.
 - **Announcements — read** (learner): `lms/pages/dashboard.svelte` (a banner/section, ~:199-200 or the grid at
   :314). **Compose** (staff): new route `routes/(app)/org/[slug]/announcements/` (peer of `community`,
   `allocation`) + nav in `ui/navigation/org-navigation.ts` (people group).
@@ -199,11 +218,17 @@ columns stay plain varchars so the set extends in config with no migration.
 | Thread + messages | `GET /messages/threads/:threadId` | `requireActor` + `isThreadParticipant` OR Admin (D2) | The two participants; Admin read-only; Manager **NO** |
 | Send message | `POST /messages/threads/:threadId` | `requireActor` + participant + **live `isAllocatedTutor`** + not archived | Participant of an ACTIVE pair only |
 | Open thread | `POST /messages/threads` (upsert on pair) | `requireStaff`/Admin, allocated pair (`isTutorAllocatedToLearner`) | Allocated tutor / Admin |
+| Tutor's learner picker | `GET /messages/my-learners` | `requireActor` + tutor-only; own allocated ACTIVE learners | Tutor self; `[]` for others |
 | Mark thread read | `POST /messages/threads/:threadId/read` | `requireActor` + participant | Participant self |
 | Compose announcement | `POST /announcements` | provider-wide → `requireManagerOrAdmin` (D1); course → `requireStaff` | Admin/Manager (wide), course staff (scoped) |
 | Read announcements | `GET /announcements` | `requireActor` + scope filter (provider-wide to all; else `isEnrolledLearner`) | Enrolment-scoped + provider-wide; staff see all |
 | Notification centre | `GET /notifications`, `POST /notifications/:id/read`, `POST /notifications/read-all` | `requireActor` + `user_id = actor.userId` | **Self only** — no `userId` param exists |
 | Preferences | `GET /notifications/preferences`, `PUT /notifications/preferences/:category` (self, `requireActor`) | self-only — actor from session, only the category is a path value | Self only |
+
+**Contact email rule (2026-11-23):** a counterpart's email is returned ONLY by allocation-guarded endpoints
+(`my-learners`, `my-tutors`, `my-tutor`, thread `counterpart.email` for a participant of a currently-allocated
+pair — `null` for Admin and for a previous tutor, `/lms/dashboard` `tutors[]`). Email buttons are `mailto:`
+(To + Subject only); PearlLMS sends and logs nothing.
 
 ## 8. No-attachments invariant (product integrity)
 

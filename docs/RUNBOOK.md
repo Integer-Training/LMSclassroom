@@ -159,6 +159,17 @@ where action = 'allocation.switched'
 order by occurred_at desc limit 50;
 ```
 
+### Messaging, email buttons and ID verification  *(2026-11-23)*
+
+- **Start a conversation (tutor):** inbox (`/caseload/messages`) → **New message** → pick one of your allocated, active
+  learners; or **Message** on a caseload row. Admins read threads but never post.
+- **Email buttons** (tutor learner page, caseload rows, thread header, learner dashboard tutor card, lesson "Email your
+  tutor") open the user's own mail app (`mailto:`, To + Subject only). The **From** address is whatever account that
+  app uses — PearlLMS cannot set it. If no mail app opens, use the copy-address fallback. Nothing is sent or logged by PearlLMS.
+- **Notifications** now name the sender/learner/unit and deep-link to it; older ones show the previous generic text.
+- **ID verification** is recorded from admin Learners → **Edit details** (no longer on the tutor learner page).
+- Dashboard actions that fail on a server rejection now show the server's reason instead of doing nothing.
+
 ### Marking & feedback  *(2026-11-20)*
 
 - Tutor feedback text: up to **20,000 characters** (`MAX_FEEDBACK_LENGTH`, live counter on both feedback boxes).

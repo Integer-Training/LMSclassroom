@@ -25,6 +25,10 @@ interface UnitContext {
   learnerId: string;
   courseId: string;
   lessonId: string;
+  /** Who caused it: the learner (submission) or the marker (result). In-app wording only. */
+  actorId?: string | null;
+  /** Submission type (draft | final). */
+  variant?: string | null;
 }
 
 /**
@@ -59,6 +63,8 @@ export async function notifyCourseworkSubmitted(ctx: UnitContext): Promise<void>
     recipients: tutors.map((t) => ({ userId: t.tutorId, email: t.email, emailFields })),
     entityType: 'lesson',
     entityId: ctx.lessonId,
+    actorId: ctx.actorId ?? ctx.learnerId,
+    variant: ctx.variant ?? null,
     // COURSEWORK_EMAILS_ENABLED gates the email leg only — omitting the template = in-app only.
     emailTemplateId: courseworkEmailsEnabled() ? 'courseworkSubmitted' : undefined
   });
@@ -101,6 +107,8 @@ export async function notifyCourseworkResulted(ctx: UnitContext): Promise<void> 
     ],
     entityType: 'lesson',
     entityId: ctx.lessonId,
+    actorId: ctx.actorId ?? null,
+    variant: ctx.variant ?? null,
     emailTemplateId: courseworkEmailsEnabled() ? 'courseworkResulted' : undefined
   });
 }

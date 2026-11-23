@@ -88,6 +88,7 @@ docker compose -f docker-compose.deploy.yaml logs -f api  # watch startup
   with a clear `canceling statement due to lock timeout` instead of queueing every reader behind it. The failed
   migration is rolled back; fix the cause (or wait for the blocker) and restart. Override for one run with
   `MIGRATION_LOCK_TIMEOUT` / `MIGRATION_STATEMENT_TIMEOUT` (e.g. `10min`) — never `ALTER ROLE ... SET`.
+- **0029 (2026-11-23)** adds nullable `notification.actor_id` and `variant` — additive, no default, no backfill, no data change.
 - While a table is small (Phase B indexes, 2026-10) a plain `CREATE INDEX IF NOT EXISTS` inside a drizzle
   migration is fine. `CREATE INDEX CONCURRENTLY` **errors inside a drizzle migration** (it runs in a
   transaction) — never put it there.

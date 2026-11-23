@@ -86,6 +86,18 @@ describe('notifyCourseworkSubmitted — submission in → allocated tutor(s)', (
     expect(blob).not.toContain('u-L1');
   });
 
+  it('records the learner as actor and the submission type as variant; the email payload is unchanged', async () => {
+    mTutors.mockResolvedValue([{ tutorId: 't1', email: 'tutor@x.test' }] as never);
+    await notifyCourseworkSubmitted({ ...CTX, actorId: 'u-L1', variant: 'draft' });
+    expect(mInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 't1', type: 'submission.created', actorId: 'u-L1', variant: 'draft' })
+    );
+    const input = mEnqueue.mock.calls[0][1];
+    expect(Object.keys(input.fields as object).sort()).toEqual(['branding', 'caseloadUrl', 'courseTitle', 'unitTitle']);
+    expect(payloadBlob()).not.toContain('draft');
+    expect(payloadBlob()).not.toContain('u-L1');
+  });
+
   it('two allocated tutors → an email + in-app row EACH (per-recipient for preference gating)', async () => {
     mTutors.mockResolvedValue([
       { tutorId: 't1', email: 'a@x.test' },
@@ -110,6 +122,17 @@ describe('notifyCourseworkSubmitted — submission in → allocated tutor(s)', (
     await notifyCourseworkSubmitted(CTX);
     expect(mEnqueue).not.toHaveBeenCalled();
     expect(mInsert).toHaveBeenCalledWith(expect.objectContaining({ userId: 't1', type: 'submission.created' }));
+  });
+});
+
+describe('notifyCourseworkResulted — actor + variant', () => {
+  it('records the marker as actor and the submission type as variant (in-app only)', async () => {
+    mProfile.mockResolvedValue({ email: 'l@x.test' } as never);
+    await notifyCourseworkResulted({ ...CTX, actorId: 'tutor-9', variant: 'final' });
+    expect(mInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'u-L1', type: 'result.recorded', actorId: 'tutor-9', variant: 'final' })
+    );
+    expect(payloadBlob()).not.toContain('tutor-9');
   });
 });
 

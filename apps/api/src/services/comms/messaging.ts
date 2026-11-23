@@ -1,11 +1,13 @@
 import { AppError, ErrorCodes } from '@api/utils/errors';
 import type { Actor } from '@cio/db/actor';
 import { MESSAGE_MAX_LENGTH } from '@cio/utils/constants';
-import { isTutorAllocatedToLearner, listTutorsForLearner } from '@cio/db/queries/allocation';
+import { isTutorAllocatedToLearner, listLearnersForTutor, listTutorsForLearner } from '@cio/db/queries/allocation';
+import { getProfileStatusForIds } from '@cio/db/queries/caseload';
 import { getProfileById } from '@cio/db/queries/auth';
 import { getOrganizationById } from '@cio/db/queries/organization';
 import {
   ensureActiveThread,
+  getProfileNamesByIds,
   getThreadById,
   insertMessage,
   listConversationsForParticipant,
@@ -81,7 +83,11 @@ export interface ThreadView {
   canWrite: boolean;
   /** The viewer is a (current) tutor reading a PREDECESSOR's archived thread — read-only. */
   previousTutor: boolean;
-  counterpart: { id: string; name: string };
+  /**
+   * `email` is the contact address for the Email button: non-null ONLY for a participant whose pair is currently
+   * allocated and who is not reading a previous tutor's thread; null for Admin oversight and de-allocated views.
+   */
+  counterpart: { id: string; name: string; email: string | null };
   /** Oldest-first window: the newest page, or (with a `before` cursor) the page just before it. */
   messages: MessageView[];
   /** Older messages exist beyond this window — page back with `before = messages[0].createdAt`. */
@@ -96,12 +102,15 @@ async function buildView(
   const participant = isParticipant(actor, thread);
   // For a participant, the counterpart is the OTHER party; for an Admin overseer, show the learner as subject.
   const counterpartId = actor.userId === thread.tutorId ? thread.learnerId : thread.tutorId;
-  const [counterpart, { messages, hasMore }, allocated] = await Promise.all([
+  const [counterpart, [counterpartName], { messages, hasMore }, allocated] = await Promise.all([
     getProfileById(counterpartId),
+    getProfileNamesByIds([counterpartId]), // real name (user.name first), same source as notifications
     listMessagesPage(thread.id, page),
     isTutorAllocatedToLearner(thread.tutorId, thread.learnerId)
   ]);
   const archived = thread.archivedAt != null;
+  const previousTutor = actor.role === 'TUTOR' && actor.userId !== thread.tutorId;
+  const email = participant && allocated && !previousTutor ? (counterpart?.email ?? null) : null;
 
   return {
     threadId: thread.id,
@@ -111,8 +120,8 @@ async function buildView(
     // A participant of an archived pair sees the conversation read-only; an Admin overseer is always read-only.
     readOnly: !participant || archived || !allocated,
     canWrite: participant && !archived && allocated,
-    previousTutor: actor.role === 'TUTOR' && actor.userId !== thread.tutorId,
-    counterpart: { id: counterpartId, name: counterpart?.fullname ?? 'Conversation' },
+    previousTutor,
+    counterpart: { id: counterpartId, name: counterpartName?.name ?? counterpart?.fullname ?? 'Conversation', email },
     hasMore,
     messages: messages.map((m) => ({
       id: m.id,
@@ -161,18 +170,37 @@ export async function listConversations(actor: Actor): Promise<ConversationSumma
 
 /**
  * Every tutor allocated to the learner (so a learner with several can choose whom to message), ordered by
- * name then id so the list — and the default pick — is stable between visits. Empty → empty state.
+ * name then id so the list — and the default pick — is stable between visits. `email` is the allocated
+ * tutor's contact address (allocation-guarded: only the learner's own tutors are ever listed). Empty → empty state.
  */
-export async function getMyTutors(actor: Actor): Promise<{ tutorId: string; name: string }[]> {
+export async function getMyTutors(actor: Actor): Promise<{ tutorId: string; name: string; email: string | null }[]> {
   assertAuthed(actor);
   const tutors = await listTutorsForLearner(actor.userId);
-  const named = await Promise.all(
-    tutors.map(async (t) => {
-      const profile = await getProfileById(t.tutorId);
-      return { tutorId: t.tutorId, name: profile?.fullname ?? 'Your tutor' };
-    })
-  );
+  const names = new Map((await getProfileNamesByIds(tutors.map((t) => t.tutorId))).map((p) => [p.id, p.name]));
+  const named = tutors.map((t) => ({
+    tutorId: t.tutorId,
+    name: names.get(t.tutorId) ?? 'Your tutor',
+    email: t.email ?? null
+  }));
   return named.sort((a, b) => a.name.localeCompare(b.name) || a.tutorId.localeCompare(b.tutorId));
+}
+
+/**
+ * The learners a TUTOR can start a conversation with: their own allocated learners, minus deactivated
+ * accounts (picker only — existing threads are unaffected), sorted by name (case-insensitive). Any other
+ * role gets an empty list. `email` is the allocated learner's contact address.
+ */
+export async function getMyLearners(
+  actor: Actor
+): Promise<{ learnerId: string; name: string; email: string | null }[]> {
+  assertAuthed(actor);
+  if (actor.role !== 'TUTOR') return [];
+  const learners = await listLearnersForTutor(actor.userId);
+  const status = await getProfileStatusForIds(learners.map((l) => l.learnerId));
+  return learners
+    .filter((l) => (status.get(l.learnerId) ?? 'ACTIVE') !== 'DEACTIVATED')
+    .map((l) => ({ learnerId: l.learnerId, name: l.name ?? 'Learner', email: l.email ?? null }))
+    .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || a.learnerId.localeCompare(b.learnerId));
 }
 
 /** The learner's default allocated tutor (first of {@link getMyTutors}), or null → empty state. */
@@ -197,7 +225,13 @@ export async function openThread(actor: Actor, counterpartId: string): Promise<T
   }
 
   if (!(await isTutorAllocatedToLearner(tutorId, learnerId))) {
-    throw new AppError('You can only message an allocated tutor/learner', ErrorCodes.FORBIDDEN, 403);
+    throw new AppError(
+      actor.role === 'TUTOR'
+        ? "This learner is no longer allocated to you, so you can't message them."
+        : 'This tutor is no longer allocated to you.',
+      ErrorCodes.FORBIDDEN,
+      403
+    );
   }
 
   const thread = await ensureActiveThread(actor.orgId, tutorId, learnerId);
@@ -303,6 +337,7 @@ export async function sendMessage(actor: Actor, threadId: string, rawBody: strin
       ],
       entityType: 'message_thread',
       entityId: threadId,
+      actorId: actor.userId,
       emailTemplateId: 'messageReceived',
       coalesce: true
     });

@@ -4,6 +4,7 @@
   import { Button } from '@cio/ui/base/button';
   import { Input } from '@cio/ui/base/input';
   import { snackbar } from '$features/ui/snackbar/store';
+  import IdVerificationControl from '$features/registrations/components/id-verification-control.svelte';
   import LearnerPiiForm from '$features/users/components/learner-pii-form.svelte';
   import { usersApi, EMPTY_LEARNER_PROFILE, type LearnerProfile } from '$features/users/api/users.svelte';
 
@@ -17,10 +18,12 @@
     name: string;
     email: string;
     isLearner: boolean;
+    /** Learner PROFILE id: enables the ID-verification control (learners only). */
+    learnerProfileId?: string | null;
     onDone?: () => void;
   }
 
-  let { open = $bindable(), memberId, name, email, isLearner, onDone }: Props = $props();
+  let { open = $bindable(), memberId, name, email, isLearner, learnerProfileId = null, onDone }: Props = $props();
 
   let nameValue = $state('');
   let profileForm = $state<LearnerProfile>({ ...EMPTY_LEARNER_PROFILE });
@@ -94,6 +97,11 @@
       </div>
       {#if isLearner}
         <LearnerPiiForm bind:form={profileForm} loading={profileLoading} />
+        {#if learnerProfileId}
+          {#key learnerProfileId}
+            <IdVerificationControl learnerId={learnerProfileId} />
+          {/key}
+        {/if}
       {/if}
       <Dialog.Footer class="pt-2">
         <Button variant="outline" onclick={() => (open = false)} disabled={busy}>Cancel</Button>

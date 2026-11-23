@@ -316,11 +316,13 @@ export async function listLearnersForTutor(tutorId: string): Promise<AllocatedLe
   const allocated = (await db
     .selectDistinct({
       learnerId: schema.tutorAllocation.learnerId,
-      name: schema.profile.fullname,
+      // Real name from user.name (profile.fullname is a username-style handle for most accounts) — fallback only.
+      name: sql<string | null>`coalesce(nullif(btrim(${schema.user.name}), ''), ${schema.profile.fullname})`,
       email: schema.profile.email
     })
     .from(schema.tutorAllocation)
     .leftJoin(schema.profile, eq(schema.profile.id, schema.tutorAllocation.learnerId))
+    .leftJoin(schema.user, eq(schema.user.id, schema.tutorAllocation.learnerId))
     .where(eq(schema.tutorAllocation.tutorId, tutorId))) as AllocatedLearner[];
   return mergeLearners(allocated);
 }

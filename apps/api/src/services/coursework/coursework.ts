@@ -47,7 +47,11 @@ async function resolveSubmittableAssessment(
     throw new AppError('Drafts are not enabled for this assessment', ErrorCodes.VALIDATION_ERROR, 400);
   }
   if (await isAssessmentUploadClosed(learnerId, lessonId, assessmentKey)) {
-    throw new AppError('You have passed this assessment — no further submissions are needed', ErrorCodes.FORBIDDEN, 403);
+    throw new AppError(
+      'You have passed this assessment — no further submissions are needed',
+      ErrorCodes.FORBIDDEN,
+      403
+    );
   }
   return item;
 }
@@ -181,7 +185,13 @@ export async function createCourseworkSubmission(
   // Notify the learner's allocated tutor(s) — fire-and-forget: a mail failure must never roll back the
   // submission that was just recorded.
   try {
-    await notifyCourseworkSubmitted({ learnerId: actor.userId, courseId, lessonId });
+    await notifyCourseworkSubmitted({
+      learnerId: actor.userId,
+      courseId,
+      lessonId,
+      actorId: actor.userId,
+      variant: submissionType
+    });
   } catch (error) {
     console.error('[coursework] submission notification failed (submission still recorded):', error);
   }

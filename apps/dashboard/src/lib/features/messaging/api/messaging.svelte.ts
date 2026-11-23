@@ -16,12 +16,25 @@ export interface ThreadView {
   archived: boolean;
   readOnly: boolean;
   canWrite: boolean;
-  counterpart: { id: string; name: string };
+  /** `email` is null for an Admin, a read-only previous tutor, or a de-allocated pairing. */
+  counterpart: { id: string; name: string; email?: string | null };
   messages: MessageView[];
   /** Older messages exist before `messages[0]` — fetch them with `loadEarlier`. */
   hasMore?: boolean;
   /** The viewer is the NEW tutor reading a former tutor's thread (read-only; counterpart = the old tutor). */
   previousTutor?: boolean;
+}
+
+export interface MyTutor {
+  tutorId: string;
+  name: string;
+  email: string | null;
+}
+
+export interface MyLearner {
+  learnerId: string;
+  name: string;
+  email: string | null;
 }
 
 export interface PreviousThread {
@@ -62,7 +75,13 @@ function errorText(error: unknown, fallback: string): string {
  */
 class MessagingApi extends BaseApi {
   view = $state<ThreadView | null>(null);
-  myTutors = $state<{ tutorId: string; name: string }[]>([]);
+  myTutors = $state<MyTutor[]>([]);
+  /** A tutor's allocated active learners — the "New message" picker roster. */
+  myLearners = $state<MyLearner[]>([]);
+  myLearnersLoaded = $state(false);
+  myLearnersError = $state<string | null>(null);
+  /** True while startConversation is in flight (re-entry guard against double clicks). */
+  starting = $state(false);
   tutorsLoaded = $state(false);
   sending = $state(false);
   /** Why the last load (tutors / thread) failed — drives the screens' error + Retry state. */
@@ -102,13 +121,53 @@ class MessagingApi extends BaseApi {
       requestFn: () => classroomio.messages['my-tutors'].$get(),
       logContext: 'loading tutors',
       onSuccess: (result) => {
-        this.myTutors = (result.data as { tutors: { tutorId: string; name: string }[] }).tutors;
+        this.myTutors = (result.data as { tutors: MyTutor[] }).tutors;
         this.tutorsLoaded = true;
       },
       onError: (error) => {
         this.loadError = errorText(error, "We couldn't load your tutors.");
       }
     });
+  }
+
+  /** The tutor's allocated active learners (empty for any other role). Drives the New-message picker. */
+  async loadMyLearners() {
+    this.myLearnersError = null;
+    return this.execute<(typeof classroomio.messages)['my-learners']['$get']>({
+      requestFn: () => classroomio.messages['my-learners'].$get(),
+      logContext: 'loading learners',
+      onSuccess: (result) => {
+        this.myLearners = (result.data as { learners: MyLearner[] }).learners;
+        this.myLearnersLoaded = true;
+      },
+      onError: (error) => {
+        this.myLearnersError = errorText(error, "We couldn't load your learners.");
+      }
+    });
+  }
+
+  /**
+   * Open (or reuse) the thread with an allocated learner. Resolves to the thread id, or an error text the
+   * caller shows (the server's 403 wording is readable). Returns null when a start is already in flight.
+   */
+  async startConversation(counterpartId: string): Promise<{ threadId: string } | { error: string } | null> {
+    if (this.starting) return null;
+    this.starting = true;
+    let failure: string | null = null;
+    try {
+      const res = await this.execute<(typeof classroomio.messages)['open']['$post']>({
+        requestFn: () => classroomio.messages.open.$post({ json: { counterpartId } }),
+        logContext: 'starting conversation',
+        onError: (error) => {
+          failure = errorText(error, "We couldn't start this conversation.");
+        }
+      });
+      const threadId = (res?.data as ThreadView | undefined)?.threadId;
+      if (threadId) return { threadId };
+      return { error: failure ?? "We couldn't start this conversation." };
+    } finally {
+      this.starting = false;
+    }
   }
 
   async open(counterpartId: string) {
@@ -193,6 +252,9 @@ class MessagingApi extends BaseApi {
     this.view = null;
     this.myTutors = [];
     this.tutorsLoaded = false;
+    this.myLearners = [];
+    this.myLearnersLoaded = false;
+    this.myLearnersError = null;
     this.sending = false;
     this.loadError = null;
     this.sendError = null;

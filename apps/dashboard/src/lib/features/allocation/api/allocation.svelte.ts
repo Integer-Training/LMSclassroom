@@ -1,6 +1,7 @@
 import { classroomio } from '$lib/utils/services/api';
 import { BaseApiWithErrors } from '$lib/utils/services/api/base.svelte';
 import { snackbar } from '$features/ui/snackbar/store';
+import { errorText } from '$lib/utils/services/api/error-message';
 
 export interface Allocation {
   id: string;
@@ -81,7 +82,7 @@ class AllocationApi extends BaseApiWithErrors {
         this.totalPages = data.totalPages;
       },
       onError: (result) => {
-        if (typeof result === 'string') snackbar.error(result);
+        snackbar.error(errorText(result));
       }
     });
   }
@@ -115,8 +116,7 @@ class AllocationApi extends BaseApiWithErrors {
         this.list();
       },
       onError: (result) => {
-        if (typeof result === 'string') snackbar.error(result);
-        else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
+        snackbar.error(errorText(result));
       }
     });
   }
@@ -196,8 +196,7 @@ class AllocationApi extends BaseApiWithErrors {
         this.list();
       },
       onError: (result) => {
-        if (typeof result === 'string') snackbar.error(result);
-        else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
+        snackbar.error(errorText(result));
       }
     });
   }

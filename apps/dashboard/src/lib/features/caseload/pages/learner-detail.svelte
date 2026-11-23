@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount, tick, untrack } from 'svelte';
   import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
   import { Badge } from '@cio/ui/base/badge';
   import { Button } from '@cio/ui/base/button';
   import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
@@ -8,9 +9,11 @@
   import MessageSquareIcon from '@lucide/svelte/icons/message-square';
   import { RESULT_LABELS, isPassingResult } from '@cio/utils/constants';
   import MarkingForm from '$features/caseload/components/marking-form.svelte';
-  import IdVerificationControl from '$features/registrations/components/id-verification-control.svelte';
   import { caseloadApi, type DetailFile } from '$features/caseload/api/caseload.svelte';
   import { messagingApi, type PreviousThread } from '$features/messaging/api/messaging.svelte';
+  import EmailContact from '$features/messaging/components/email-contact.svelte';
+  import { snackbar } from '$features/ui/snackbar/store';
+  import { currentOrg } from '$lib/utils/store/org';
 
   function resultLabel(result: string | null): string {
     return result ? (RESULT_LABELS[result as keyof typeof RESULT_LABELS] ?? result) : '';
@@ -69,13 +72,50 @@
   }
 
   // PearlLMS Phase 6 Step 4 — open (or reuse) the thread with this allocated learner, then view it.
+  // Message is TUTOR-only — the API refuses Admin/Manager, so the button isn't offered to them.
+  const canMessage = $derived(($page.data.locals?.actor as { role?: string } | undefined)?.role === 'TUTOR');
+  const emailSubject = $derived([$currentOrg.name, caseloadApi.detail?.learner.name].filter(Boolean).join(' — '));
+
+  // Deep link from a notification: /caseload/<learnerId>#unit-<lessonId> scrolls to that unit, focuses it and
+  // highlights it for 2s. Re-runs on a hash-only change; skipped for the reload that follows marking.
+  let highlightId = $state<string | null>(null);
+  let handledHash = '';
+  let highlightTimer: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => {
+    const hash = $page.url.hash;
+    const loaded = !!caseloadApi.detail;
+    untrack(() => {
+      if (!loaded || !hash.startsWith('#unit-') || hash === handledHash) return;
+      handledHash = hash;
+      void tick().then(() => {
+        const lessonId = decodeURIComponent(hash.slice('#unit-'.length));
+        const el = document.getElementById(`unit-${lessonId}`);
+        if (!el) return;
+        const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        el.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+        el.focus({ preventScroll: true });
+        highlightId = lessonId;
+        clearTimeout(highlightTimer);
+        highlightTimer = setTimeout(() => (highlightId = null), 2000);
+      });
+    });
+    // A different hash later (e.g. another notification) must be handled again.
+    if (!hash.startsWith('#unit-')) handledHash = '';
+  });
+  onDestroy(() => clearTimeout(highlightTimer));
+
   let openingThread = $state(false);
   async function messageLearner() {
     if (openingThread) return;
     openingThread = true;
     try {
-      await messagingApi.open(learnerId);
-      if (messagingApi.view) await goto(`/messages/${messagingApi.view.threadId}`);
+      const res = await messagingApi.startConversation(learnerId);
+      if (!res) return;
+      if ('error' in res) {
+        snackbar.error(res.error);
+        return;
+      }
+      await goto(`/messages/${res.threadId}`);
     } finally {
       openingThread = false;
     }
@@ -88,22 +128,37 @@
   </a>
 
   {#if !caseloadApi.detail}
-    <p class="text-muted-foreground text-sm">{caseloadApi.isLoading ? 'Loading…' : 'Learner not found.'}</p>
-  {:else}
-    <div class="mb-6 flex items-start justify-between gap-3">
-      <div>
-        <h1 class="text-xl font-semibold">{caseloadApi.detail.learner.name || 'Learner'}</h1>
-        <p class="text-muted-foreground text-sm">{caseloadApi.detail.learner.email}</p>
+    {#if caseloadApi.detailError === 'forbidden'}
+      <div class="rounded-md border p-8 text-center" role="alert">
+        <p class="font-medium">This learner is no longer in your caseload.</p>
+        <Button href="/caseload" variant="outline" size="sm" class="mt-4">Back to caseload</Button>
       </div>
-      <Button variant="outline" size="sm" onclick={messageLearner} loading={openingThread}>
-        <MessageSquareIcon class="size-4" /> Message
-      </Button>
+    {:else}
+      <p class="text-muted-foreground text-sm">{caseloadApi.detailError ? 'Learner not found.' : 'Loading…'}</p>
+    {/if}
+  {:else}
+    <div class="mb-6 flex flex-wrap items-start justify-between gap-3">
+      <div class="min-w-0">
+        <h1 class="text-xl font-semibold break-words">{caseloadApi.detail.learner.name || 'Learner'}</h1>
+        {#if !caseloadApi.detail.learner.email}
+          <p class="text-muted-foreground text-sm">No email address on file</p>
+        {/if}
+      </div>
+      {#if canMessage}
+        <Button variant="outline" size="sm" onclick={messageLearner} loading={openingThread}>
+          <MessageSquareIcon class="size-4" /> Message
+        </Button>
+      {/if}
     </div>
-
-    <!-- PearlLMS Phase 7 Step 4 — record this learner's ID check (allocated tutor / staff). No document stored. -->
-    <div class="mb-6">
-      <IdVerificationControl {learnerId} />
-    </div>
+    {#if caseloadApi.detail.learner.email}
+      <div class="-mt-3 mb-6">
+        <EmailContact
+          email={caseloadApi.detail.learner.email}
+          name={caseloadApi.detail.learner.name || 'learner'}
+          subject={emailSubject}
+        />
+      </div>
+    {/if}
 
     {#if previousThreads.length > 0}
       <div class="mb-6 rounded-md border p-4">
@@ -132,7 +187,14 @@
             <h2 class="text-muted-foreground mb-2 text-sm font-semibold tracking-wide uppercase">{course.title}</h2>
             <div class="space-y-4">
               {#each course.units as unit (unit.lessonId)}
-                <div class="rounded-md border">
+                <div
+                  id="unit-{unit.lessonId}"
+                  tabindex="-1"
+                  class="scroll-mt-20 rounded-md border transition-shadow outline-none motion-reduce:transition-none {highlightId ===
+                  unit.lessonId
+                    ? 'ring-primary ring-2'
+                    : ''}"
+                >
                   <div class="bg-muted/40 flex items-center justify-between gap-2 border-b px-4 py-2.5">
                     <span class="font-medium">{unit.title}</span>
                     <Badge variant={unit.state.awaitingMarking ? 'secondary' : 'outline'}>{unit.state.label}</Badge>

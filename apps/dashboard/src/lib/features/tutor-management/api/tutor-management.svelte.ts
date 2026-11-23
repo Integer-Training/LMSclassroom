@@ -1,6 +1,7 @@
 import { classroomio } from '$lib/utils/services/api';
 import { BaseApi } from '$lib/utils/services/api/base.svelte';
 import { snackbar } from '$features/ui/snackbar/store';
+import { errorText } from '$lib/utils/services/api/error-message';
 
 // Admin Tutor-management (PearlLMS). Org-wide tutor roster, tutor creation (reveals a temp password),
 // "Send login" (regenerate + reveal), and suspend/reactivate. Admin-only (the API enforces it).
@@ -74,8 +75,7 @@ class TutorManagementApi extends BaseApi {
           this.load();
         },
         onError: (result) => {
-          if (typeof result === 'string') snackbar.error(result);
-          else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
+          snackbar.error(errorText(result));
         }
       });
     } finally {
@@ -100,8 +100,7 @@ class TutorManagementApi extends BaseApi {
           this.revealed = { name: rowName, password: data.temporaryPassword };
         },
         onError: (result) => {
-          if (typeof result === 'string') snackbar.error(result);
-          else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
+          snackbar.error(errorText(result));
         }
       });
     } finally {
@@ -124,8 +123,7 @@ class TutorManagementApi extends BaseApi {
           this.load();
         },
         onError: (result) => {
-          if (typeof result === 'string') snackbar.error(result);
-          else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
+          snackbar.error(errorText(result));
         }
       });
     } finally {
@@ -174,8 +172,7 @@ class TutorManagementApi extends BaseApi {
           this.load();
         },
         onError: (result) => {
-          if (typeof result === 'string') snackbar.error(result);
-          else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
+          snackbar.error(errorText(result));
         }
       });
     } finally {

@@ -81,3 +81,11 @@ export function normalizeErrorMessage(input: unknown, depth = 0): string {
 }
 
 export const GENERIC_ERROR_MESSAGE = FALLBACK;
+
+/**
+ * The text to show for an `onError` payload from BaseApi.execute — a plain string, or an object whose `error` is
+ * already a readable string (see toErrorPayload). Never returns empty, so a failed action is never silent.
+ */
+export function errorText(result: unknown): string {
+  return typeof result === 'string' ? result.trim() || FALLBACK : normalizeErrorMessage(result);
+}

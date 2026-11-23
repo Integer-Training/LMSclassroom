@@ -100,3 +100,5 @@ message sends within an already-audited allocation, and a user toggling their ow
 them would add per-message/per-read PII-adjacent volume for no oversight benefit. The privileged decisions
 around comms *are* audited elsewhere — the allocation that authorises a thread (`allocation.created` /
 `allocation.removed`) and the announcement publish above.
+
+**2026-11-23 messaging/notifications release:** no new audit actions (named notifications, tutor-initiated threads and email buttons are unaudited by the rule above).

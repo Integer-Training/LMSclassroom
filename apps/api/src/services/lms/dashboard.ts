@@ -3,8 +3,7 @@ import { AppError, ErrorCodes } from '@api/utils/errors';
 import { getEnrolmentsForLearners, getMonthlyStudyForLearner } from '@cio/db/queries/caseload';
 import { computeLearnerCourseProgress, type CourseProgress } from '@cio/db/queries/progress';
 import { listTutorsForLearner } from '@cio/db/queries/allocation';
-import { getProfileById } from '@cio/db/queries/auth';
-import { getLearnerMessageSummary, type RecentThreadRow } from '@cio/db/queries/comms';
+import { getLearnerMessageSummary, getProfileNamesByIds, type RecentThreadRow } from '@cio/db/queries/comms';
 import { getUserLoginStreak } from '@cio/db/queries/dash';
 import { getLearnerAssignments, type LearnerAssignment } from '@api/services/lms/assignments';
 
@@ -80,6 +79,8 @@ export interface LearnerDashboard {
   kpis: DashboardKpis;
   progressSummary: ProgressSummary;
   tutor: { name: string; email: string | null } | null;
+  /** Every currently allocated tutor (oldest allocation first); `tutor` is the first of these. */
+  tutors: { id: string; name: string; email: string | null }[];
   courseProgression: CourseProgressionRow[];
   draftFeedbacks: DraftFeedbackRow[];
   upcomingDueDates: UpcomingDueRow[];
@@ -195,13 +196,17 @@ export async function getLearnerDashboard(actor: Actor): Promise<LearnerDashboar
       .filter((d) => new Date(d).getTime() + 86_400_000 > now)
       .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0] ?? null;
 
-  // Tutor (name + email). listTutorsForLearner gives id+email; name comes from the profile.
-  let tutor: { name: string; email: string | null } | null = null;
-  const firstTutor = tutors[0];
-  if (firstTutor) {
-    const p = await safe(getProfileById(firstTutor.tutorId), null);
-    tutor = { name: p?.fullname ?? 'Your tutor', email: firstTutor.email };
-  }
+  // Tutor (name + email). listTutorsForLearner gives id+email; the real name (user.name first) comes from one
+  // batched lookup — the same source the notifications and messages use.
+  const tutorNames = new Map(
+    (await safe(getProfileNamesByIds(tutors.map((t) => t.tutorId)), [])).map((p) => [p.id, p.name])
+  );
+  const tutorList = tutors.map((t) => ({
+    id: t.tutorId,
+    name: tutorNames.get(t.tutorId) ?? 'Your tutor',
+    email: t.email ?? null
+  }));
+  const tutor = tutorList[0] ? { name: tutorList[0].name, email: tutorList[0].email } : null;
 
   // Study hours: monthly series (12 months, zero-filled) + the YEAR total (sum of the same buckets, so the
   // card's headline total always equals the visible chart — no lifetime-vs-year mismatch).
@@ -231,6 +236,7 @@ export async function getLearnerDashboard(actor: Actor): Promise<LearnerDashboar
       percent: overallProgressPercent
     },
     tutor,
+    tutors: tutorList,
     courseProgression,
     draftFeedbacks,
     upcomingDueDates,

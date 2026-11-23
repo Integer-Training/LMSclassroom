@@ -13,6 +13,10 @@ export interface NotificationRow {
   entityId: string | null;
   createdAt: string;
   readAt: string | null;
+  /** Who caused it (null on rows written before actor tracking). */
+  actorId: string | null;
+  /** Submission type (draft | final) for submission/result rows; null otherwise. */
+  variant: string | null;
 }
 
 export interface InsertNotificationInput {
@@ -20,6 +24,8 @@ export interface InsertNotificationInput {
   type: string;
   entityType?: string | null;
   entityId?: string | null;
+  actorId?: string | null;
+  variant?: string | null;
 }
 
 /** Write one in-app notification row (the framework always does this, regardless of email preference). */
@@ -33,7 +39,9 @@ export async function insertNotification(
       userId: input.userId,
       type: input.type,
       entityType: input.entityType ?? null,
-      entityId: input.entityId ?? null
+      entityId: input.entityId ?? null,
+      actorId: input.actorId ?? null,
+      variant: input.variant ?? null
     })
     .returning();
   return row as NotificationRow;
@@ -55,7 +63,9 @@ export async function insertNotificationsBatch(
         userId: input.userId,
         type: input.type,
         entityType: input.entityType ?? null,
-        entityId: input.entityId ?? null
+        entityId: input.entityId ?? null,
+        actorId: input.actorId ?? null,
+        variant: input.variant ?? null
       }))
     )
     .returning({ id: schema.notification.id, userId: schema.notification.userId });

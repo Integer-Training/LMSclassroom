@@ -8,6 +8,9 @@ import type { Actor } from '@cio/db/actor';
 
 vi.mock('@api/services/comms/messaging', () => ({
   getMyTutor: vi.fn(async () => null),
+  getMyTutors: vi.fn(async () => []),
+  getMyLearners: vi.fn(async () => [{ learnerId: 'lA', name: 'Amy', email: null }]),
+  listConversations: vi.fn(async () => []),
   openThread: vi.fn(async () => ({ threadId: 'th1' })),
   getPreviousTutorThreads: vi.fn(async () => []),
   getThreadView: vi.fn(async () => ({ threadId: 'th1', messages: [] })),
@@ -16,6 +19,7 @@ vi.mock('@api/services/comms/messaging', () => ({
 }));
 
 import { messagesRouter } from '@api/routes/comms/messages';
+import { getMyLearners } from '@api/services/comms/messaging';
 
 const A = (id: string, role: string): Actor =>
   ({ authenticated: true, userId: id, role, status: 'ACTIVE', orgId: 'o1' }) as Actor;
@@ -46,6 +50,19 @@ describe('previous-threads route', () => {
     expect(
       (await app.request('/messages/learners/nope/previous-threads', { headers: { 'x-actor': 'tutor' } })).status
     ).toBe(400);
+  });
+});
+
+describe('my-learners route', () => {
+  it('authed gets { data: { learners } } computed for the REQUESTING actor; anonymous 401', async () => {
+    const res = await app.request('/messages/my-learners', { headers: { 'x-actor': 'tutor' } });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      success: true,
+      data: { learners: [{ learnerId: 'lA', name: 'Amy', email: null }] }
+    });
+    expect((vi.mocked(getMyLearners).mock.calls[0][0] as Actor & { userId: string }).userId).toBe('t1');
+    expect((await app.request('/messages/my-learners')).status).toBe(401);
   });
 });
 

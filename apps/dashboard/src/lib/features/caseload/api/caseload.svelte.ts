@@ -6,6 +6,7 @@ import { normalizeErrorMessage, GENERIC_ERROR_MESSAGE } from '$lib/utils/service
 import { resolveDocumentMimeType } from '@cio/utils/validation/constants';
 import { snackbar } from '$features/ui/snackbar/store';
 import { courseworkApi, type CourseworkFile } from '$features/course/api/coursework.svelte';
+import { errorText } from '$lib/utils/services/api/error-message';
 
 // Tutor course-view + submissions-grid response shapes, inferred from the RPC endpoints.
 type CourseContentResp = InferResponseType<(typeof classroomio.caseload.courses)[':courseId']['content']['$get']>;
@@ -225,6 +226,8 @@ class CaseloadApi extends BaseApi {
   learners = $state<CaseloadLearner[]>([]);
   awaiting = $state<AwaitingItem[]>([]);
   detail = $state<LearnerDetail | null>(null);
+  /** Why the last loadLearner failed: 'forbidden' (not in this tutor's caseload) | 'not_found' | 'error'. */
+  detailError = $state<'forbidden' | 'not_found' | 'error' | null>(null);
   pipeline = $state<TutorPipeline | null>(null);
   // Learner Progression (Phase 9): the table + a per-learner detail cache (expandable rows).
   progression = $state<ProgressionList | null>(null);
@@ -254,7 +257,7 @@ class CaseloadApi extends BaseApi {
         if (reqId === this.#unitReqId) this.unitContent = result.data as TutorUnitContent;
       },
       onError: (result) => {
-        if (typeof result === 'string') snackbar.error(result);
+        snackbar.error(errorText(result));
       }
     });
   }
@@ -290,7 +293,7 @@ class CaseloadApi extends BaseApi {
         this.courseContent = result.data as TutorCourseContent;
       },
       onError: (result) => {
-        if (typeof result === 'string') snackbar.error(result);
+        snackbar.error(errorText(result));
       }
     });
   }
@@ -391,7 +394,7 @@ class CaseloadApi extends BaseApi {
         this.pipeline = result.data as TutorPipeline;
       },
       onError: (result) => {
-        if (typeof result === 'string') snackbar.error(result);
+        snackbar.error(errorText(result));
       }
     });
   }
@@ -407,7 +410,7 @@ class CaseloadApi extends BaseApi {
         if (reqId === this.#progressionReqId) this.progression = result.data as ProgressionList;
       },
       onError: (result) => {
-        if (typeof result === 'string') snackbar.error(result);
+        snackbar.error(errorText(result));
       }
     });
   }
@@ -422,7 +425,7 @@ class CaseloadApi extends BaseApi {
         this.progressionDetail = { ...this.progressionDetail, [learnerId]: result.data as ProgressionDetail };
       },
       onError: (result) => {
-        if (typeof result === 'string') snackbar.error(result);
+        snackbar.error(errorText(result));
       }
     });
     this.progressionDetailLoading = { ...this.progressionDetailLoading, [learnerId]: false };
@@ -438,13 +441,14 @@ class CaseloadApi extends BaseApi {
         this.awaiting = result.data.awaiting as AwaitingItem[];
       },
       onError: (result) => {
-        if (typeof result === 'string') snackbar.error(result);
+        snackbar.error(errorText(result));
       }
     });
   }
 
   async loadLearner(learnerId: string) {
     this.detail = null;
+    this.detailError = null;
     return this.execute<(typeof classroomio.caseload.learners)[':learnerId']['$get']>({
       requestFn: () => classroomio.caseload.learners[':learnerId'].$get({ param: { learnerId } }),
       logContext: 'loading learner detail',
@@ -452,7 +456,16 @@ class CaseloadApi extends BaseApi {
         this.detail = result.data as LearnerDetail;
       },
       onError: (result) => {
-        if (typeof result === 'string') snackbar.error(result);
+        const code = typeof result === 'object' ? (result as { code?: string }).code : undefined;
+        if (code === 'FORBIDDEN') {
+          // De-allocated / someone else's learner — the page shows a clean "no longer in your caseload" state.
+          this.detailError = 'forbidden';
+        } else if (code === 'NOT_FOUND') {
+          this.detailError = 'not_found';
+        } else {
+          this.detailError = 'error';
+          snackbar.error(errorText(result));
+        }
       }
     });
   }
@@ -480,8 +493,7 @@ class CaseloadApi extends BaseApi {
       logContext: 'recording result',
       onSuccess: () => snackbar.success(result ? 'Result recorded' : 'Draft feedback sent'),
       onError: (result) => {
-        if (typeof result === 'string') snackbar.error(result);
-        else if ('error' in result && typeof result.error === 'string') snackbar.error(result.error);
+        snackbar.error(errorText(result));
       }
     });
     return !!res;

@@ -2,6 +2,7 @@ import { classroomio } from '$lib/utils/services/api';
 import { BaseApi } from '$lib/utils/services/api/base.svelte';
 import { snackbar } from '$features/ui/snackbar/store';
 import { courseworkApi } from '$features/course/api/coursework.svelte';
+import { errorText } from '$lib/utils/services/api/error-message';
 
 // Admin org-wide Learner Progressions (PearlLMS). The org version of the tutor caseload progression table
 // (GET /organization/management/progression). The backend reuses the same progression service as the tutor
@@ -83,7 +84,7 @@ class LearnerProgressionsApi extends BaseApi {
         if (reqId === this.#reqId) this.progression = result.data as ProgressionList;
       },
       onError: (result) => {
-        if (typeof result === 'string') snackbar.error(result);
+        snackbar.error(errorText(result));
       }
     });
   }
@@ -98,7 +99,7 @@ class LearnerProgressionsApi extends BaseApi {
         this.detail = { ...this.detail, [learnerId]: result.data as ProgressionDetail };
       },
       onError: (result) => {
-        if (typeof result === 'string') snackbar.error(result);
+        snackbar.error(errorText(result));
       }
     });
     this.loadingDetail = { ...this.loadingDetail, [learnerId]: false };

@@ -39,6 +39,10 @@ export interface NotifyInput {
   emailTemplateId?: EmailId;
   /** When true, the message-style per-thread coalescing applies (needs entityId). */
   coalesce?: boolean;
+  /** Who caused it (in-app wording only; the email leg is unchanged). */
+  actorId?: string | null;
+  /** Submission type (draft | final) for submission/result rows. */
+  variant?: string | null;
 }
 
 /** Resolve a recipient's email preference for a category: their row, else the config default. */
@@ -92,7 +96,9 @@ export async function emitNotification(input: NotifyInput): Promise<void> {
         userId: recipient.userId,
         type: input.type,
         entityType: input.entityType ?? null,
-        entityId: input.entityId ?? null
+        entityId: input.entityId ?? null,
+        actorId: input.actorId ?? null,
+        variant: input.variant ?? null
       });
       notificationId = row.id;
     } catch (error) {
@@ -129,7 +135,9 @@ export async function emitNotificationBatch(input: NotifyInput): Promise<void> {
           userId: r.userId,
           type: input.type,
           entityType: input.entityType ?? null,
-          entityId: input.entityId ?? null
+          entityId: input.entityId ?? null,
+          actorId: input.actorId ?? null,
+          variant: input.variant ?? null
         }))
       );
       for (const row of rows) idByUser.set(row.userId, row.id);
@@ -141,7 +149,9 @@ export async function emitNotificationBatch(input: NotifyInput): Promise<void> {
             userId: r.userId,
             type: input.type,
             entityType: input.entityType ?? null,
-            entityId: input.entityId ?? null
+            entityId: input.entityId ?? null,
+            actorId: input.actorId ?? null,
+            variant: input.variant ?? null
           });
           idByUser.set(r.userId, row.id);
         } catch (rowError) {

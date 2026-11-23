@@ -3,11 +3,19 @@
   import * as Page from '@cio/ui/base/page';
   import * as Empty from '@cio/ui/base/empty';
   import { Badge } from '@cio/ui/base/badge';
+  import { page } from '$app/stores';
+  import { Button } from '@cio/ui/base/button';
   import MessagesSquareIcon from '@lucide/svelte/icons/messages-square';
+  import PlusIcon from '@lucide/svelte/icons/plus';
+  import NewMessageDialog from '$features/messaging/components/new-message-dialog.svelte';
   import { messagingApi } from '$features/messaging/api/messaging.svelte';
 
   // Tutor Messages inbox. Lists every conversation the tutor participates in (a row per learner), newest
   // first, with an unread dot. Each row opens the thread at /messages/[threadId] (reply happens there).
+
+  // Only a TUTOR can start a conversation (the API refuses Admin/Manager); Admin sees the inbox read-only.
+  const canStart = $derived($page.data.locals?.actor?.role === 'TUTOR');
+  let newMessageOpen = $state(false);
 
   onMount(() => {
     messagingApi.resetList();
@@ -41,6 +49,13 @@
       <Page.Title>Messages</Page.Title>
       <Page.Subtitle>Conversations with your learners</Page.Subtitle>
     </Page.HeaderContent>
+    {#if canStart}
+      <Page.Action>
+        <Button onclick={() => (newMessageOpen = true)}>
+          <PlusIcon class="size-4" /> New message
+        </Button>
+      </Page.Action>
+    {/if}
   </Page.Header>
 
   <Page.Body>
@@ -53,9 +68,14 @@
             <Empty.Media variant="icon"><MessagesSquareIcon /></Empty.Media>
             <Empty.Title>No messages yet</Empty.Title>
             <Empty.Description>
-              When a learner messages you it appears here. You can also start one from a learner's page.
+              When a learner messages you it appears here. You can also start one yourself.
             </Empty.Description>
           </Empty.Header>
+          {#if canStart}
+            <Button onclick={() => (newMessageOpen = true)}>
+              <PlusIcon class="size-4" /> New message
+            </Button>
+          {/if}
         </Empty.Root>
       {:else}
         <div class="bg-card divide-y rounded-xl border">
@@ -84,3 +104,7 @@
     {/snippet}
   </Page.Body>
 </Page.Root>
+
+{#if canStart}
+  <NewMessageDialog bind:open={newMessageOpen} />
+{/if}

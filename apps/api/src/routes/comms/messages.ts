@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { MESSAGE_MAX_LENGTH, MESSAGE_SEND_RATE_LIMIT } from '@cio/utils/constants';
 import { createRateLimiter } from '@api/middlewares/rate-limiter';
 import {
+  getMyLearners,
   getMyTutor,
   getMyTutors,
   getPreviousTutorThreads,
@@ -59,6 +60,15 @@ export const messagesRouter = new Hono()
       return c.json({ success: true, data: { tutors } }, 200);
     } catch (error) {
       return handleError(c, error, 'Failed to load tutors');
+    }
+  })
+  // Tutor: their own allocated, non-deactivated learners (the "New message" picker). Other roles get [].
+  .get('/my-learners', requireActor(), async (c) => {
+    try {
+      const learners = await getMyLearners(c.get('actor') as Actor);
+      return c.json({ success: true, data: { learners } }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to load learners');
     }
   })
   // The actor's conversation list (inbox) — tutor sees their learners, learner sees their tutors.

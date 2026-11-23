@@ -21,6 +21,8 @@ vi.mock('@cio/db/queries/coursework', () => ({
   getAssessmentItemsByLesson: vi.fn(async () => new Map())
 }));
 vi.mock('@cio/db/queries/auth', () => ({ getProfileById: vi.fn() }));
+// The learner header name comes from the real-name lookup (user.name first); no name row → profile.fullname fallback.
+vi.mock('@cio/db/queries/comms', () => ({ getProfileNamesByIds: vi.fn(async () => []) }));
 
 import {
   listAllocatedLearnersForOrg,
